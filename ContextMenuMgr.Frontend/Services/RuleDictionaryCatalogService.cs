@@ -315,12 +315,17 @@ public sealed class RuleDictionaryCatalogService
 
     private string? ResolveEnhanceShellDisplayName(XElement itemElement)
     {
-        var muiVerb = itemElement
+        var valueElements = itemElement
             .Element("Value")?
             .Elements()
-            .FirstOrDefault(element => ResolveMuiVerb(element) is not null);
+            .Where(static element => element.Attribute("MUIVerb") is not null)
+            .ToArray() ?? [];
 
-        var text = muiVerb is null ? null : ResolveMuiVerb(muiVerb);
+        var preferredCulture = GetPreferredDictionaryCulture();
+        var preferred = valueElements.FirstOrDefault(element => HasCulture(element, preferredCulture));
+        var withoutCulture = valueElements.FirstOrDefault(static element => element.Element("Culture") is null);
+        var fallback = valueElements.FirstOrDefault();
+        var text = GetMuiVerb(preferred ?? withoutCulture ?? fallback);
         return string.IsNullOrWhiteSpace(text)
             ? itemElement.Attribute("KeyName")?.Value?.Trim()
             : ResolveResourceString(text);
@@ -328,11 +333,16 @@ public sealed class RuleDictionaryCatalogService
 
     private string? ResolveEnhanceShellIcon(XElement itemElement)
     {
-        var iconElement = itemElement
+        var valueElements = itemElement
             .Element("Value")?
             .Elements()
-            .FirstOrDefault(element => element.Attribute("Icon") is not null);
+            .Where(static element => element.Attribute("Icon") is not null)
+            .ToArray() ?? [];
 
+        var preferredCulture = GetPreferredDictionaryCulture();
+        var iconElement = valueElements.FirstOrDefault(element => HasCulture(element, preferredCulture))
+            ?? valueElements.FirstOrDefault(static element => element.Element("Culture") is null)
+            ?? valueElements.FirstOrDefault();
         var explicitIcon = iconElement?.Attribute("Icon")?.Value?.Trim();
         if (!string.IsNullOrWhiteSpace(explicitIcon))
         {
@@ -406,17 +416,6 @@ public sealed class RuleDictionaryCatalogService
         return null;
     }
 
-    private string? ResolveMuiVerb(XElement valueElement)
-    {
-        if (!JudgeCulture(valueElement))
-        {
-            return null;
-        }
-
-        var value = valueElement.Attribute("MUIVerb")?.Value;
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
-
     private string? ResolveTip(XElement itemElement)
     {
         return ResolveText(itemElement.Elements("Tip"));
@@ -424,9 +423,7 @@ public sealed class RuleDictionaryCatalogService
 
     private string? ResolveText(IEnumerable<XElement> elements)
     {
-        var preferredCulture = _localization.UsesChinese()
-            ? "zh-CN"
-            : "en-US";
+        var preferredCulture = GetPreferredDictionaryCulture();
 
         foreach (var element in elements)
         {
@@ -484,6 +481,22 @@ public sealed class RuleDictionaryCatalogService
         return string.Equals(culture, "en-US", StringComparison.OrdinalIgnoreCase)
             ? !_localization.UsesChinese()
             : string.Equals(culture, "zh-CN", StringComparison.OrdinalIgnoreCase) && _localization.UsesChinese();
+    }
+
+    private string GetPreferredDictionaryCulture()
+    {
+        return _localization.UsesChinese() ? "zh-CN" : "en-US";
+    }
+
+    private static bool HasCulture(XElement element, string cultureName)
+    {
+        return string.Equals(element.Element("Culture")?.Value?.Trim(), cultureName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetMuiVerb(XElement? element)
+    {
+        var value = element?.Attribute("MUIVerb")?.Value;
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private static string? GetElementValue(XElement element)

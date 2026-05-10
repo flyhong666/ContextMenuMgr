@@ -43,6 +43,11 @@ public sealed class LocalizationService
     }
 
     /// <summary>
+    /// Gets the selected UI culture name.
+    /// </summary>
+    public string CurrentCultureName => UsesChinese() ? "zh-CN" : "en-US";
+
+    /// <summary>
     /// Applies persisted Language.
     /// </summary>
     public void ApplyPersistedLanguage()

@@ -36,6 +36,11 @@ public sealed record PipeRequest
     public string? DefinitionXml { get; init; }
 
     /// <summary>
+    /// Gets or sets the UI culture name.
+    /// </summary>
+    public string? CultureName { get; init; }
+
+    /// <summary>
     /// Gets or sets the scene Kind.
     /// </summary>
     public ContextMenuSceneKind? SceneKind { get; init; }

@@ -147,6 +147,9 @@
   <data name="RestartExplorer" xml:space="preserve">
     <value>Restart Explorer</value>
   </data>
+  <data name="RestartExplorerFailed" xml:space="preserve">
+    <value>Failed to restart File Explorer.</value>
+  </data>
   <data name="SearchLabel" xml:space="preserve">
     <value>Filter</value>
   </data>

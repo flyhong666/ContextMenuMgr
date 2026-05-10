@@ -653,6 +653,7 @@ public sealed class ContextMenuRegistryCatalog
         string groupRegistryPath,
         string definitionXml,
         bool enable,
+        string? cultureName,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(groupRegistryPath))
@@ -671,10 +672,11 @@ public sealed class ContextMenuRegistryCatalog
             var relativeGroupPath = NormalizeClassesRootRelativePath(groupRegistryPath)
                 ?? throw new InvalidOperationException("The enhance-menu group path must point into HKCR.");
             var states = await _stateStore.LoadAsync(cancellationToken);
+            var effectiveCultureName = NormalizeEnhanceCultureName(cultureName);
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable);
+                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
             }
             else if (itemElement.Element("Guid") is not null)
             {
@@ -685,10 +687,24 @@ public sealed class ContextMenuRegistryCatalog
                 throw new InvalidOperationException("The enhance-menu item definition could not be recognized.");
             }
 
-            await SyncEnhanceMenuStateAsync(states, relativeGroupPath, itemElement, enable, cancellationToken);
+            try
+            {
+                await SyncEnhanceMenuStateAsync(states, relativeGroupPath, itemElement, enable, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await _logger.LogAsync(
+                    $"Enhance menu registry update succeeded but state sync failed under {groupRegistryPath}. "
+                    + $"KeyName={itemElement.Attribute("KeyName")?.Value?.Trim()}, Guid={itemElement.Element("Guid")?.Value?.Trim()}, Enable={enable}: {ex.Message}",
+                    cancellationToken);
+                throw;
+            }
+
+            ShellChangeNotifier.NotifyAssociationsChanged();
 
             await _logger.LogAsync(
-                $"{(enable ? "Enabled" : "Disabled")} enhance menu item under {groupRegistryPath}.",
+                $"{(enable ? "Enabled" : "Disabled")} enhance menu item under {groupRegistryPath}. "
+                + $"KeyName={itemElement.Attribute("KeyName")?.Value?.Trim()}, Guid={itemElement.Element("Guid")?.Value?.Trim()}, Culture={effectiveCultureName}.",
                 cancellationToken);
 
             return new PipeResponse
@@ -1766,7 +1782,11 @@ public sealed class ContextMenuRegistryCatalog
         DeleteRegistryKeyTree(registryPath);
     }
 
-    private static void SetEnhanceShellItemEnabled(string relativeGroupPath, XElement itemElement, bool enable)
+    private static void SetEnhanceShellItemEnabled(
+        string relativeGroupPath,
+        XElement itemElement,
+        bool enable,
+        string cultureName)
     {
         var keyName = itemElement.Attribute("KeyName")?.Value?.Trim();
         if (string.IsNullOrWhiteSpace(keyName))
@@ -1777,7 +1797,7 @@ public sealed class ContextMenuRegistryCatalog
         var registryPath = $@"{relativeGroupPath}\shell\{keyName}";
         if (enable)
         {
-            WriteEnhanceSubKeysValue(itemElement, registryPath);
+            WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName);
         }
         else
         {
@@ -1805,8 +1825,21 @@ public sealed class ContextMenuRegistryCatalog
             using var handlersKey = Registry.ClassesRoot.CreateSubKey(handlersPath, writable: true)
                 ?? throw new InvalidOperationException($"Unable to open {handlersPath} for writing.");
 
+            foreach (var subKeyName in handlersKey.GetSubKeyNames())
+            {
+                using var subKey = handlersKey.OpenSubKey(subKeyName, writable: false);
+                var value = subKey?.GetValue(null)?.ToString();
+                if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
+                {
+                    return;
+                }
+            }
+
             var targetPath = $@"{handlersPath}\{keyName}";
-            if (Registry.ClassesRoot.OpenSubKey(targetPath, writable: false) is not null)
+            using var targetKey = Registry.ClassesRoot.OpenSubKey(targetPath, writable: false);
+            var targetValue = targetKey?.GetValue(null)?.ToString();
+            if (targetKey is not null
+                && (!Guid.TryParse(targetValue, out var existingGuid) || existingGuid != guid))
             {
                 targetPath = GetUniqueRegistryPath(handlersPath, keyName);
             }
@@ -1833,9 +1866,9 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private static void WriteEnhanceSubKeysValue(XElement keyElement, string registryPath)
+    private static void WriteEnhanceSubKeysValue(XElement keyElement, string registryPath, string cultureName)
     {
-        if (!ShouldIncludeNode(keyElement))
+        if (!ShouldIncludeNode(keyElement, cultureName))
         {
             return;
         }
@@ -1847,10 +1880,10 @@ public sealed class ContextMenuRegistryCatalog
         }
         else if (string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase))
         {
-            WriteEnhanceCommandValue(keyElement, registryPath);
+            WriteEnhanceCommandValue(keyElement, registryPath, cultureName);
         }
 
-        WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath);
+        WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath, cultureName);
 
         var subKeyElement = keyElement.Element("SubKey");
         if (subKeyElement is null)
@@ -1860,13 +1893,13 @@ public sealed class ContextMenuRegistryCatalog
 
         foreach (var childElement in subKeyElement.Elements())
         {
-            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}");
+            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName);
         }
     }
 
-    private static void WriteEnhanceAttributesValue(XElement? valueElement, string registryPath)
+    private static void WriteEnhanceAttributesValue(XElement? valueElement, string registryPath, string cultureName)
     {
-        if (valueElement is null || !ShouldIncludeNode(valueElement))
+        if (valueElement is null || !ShouldIncludeNode(valueElement, cultureName))
         {
             return;
         }
@@ -1874,10 +1907,16 @@ public sealed class ContextMenuRegistryCatalog
         using var key = Registry.ClassesRoot.CreateSubKey(registryPath, writable: true)
             ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
 
-        foreach (var valueNode in valueElement.Elements().Where(ShouldIncludeNode))
+        foreach (var valueNode in valueElement.Elements().Where(element => ShouldIncludeNode(element, cultureName)))
         {
             foreach (var attribute in valueNode.Attributes())
             {
+                if (string.IsNullOrWhiteSpace(attribute.Name.LocalName)
+                    || string.Equals(attribute.Name.LocalName, "Default", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var attributeValue = attribute.Value;
                 switch (valueNode.Name.LocalName)
                 {
@@ -1892,14 +1931,15 @@ public sealed class ContextMenuRegistryCatalog
                         break;
                     case "REG_DWORD":
                         var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
-                        key.SetValue(attribute.Name.LocalName, Convert.ToInt32(attributeValue, numericBase), RegistryValueKind.DWord);
+                        var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
+                        key.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
                         break;
                 }
             }
         }
     }
 
-    private static void WriteEnhanceCommandValue(XElement commandElement, string registryPath)
+    private static void WriteEnhanceCommandValue(XElement commandElement, string registryPath, string cultureName)
     {
         var fileNameElement = commandElement.Element("FileName");
         var argumentsElement = commandElement.Element("Arguments");
@@ -1910,12 +1950,12 @@ public sealed class ContextMenuRegistryCatalog
 
         if (string.IsNullOrWhiteSpace(fileName))
         {
-            fileName = CreateEnhanceCommandFile(fileNameElement);
+            fileName = CreateEnhanceCommandFile(fileNameElement, cultureName);
         }
 
         if (string.IsNullOrWhiteSpace(arguments))
         {
-            arguments = CreateEnhanceCommandFile(argumentsElement);
+            arguments = CreateEnhanceCommandFile(argumentsElement, cultureName);
         }
 
         fileName = Environment.ExpandEnvironmentVariables(fileName ?? string.Empty);
@@ -1942,7 +1982,7 @@ public sealed class ContextMenuRegistryCatalog
         Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, command, RegistryValueKind.String);
     }
 
-    private static string CreateEnhanceCommandFile(XElement? parentElement)
+    private static string CreateEnhanceCommandFile(XElement? parentElement, string cultureName)
     {
         if (parentElement is null)
         {
@@ -1950,11 +1990,12 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         var generatedDir = Path.Combine(
-            RuntimePaths.RootDirectory,
-            "Generated");
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "ContextMenuMgr",
+            "Programs");
         Directory.CreateDirectory(generatedDir);
 
-        foreach (var createFileElement in parentElement.Elements("CreateFile").Where(ShouldIncludeNode))
+        foreach (var createFileElement in parentElement.Elements("CreateFile").Where(element => ShouldIncludeNode(element, cultureName)))
         {
             var fileName = createFileElement.Attribute("FileName")?.Value;
             var content = createFileElement.Attribute("Content")?.Value ?? string.Empty;
@@ -1963,7 +2004,8 @@ public sealed class ContextMenuRegistryCatalog
                 continue;
             }
 
-            var filePath = Path.Combine(generatedDir, fileName);
+            var safeFileName = SanitizeEnhanceProgramFileName(fileName);
+            var filePath = Path.Combine(generatedDir, safeFileName);
             var encoding = string.Equals(Path.GetExtension(fileName), ".bat", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(Path.GetExtension(fileName), ".cmd", StringComparison.OrdinalIgnoreCase)
                     ? Encoding.Default
@@ -1990,6 +2032,27 @@ public sealed class ContextMenuRegistryCatalog
 
         return "mshta vbscript:createobject(\"shell.application\").shellexecute"
             + $"(\"{fileName}\",\"{arguments}\",\"{directory}\",\"{verb}\",{windowStyle})(close)";
+    }
+
+    private static string SanitizeEnhanceProgramFileName(string fileName)
+    {
+        var safeFileName = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(safeFileName))
+        {
+            throw new InvalidOperationException("CreateFile requires a valid file name.");
+        }
+
+        foreach (var invalidChar in Path.GetInvalidFileNameChars())
+        {
+            safeFileName = safeFileName.Replace(invalidChar, '_');
+        }
+
+        if (safeFileName is "." or "..")
+        {
+            throw new InvalidOperationException("CreateFile file name cannot be a relative path segment.");
+        }
+
+        return safeFileName;
     }
 
     private static string ExtractExecutablePath(string rawValue)
@@ -2023,13 +2086,27 @@ public sealed class ContextMenuRegistryCatalog
 
     private static byte[] ConvertToBinary(string value)
     {
-        return value
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(static part => Convert.ToByte(part, 16))
-            .ToArray();
+        var compact = Regex.Replace(value, @"\s+", string.Empty);
+        if (compact.Length == 0)
+        {
+            return [];
+        }
+
+        if (compact.Length % 2 != 0 || !Regex.IsMatch(compact, @"\A[0-9a-fA-F]+\z"))
+        {
+            throw new FormatException($"REG_BINARY value '{value}' is not valid hexadecimal byte data.");
+        }
+
+        var bytes = new byte[compact.Length / 2];
+        for (var index = 0; index < bytes.Length; index++)
+        {
+            bytes[index] = Convert.ToByte(compact.Substring(index * 2, 2), 16);
+        }
+
+        return bytes;
     }
 
-    private static bool ShouldIncludeNode(XElement element)
+    private static bool ShouldIncludeNode(XElement element, string cultureName)
     {
         if (!HasRequiredFiles(element))
         {
@@ -2041,7 +2118,7 @@ public sealed class ContextMenuRegistryCatalog
             return false;
         }
 
-        return MatchesCulture(element);
+        return MatchesCulture(element, cultureName);
     }
 
     private static bool HasRequiredFiles(XElement element)
@@ -2058,7 +2135,7 @@ public sealed class ContextMenuRegistryCatalog
         return true;
     }
 
-    private static bool MatchesCulture(XElement element)
+    private static bool MatchesCulture(XElement element, string cultureName)
     {
         var culture = element.Element("Culture")?.Value?.Trim();
         if (string.IsNullOrWhiteSpace(culture))
@@ -2066,7 +2143,7 @@ public sealed class ContextMenuRegistryCatalog
             return true;
         }
 
-        return string.Equals(culture, CultureInfo.CurrentUICulture.Name, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(culture, cultureName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesOsVersion(XElement element)
@@ -2097,6 +2174,30 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return true;
+    }
+
+    private static string NormalizeEnhanceCultureName(string? cultureName)
+    {
+        if (string.IsNullOrWhiteSpace(cultureName))
+        {
+            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                ? "zh-CN"
+                : "en-US";
+        }
+
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(cultureName.Trim());
+            return culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                ? "zh-CN"
+                : "en-US";
+        }
+        catch (CultureNotFoundException)
+        {
+            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                ? "zh-CN"
+                : "en-US";
+        }
     }
 
     private static string GetUniqueRegistryPath(string basePath, string keyName)

@@ -113,6 +113,12 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         EnhanceMenuRuleService enhanceMenuRuleService,
         IconPreviewService iconPreviewService)
     {
+        var selectedEnhanceRegistryPath = SelectedEnhanceGroup?.RegistryPath;
+        foreach (var group in EnhanceGroups)
+        {
+            group.Dispose();
+        }
+
         EnhanceGroups = _ruleCatalogService
             .LoadEnhanceMenuGroups()
             .Select(definition => new EnhanceMenuGroupViewModel(
@@ -123,7 +129,9 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
                 RefreshWorkspaceAndEnhanceStatesAsync))
             .ToArray();
 
-        SelectedEnhanceGroup = EnhanceGroups.FirstOrDefault();
+        SelectedEnhanceGroup = EnhanceGroups.FirstOrDefault(group =>
+            string.Equals(group.RegistryPath, selectedEnhanceRegistryPath, StringComparison.OrdinalIgnoreCase))
+            ?? EnhanceGroups.FirstOrDefault();
 
         DetailedEditGroups = _ruleCatalogService
             .LoadDetailedEditGroups()

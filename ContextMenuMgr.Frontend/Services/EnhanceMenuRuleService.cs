@@ -9,13 +9,15 @@ namespace ContextMenuMgr.Frontend.Services;
 public sealed class EnhanceMenuRuleService
 {
     private readonly IBackendClient _backendClient;
+    private readonly LocalizationService _localization;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EnhanceMenuRuleService"/> class.
     /// </summary>
-    public EnhanceMenuRuleService(IBackendClient backendClient)
+    public EnhanceMenuRuleService(IBackendClient backendClient, LocalizationService localization)
     {
         _backendClient = backendClient;
+        _localization = localization;
     }
 
     /// <summary>
@@ -46,6 +48,7 @@ public sealed class EnhanceMenuRuleService
             definition.GroupRegistryPath,
             definition.RawXml,
             enable,
+            _localization.CurrentCultureName,
             cancellationToken);
     }
 

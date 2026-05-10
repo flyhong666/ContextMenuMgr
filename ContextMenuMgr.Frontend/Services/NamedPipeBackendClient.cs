@@ -111,6 +111,7 @@ public sealed class NamedPipeBackendClient : IBackendClient
         string groupRegistryPath,
         string itemXml,
         bool enable,
+        string cultureName,
         CancellationToken cancellationToken)
     {
         await SendRequestAsync(
@@ -119,7 +120,8 @@ public sealed class NamedPipeBackendClient : IBackendClient
                 Command = PipeCommand.SetEnhanceMenuItemEnabled,
                 ScopeValue = groupRegistryPath,
                 DefinitionXml = itemXml,
-                Enable = enable
+                Enable = enable,
+                CultureName = cultureName
             },
             cancellationToken);
     }

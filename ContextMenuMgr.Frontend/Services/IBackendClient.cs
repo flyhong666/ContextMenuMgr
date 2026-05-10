@@ -30,6 +30,7 @@ public interface IBackendClient : IAsyncDisposable
         string groupRegistryPath,
         string itemXml,
         bool enable,
+        string cultureName,
         CancellationToken cancellationToken);
 
     Task<ContextMenuEntry?> AcknowledgeItemStateAsync(string itemId, CancellationToken cancellationToken);

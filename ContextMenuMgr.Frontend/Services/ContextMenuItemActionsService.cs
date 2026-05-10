@@ -216,31 +216,24 @@ public sealed class ContextMenuItemActionsService
         return RunActionAsync(
             async () =>
             {
-                foreach (var explorerProcess in Process.GetProcessesByName("explorer"))
+                var process = Process.Start(new ProcessStartInfo(
+                    "cmd.exe",
+                    "/d /c \"taskkill /f /im explorer.exe & start \"\" explorer.exe\"")
                 {
-                    try
-                    {
-                        explorerProcess.Kill(entireProcessTree: true);
-                    }
-                    catch
-                    {
-                    }
-                    finally
-                    {
-                        explorerProcess.Dispose();
-                    }
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+
+                if (process is null)
+                {
+                    throw new InvalidOperationException("Failed to start cmd.exe.");
                 }
 
-                await Task.Delay(800);
-
-                var explorerPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                    "explorer.exe");
-
-                Process.Start(new ProcessStartInfo(explorerPath)
+                await process.WaitForExitAsync();
+                if (process.ExitCode != 0)
                 {
-                    UseShellExecute = true
-                });
+                    throw new InvalidOperationException(_localization.Translate("RestartExplorerFailed"));
+                }
             },
             "RestartExplorer");
     }

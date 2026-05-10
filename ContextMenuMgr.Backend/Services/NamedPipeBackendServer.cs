@@ -275,7 +275,12 @@ public sealed class NamedPipeBackendServer
                     Items = await _catalog.GetSceneSnapshotAsync(request.SceneKind.Value, request.ScopeValue, cancellationToken)
                 },
             PipeCommand.SetEnhanceMenuItemEnabled when request.ScopeValue is not null && request.DefinitionXml is not null && request.Enable is not null
-                => await _catalog.SetEnhanceMenuItemEnabledAsync(request.ScopeValue, request.DefinitionXml, request.Enable.Value, cancellationToken),
+                => await _catalog.SetEnhanceMenuItemEnabledAsync(
+                    request.ScopeValue,
+                    request.DefinitionXml,
+                    request.Enable.Value,
+                    request.CultureName,
+                    cancellationToken),
             PipeCommand.AcknowledgeItemState when request.ItemId is not null
                 => await _catalog.AcknowledgeItemStateAsync(request.ItemId, cancellationToken),
             PipeCommand.SetEnabled when request.ItemId is not null && request.Enable is not null
