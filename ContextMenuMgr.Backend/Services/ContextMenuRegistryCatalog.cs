@@ -697,7 +697,6 @@ public sealed class ContextMenuRegistryCatalog
                     $"Enhance menu registry update succeeded but state sync failed under {groupRegistryPath}. "
                     + $"KeyName={itemElement.Attribute("KeyName")?.Value?.Trim()}, Guid={itemElement.Element("Guid")?.Value?.Trim()}, Enable={enable}: {ex.Message}",
                     cancellationToken);
-                throw;
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();

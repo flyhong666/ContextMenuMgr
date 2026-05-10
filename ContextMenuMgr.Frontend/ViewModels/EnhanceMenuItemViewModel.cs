@@ -118,7 +118,8 @@ public partial class EnhanceMenuItemViewModel : ObservableObject, IDisposable
     {
         try
         {
-            await _ruleService.SetEnabledAsync(Definition, newValue, CancellationToken.None);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _ruleService.SetEnabledAsync(Definition, newValue, cts.Token);
             if (_refreshAsync is not null)
             {
                 await _refreshAsync();

@@ -14,6 +14,9 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localization;
     private readonly RuleDictionaryCatalogService _ruleCatalogService;
     private readonly ContextMenuWorkspaceService _workspace;
+    private readonly DetailedEditRuleService _detailedEditRuleService;
+    private readonly EnhanceMenuRuleService _enhanceMenuRuleService;
+    private readonly IconPreviewService _iconPreviewService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OtherRulesPageViewModel"/> class.
@@ -32,6 +35,9 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         _workspace = workspace;
         _localization = localization;
         _ruleCatalogService = ruleCatalogService;
+        _detailedEditRuleService = detailedEditRuleService;
+        _enhanceMenuRuleService = enhanceMenuRuleService;
+        _iconPreviewService = iconPreviewService;
 
         CustomRegistryPathTab = new SceneContextMenuTabViewModel(
             "DatabaseSearch24",
@@ -56,17 +62,7 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         }
 
         RefreshDefinitions(detailedEditRuleService, enhanceMenuRuleService, iconPreviewService);
-        _localization.LanguageChanged += (_, _) =>
-        {
-            RefreshDefinitions(detailedEditRuleService, enhanceMenuRuleService, iconPreviewService);
-            CustomRegistryPathTab.Title = _localization.Translate("SceneCustomRegistryTitle");
-            CustomRegistryPathTab.Description = _localization.Translate("SceneCustomRegistryDescription");
-            CustomRegistryPathTab.SelectorLabel = _localization.Translate("SceneRegistryPathSelectorLabel");
-            OnPropertyChanged(nameof(Title));
-            OnPropertyChanged(nameof(EnhanceMenusTitle));
-            OnPropertyChanged(nameof(DetailedEditTitle));
-            OnPropertyChanged(nameof(NoSelectionText));
-        };
+        _localization.LanguageChanged += OnLanguageChanged;
     }
 
     /// <summary>
@@ -101,6 +97,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
     public string Title => _localization.Translate("OtherRulesPageTitle");
 
     public string EnhanceMenusTitle => _localization.Translate("EnhanceMenusTitle");
+
+    public string EnhanceMenusDescription => _localization.Translate("EnhanceMenusDescription");
 
     public string DetailedEditTitle => _localization.Translate("DetailedEditTitle");
 
@@ -187,11 +185,25 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        RefreshDefinitions(_detailedEditRuleService, _enhanceMenuRuleService, _iconPreviewService);
+        CustomRegistryPathTab.Title = _localization.Translate("SceneCustomRegistryTitle");
+        CustomRegistryPathTab.Description = _localization.Translate("SceneCustomRegistryDescription");
+        CustomRegistryPathTab.SelectorLabel = _localization.Translate("SceneRegistryPathSelectorLabel");
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(EnhanceMenusTitle));
+        OnPropertyChanged(nameof(EnhanceMenusDescription));
+        OnPropertyChanged(nameof(DetailedEditTitle));
+        OnPropertyChanged(nameof(NoSelectionText));
+    }
+
     /// <summary>
     /// Executes dispose.
     /// </summary>
     public void Dispose()
     {
+        _localization.LanguageChanged -= OnLanguageChanged;
         _workspace.Items.CollectionChanged -= OnWorkspaceItemsCollectionChanged;
         foreach (var item in _workspace.Items)
         {
