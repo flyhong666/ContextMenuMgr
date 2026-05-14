@@ -19,6 +19,7 @@ internal sealed class TrayHostRunner : IDisposable
     private bool _ownsMutex;
 
     private NativeTrayHost? _trayHost;
+    private SystemToastNotificationService? _systemToastNotificationService;
 
     private TrayHostControlServer? _controlServer;
     private CancellationTokenSource? _controlServerCts;
@@ -53,6 +54,8 @@ internal sealed class TrayHostRunner : IDisposable
         try
         {
             var trayIconPath = ResolveTrayIconPath();
+
+            _systemToastNotificationService = new SystemToastNotificationService(OpenApprovals);
 
             // The tray host only surfaces lightweight session-side UI. All real
             // state changes still flow through backend notifications and commands.
@@ -99,6 +102,9 @@ internal sealed class TrayHostRunner : IDisposable
         _controlServerCts = null;
         _controlServer = null;
 
+        _systemToastNotificationService?.Dispose();
+        _systemToastNotificationService = null;
+
         _trayHost?.Dispose();
         _trayHost = null;
 
@@ -131,10 +137,13 @@ internal sealed class TrayHostRunner : IDisposable
         _frontendActivationService.TryShowMainWindow();
     }
 
-    private void OpenApprovals()
+    private void OpenApprovals() => OpenApprovals(_pendingApprovalItemId);
+
+    private void OpenApprovals(string? itemId)
     {
-        _ = _logger.LogAsync($"Opening approvals from tray notification. PendingItemId={_pendingApprovalItemId ?? "<none>"}");
-        _frontendActivationService.TryOpenApprovals(_pendingApprovalItemId);
+        var targetItemId = string.IsNullOrWhiteSpace(itemId) ? _pendingApprovalItemId : itemId;
+        _ = _logger.LogAsync($"Opening approvals from tray notification. PendingItemId={targetItemId ?? "<none>"}");
+        _frontendActivationService.TryOpenApprovals(targetItemId);
     }
 
     private void RequestBackendShutdown()
@@ -183,9 +192,15 @@ internal sealed class TrayHostRunner : IDisposable
         _pendingApprovalItemId = notification.Item.Id;
         _ = _logger.LogAsync($"Approval notification received for item {notification.Item.Id} ({notification.Item.DisplayName}).");
 
-        _trayHost?.ShowNotification(
-            _localization.Translate("Tray.PendingApprovalTitle"),
-            _localization.Format("Tray.PendingApprovalMessage", notification.Item.DisplayName));
+        var title = _localization.Translate("Tray.PendingApprovalTitle");
+        var message = _localization.Format("Tray.PendingApprovalMessage", notification.Item.DisplayName);
+
+        if (_systemToastNotificationService?.TryShowNotification(title, message, notification.Item.Id) == true)
+        {
+            return;
+        }
+
+        _trayHost?.ShowNotification(title, message);
     }
 
     private void OnBackendUnavailable(object? sender, EventArgs e)

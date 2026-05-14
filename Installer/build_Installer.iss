@@ -31,6 +31,7 @@
 #endif
 
 #define MyAppName "Context Menu Manager Plus"
+#define MyAppUserModelID "PLFJY.ContextMenuManagerPlus"
 #define MyAppPublisher "PLFJY"
 #define MyAppURL "https://plfjy.top/"
 #define MyAppExeName "ContextMenuManagerPlus.exe"
@@ -153,8 +154,8 @@ begin
 end;
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "{#MyAppUserModelID}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "{#MyAppUserModelID}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall shellexec skipifdoesntexist

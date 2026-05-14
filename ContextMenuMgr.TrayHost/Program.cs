@@ -6,7 +6,6 @@ using ContextMenuMgr.TrayHost;
 /// </summary>
 internal static class Program
 {
-    private const string TrayAppUserModelId = "Context Menu Manager Plus";
 
     [STAThread]
     private static int Main()
@@ -15,6 +14,7 @@ internal static class Program
         try
         {
             TrySetAppUserModelId();
+            TryEnsureAppUserModelShortcut(logger);
             logger.LogAsync("TrayHost starting.").GetAwaiter().GetResult();
             using var runner = new TrayHostRunner(
                 new TrayBackendPipeClient(),
@@ -35,11 +35,25 @@ internal static class Program
     {
         try
         {
-            SetCurrentProcessExplicitAppUserModelID(TrayAppUserModelId);
+            SetCurrentProcessExplicitAppUserModelID(AppIdentity.AppUserModelId);
         }
         catch
         {
         }
+    }
+
+    private static void TryEnsureAppUserModelShortcut(TrayHostLogger logger)
+    {
+        if (AppUserModelIdShortcutRegistrar.TryEnsureShortcut(
+                AppContext.BaseDirectory,
+                out var shortcutPath,
+                out var errorMessage))
+        {
+            logger.LogAsync($"Toast AppUserModelID shortcut ready: {shortcutPath}").GetAwaiter().GetResult();
+            return;
+        }
+
+        logger.LogAsync($"Toast AppUserModelID shortcut unavailable: {errorMessage}").GetAwaiter().GetResult();
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
