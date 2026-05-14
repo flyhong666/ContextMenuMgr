@@ -16,6 +16,7 @@ namespace ContextMenuMgr.Frontend;
 public partial class App : System.Windows.Application
 {
     private const string SingleInstanceMutexName = @"Global\PLFJY.ContextMenuManagerPlus.SingleInstance";
+    private const string ProtocolScheme = "contextmenumgrplus";
     private static readonly TimeSpan CrashLogRetention = TimeSpan.FromDays(7);
     private static readonly string LogFilePath = RuntimePaths.FrontendCrashLogPath;
 
@@ -159,6 +160,12 @@ public partial class App : System.Windows.Application
 
     private static FrontendControlRequest ParseFrontendControlRequest(string[] args)
     {
+        var protocolRequest = TryParseProtocolActivationRequest(args);
+        if (protocolRequest is not null)
+        {
+            return protocolRequest;
+        }
+
         var focusItemId = GetArgumentValue(args, "--focus-item");
         if (args.Any(static arg => string.Equals(arg, "--open-approvals", StringComparison.OrdinalIgnoreCase)))
         {
@@ -184,6 +191,59 @@ public partial class App : System.Windows.Application
             {
                 return args[i + 1];
             }
+        }
+
+        return null;
+    }
+
+    private static FrontendControlRequest? TryParseProtocolActivationRequest(IReadOnlyList<string> args)
+    {
+        foreach (var argument in args)
+        {
+            if (string.IsNullOrWhiteSpace(argument)
+                || !Uri.TryCreate(argument, UriKind.Absolute, out var uri)
+                || !string.Equals(uri.Scheme, ProtocolScheme, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var command = string.IsNullOrWhiteSpace(uri.Host)
+                ? uri.AbsolutePath.Trim('/')
+                : uri.Host;
+
+            if (string.Equals(command, "open-approvals", StringComparison.OrdinalIgnoreCase))
+            {
+                return new FrontendControlRequest
+                {
+                    Command = FrontendControlCommand.OpenApprovals,
+                    FocusItemId = GetQueryValue(uri.Query, "itemId")
+                };
+            }
+        }
+
+        return null;
+    }
+
+    private static string? GetQueryValue(string query, string name)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return null;
+        }
+
+        var trimmedQuery = query[0] == '?' ? query[1..] : query;
+        foreach (var pair in trimmedQuery.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            var key = Uri.UnescapeDataString(parts[0].Replace("+", " "));
+            if (!string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return parts.Length > 1
+                ? Uri.UnescapeDataString(parts[1].Replace("+", " "))
+                : string.Empty;
         }
 
         return null;

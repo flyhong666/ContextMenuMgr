@@ -33,14 +33,21 @@ internal sealed class SystemToastNotificationService : IDisposable
             return false;
         }
 
+        if (!ProtocolActivationRegistrar.TryRegister(AppContext.BaseDirectory, out _))
+        {
+            return false;
+        }
+
         ToastNotification? toast = null;
         try
         {
+            var launchUri = BuildActivationUri(itemId);
             var xml = new XmlDocument();
             xml.LoadXml($$"""
-<toast launch="open-approvals">
+<toast activationType="protocol" launch="{{EscapeXml(launchUri)}}">
   <visual>
     <binding template="ToastGeneric">
+      <text>{{EscapeXml(AppIdentity.AppDisplayName)}}</text>
       <text>{{EscapeXml(title)}}</text>
       <text>{{EscapeXml(message)}}</text>
     </binding>
@@ -104,6 +111,16 @@ internal sealed class SystemToastNotificationService : IDisposable
     }
 
     private static string EscapeXml(string value) => SecurityElement.Escape(value) ?? string.Empty;
+
+    private static string BuildActivationUri(string? itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return $"{AppIdentity.ProtocolScheme}://open-approvals";
+        }
+
+        return $"{AppIdentity.ProtocolScheme}://open-approvals?itemId={Uri.EscapeDataString(itemId)}";
+    }
 
     private static string CreateTag(string? itemId)
     {

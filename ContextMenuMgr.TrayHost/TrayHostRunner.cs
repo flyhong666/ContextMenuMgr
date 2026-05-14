@@ -56,6 +56,10 @@ internal sealed class TrayHostRunner : IDisposable
             var trayIconPath = ResolveTrayIconPath();
 
             _systemToastNotificationService = new SystemToastNotificationService(OpenApprovals);
+            if (!ProtocolActivationRegistrar.TryRegister(AppContext.BaseDirectory, out var protocolRegistrationError))
+            {
+                _ = _logger.LogAsync($"Protocol activation registration failed: {protocolRegistrationError}");
+            }
 
             // The tray host only surfaces lightweight session-side UI. All real
             // state changes still flow through backend notifications and commands.
