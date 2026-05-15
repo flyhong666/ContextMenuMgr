@@ -160,7 +160,7 @@
                                     Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <DockPanel
                                         Margin="0,6,0,0"
-                                        Visibility="{Binding HasConsistencyIssue, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <ui:Button
                                             Width="22"
                                         Height="22"

@@ -12,9 +12,9 @@
     <Description>Context Menu Manager Plus</Description>
     <FileDescription>Context Menu Manager Plus</FileDescription>
     <Company>PLFJY</Company>
-    <FileVersion>1.5.4.0</FileVersion>
+    <FileVersion>1.5.5.0</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <InformationalVersion>1.5.4</InformationalVersion>
+    <InformationalVersion>1.5.5</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\ContextMenuMgr.Frontend\Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>

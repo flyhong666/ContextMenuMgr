@@ -55,7 +55,7 @@ internal sealed class TrayHostRunner : IDisposable
         {
             var trayIconPath = ResolveTrayIconPath();
 
-            _systemToastNotificationService = new SystemToastNotificationService(OpenApprovals);
+            _systemToastNotificationService = new SystemToastNotificationService();
             if (!ProtocolActivationRegistrar.TryRegister(AppContext.BaseDirectory, out var protocolRegistrationError))
             {
                 _ = _logger.LogAsync($"Protocol activation registration failed: {protocolRegistrationError}");

@@ -97,6 +97,17 @@ public sealed class ContextMenuRegistryCatalog
             await EnumerateActualEntriesAsync(cancellationToken),
             static state => MonitoredStableRootPaths.Contains(state.SourceRootPath) || state.IsWindows11ContextMenu,
             persistDiscoveredStates: true,
+            persistSnapshotUpdates: true,
+            cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ContextMenuEntry>> GetReadOnlySnapshotAsync(CancellationToken cancellationToken = default)
+    {
+        return await BuildSnapshotAsync(
+            await EnumerateActualEntriesAsync(cancellationToken),
+            static state => MonitoredStableRootPaths.Contains(state.SourceRootPath) || state.IsWindows11ContextMenu,
+            persistDiscoveredStates: false,
+            persistSnapshotUpdates: false,
             cancellationToken);
     }
 
@@ -140,6 +151,7 @@ public sealed class ContextMenuRegistryCatalog
             EnumerateEntries(roots),
             state => includedRootPaths.Contains(state.SourceRootPath),
             persistDiscoveredStates: false,
+            persistSnapshotUpdates: false,
             cancellationToken);
 
         return snapshot
@@ -158,6 +170,7 @@ public sealed class ContextMenuRegistryCatalog
         IEnumerable<ContextMenuEntry> actualEntriesSource,
         Func<PersistedContextMenuState, bool> includePersistedState,
         bool persistDiscoveredStates,
+        bool persistSnapshotUpdates,
         CancellationToken cancellationToken)
     {
         var states = await _stateStore.LoadAsync(cancellationToken);
@@ -211,10 +224,12 @@ public sealed class ContextMenuRegistryCatalog
 
             if (state is null)
             {
-                if (persistDiscoveredStates)
+                if (persistDiscoveredStates && persistSnapshotUpdates && !hasBaseline)
                 {
                     // The first persisted snapshot becomes the baseline that later
-                    // runs compare against for change detection and approvals.
+                    // runs compare against for change detection and approvals. Once
+                    // a baseline exists, unknown entries must remain marked as Added
+                    // until the user explicitly acknowledges them.
                     states[entry.Id] = PersistedContextMenuState.FromEntry(merged);
                     dirty = true;
                 }
@@ -222,13 +237,16 @@ public sealed class ContextMenuRegistryCatalog
                 continue;
             }
 
-            if (state.ConsecutiveMissingSnapshots != 0)
+            if (persistSnapshotUpdates && state.ConsecutiveMissingSnapshots != 0)
             {
                 state.ConsecutiveMissingSnapshots = 0;
                 dirty = true;
             }
 
-            dirty |= UpdateMetadata(state, merged);
+            if (persistSnapshotUpdates && changeKind == ContextMenuChangeKind.None)
+            {
+                dirty |= UpdateMetadata(state, merged);
+            }
         }
 
         foreach (var state in states.Values
@@ -253,12 +271,17 @@ public sealed class ContextMenuRegistryCatalog
             {
                 if (!CanPruneMissingStateForCurrentSnapshot(state, observedSourceRoots, observedWindows11Packages))
                 {
-                    if (state.ConsecutiveMissingSnapshots != 0)
+                    if (persistSnapshotUpdates && state.ConsecutiveMissingSnapshots != 0)
                     {
                         state.ConsecutiveMissingSnapshots = 0;
                         dirty = true;
                     }
 
+                    continue;
+                }
+
+                if (!persistSnapshotUpdates)
+                {
                     continue;
                 }
 
@@ -1152,7 +1175,7 @@ public sealed class ContextMenuRegistryCatalog
     /// </summary>
     public async Task<int> LogConsistencySummaryAsync(CancellationToken cancellationToken)
     {
-        var inconsistencies = (await GetSnapshotAsync(cancellationToken)).Count(static entry => entry.HasConsistencyIssue);
+        var inconsistencies = (await GetReadOnlySnapshotAsync(cancellationToken)).Count(static entry => entry.HasConsistencyIssue);
         await _logger.LogAsync($"Consistency check complete. Inconsistent items: {inconsistencies}.", cancellationToken);
         return inconsistencies;
     }

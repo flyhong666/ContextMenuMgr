@@ -251,8 +251,9 @@ public sealed class BackendRuntime : IDisposable
 
     private void OnEnsureTrayHostRequested(object? sender, EventArgs e)
     {
-        _monitor.Catalog.MarkInteractiveSessionObserved();
-        _monitor.NotifyInteractiveSessionObserved();
+        // Ensuring the tray host is only a UI/session-side operation. It must not
+        // reset the registry monitor baseline, otherwise a runtime-added menu item
+        // could be mistaken for a startup/offline change and avoid quarantine.
         TryEnsureTrayHost(null, requireAutostartPolicy: false);
     }
 

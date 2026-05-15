@@ -1,4 +1,4 @@
-using System.Security;
+﻿using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using Windows.Data.Xml.Dom;
@@ -11,15 +11,9 @@ internal sealed class SystemToastNotificationService : IDisposable
     private const string NotificationGroup = "PendingApprovals";
     private static readonly TimeSpan NotificationRetention = TimeSpan.FromDays(7);
 
-    private readonly Action<string?> _activated;
     private readonly List<ToastNotification> _liveNotifications = [];
     private readonly object _syncRoot = new();
     private bool _disposed;
-
-    public SystemToastNotificationService(Action<string?> activated)
-    {
-        _activated = activated;
-    }
 
     public bool TryShowNotification(string title, string message, string? itemId)
     {
@@ -62,11 +56,11 @@ internal sealed class SystemToastNotificationService : IDisposable
                 ExpirationTime = DateTimeOffset.Now.Add(NotificationRetention)
             };
 
-            toast.Activated += (_, _) =>
-            {
-                RemoveLiveNotification(toast);
-                _activated(itemId);
-            };
+            // The toast itself is protocol-activated through its launch URI. Do
+            // not also open the frontend from this live event; action-center
+            // activations do not raise it consistently, and doing both creates
+            // two divergent activation paths.
+            toast.Activated += (_, _) => RemoveLiveNotification(toast);
             toast.Dismissed += (_, _) => RemoveLiveNotification(toast);
             toast.Failed += (_, _) => RemoveLiveNotification(toast);
 
