@@ -127,6 +127,34 @@ public sealed class NamedPipeBackendClient : IBackendClient
     }
 
     /// <summary>
+    /// Sets detailed edit rule value Async.
+    /// </summary>
+    public async Task SetDetailedEditRuleValueAsync(
+        string storageKind,
+        string path,
+        string? section,
+        string keyName,
+        string valueKind,
+        string? value,
+        string? userSid,
+        CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetDetailedEditRuleValue,
+                RuleStorageKind = storageKind,
+                RulePath = path,
+                RuleSection = section,
+                RuleKeyName = keyName,
+                RuleValueKind = valueKind,
+                RuleValue = value,
+                RuleUserSid = userSid
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Executes acknowledge Item State Async.
     /// </summary>
     public async Task<ContextMenuEntry?> AcknowledgeItemStateAsync(string itemId, CancellationToken cancellationToken)

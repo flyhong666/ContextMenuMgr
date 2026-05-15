@@ -744,6 +744,62 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
+    /// <summary>
+    /// Sets detailed edit rule value Async.
+    /// </summary>
+    public async Task<PipeResponse> SetDetailedEditRuleValueAsync(
+        string? storageKind,
+        string? path,
+        string? section,
+        string? keyName,
+        string? valueKind,
+        string? value,
+        string? userSid,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(storageKind))
+        {
+            return CreateFailure("The detailed edit rule storage kind is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return CreateFailure("The detailed edit rule path is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(keyName))
+        {
+            return CreateFailure("The detailed edit rule key name is required.");
+        }
+
+        try
+        {
+            if (string.Equals(storageKind, "Registry", StringComparison.OrdinalIgnoreCase))
+            {
+                WriteDetailedEditRegistryValue(path, keyName, valueKind, value, userSid);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unsupported backend detailed edit storage kind: {storageKind}");
+            }
+
+            await _logger.LogAsync(
+                $"Updated detailed edit rule value. Path={path}, KeyName={keyName}, ValueKind={valueKind}, Value={(value is null ? "<delete>" : value)}.",
+                cancellationToken);
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = "Detailed edit rule value updated."
+            };
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to update detailed edit rule value {path}\\{keyName}: {ex.Message}", cancellationToken);
+            return CreateFailure(ex.Message);
+        }
+    }
+
     private async Task SyncEnhanceMenuStateAsync(
         Dictionary<string, PersistedContextMenuState> states,
         string relativeGroupPath,
@@ -2566,6 +2622,70 @@ public sealed class ContextMenuRegistryCatalog
                 $@"{userSid}\Software\Classes",
                 $@"HKEY_USERS\{userSid}\Software\Classes");
         }
+    }
+
+    private static void WriteDetailedEditRegistryValue(
+        string fullPath,
+        string keyName,
+        string? valueKind,
+        string? value,
+        string? userSid)
+    {
+        var kind = ParseDetailedEditRegistryValueKind(valueKind);
+        var (baseKey, subPath) = OpenDetailedEditRegistryBaseKey(fullPath, userSid);
+        using var key = baseKey.CreateSubKey(subPath, writable: true)
+            ?? throw new InvalidOperationException($"Unable to open {fullPath} for writing.");
+
+        if (value is null)
+        {
+            key.DeleteValue(keyName, throwOnMissingValue: false);
+            return;
+        }
+
+        object boxedValue = kind switch
+        {
+            RegistryValueKind.DWord => int.Parse(value, CultureInfo.InvariantCulture),
+            RegistryValueKind.QWord => long.Parse(value, CultureInfo.InvariantCulture),
+            RegistryValueKind.Binary => ConvertToBinary(value),
+            RegistryValueKind.MultiString => value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            _ => value
+        };
+
+        key.SetValue(keyName, boxedValue, kind);
+    }
+
+    private static RegistryValueKind ParseDetailedEditRegistryValueKind(string? valueKind)
+    {
+        if (string.IsNullOrWhiteSpace(valueKind))
+        {
+            return RegistryValueKind.String;
+        }
+
+        return Enum.TryParse<RegistryValueKind>(valueKind, ignoreCase: true, out var parsed)
+            ? parsed
+            : throw new InvalidOperationException($"Unsupported registry value kind: {valueKind}");
+    }
+
+    private static (RegistryKey BaseKey, string SubPath) OpenDetailedEditRegistryBaseKey(
+        string fullPath,
+        string? userSid)
+    {
+        var normalized = fullPath.Replace('/', '\\').Trim();
+        var separatorIndex = normalized.IndexOf('\\');
+        var root = separatorIndex >= 0 ? normalized[..separatorIndex] : normalized;
+        var subPath = separatorIndex >= 0 ? normalized[(separatorIndex + 1)..] : string.Empty;
+
+        return root.ToUpperInvariant() switch
+        {
+            "HKEY_CLASSES_ROOT" or "HKCR" => (Registry.ClassesRoot, subPath),
+            "HKEY_CURRENT_USER" or "HKCU" when !string.IsNullOrWhiteSpace(userSid)
+                => (Registry.Users, $@"{userSid}\{subPath}"),
+            "HKEY_CURRENT_USER" or "HKCU"
+                => throw new InvalidOperationException("HKCU detailed edit writes require the frontend user SID."),
+            "HKEY_LOCAL_MACHINE" or "HKLM" => (Registry.LocalMachine, subPath),
+            "HKEY_USERS" or "HKU" => (Registry.Users, subPath),
+            _ => throw new InvalidOperationException($"Unsupported registry root: {fullPath}")
+        };
     }
 
     private static RegistryKey? OpenRegistryKey(string absoluteRegistryPath, bool writable)

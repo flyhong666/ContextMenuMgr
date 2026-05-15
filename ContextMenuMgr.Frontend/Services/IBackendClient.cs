@@ -33,6 +33,16 @@ public interface IBackendClient : IAsyncDisposable
         string cultureName,
         CancellationToken cancellationToken);
 
+    Task SetDetailedEditRuleValueAsync(
+        string storageKind,
+        string path,
+        string? section,
+        string keyName,
+        string valueKind,
+        string? value,
+        string? userSid,
+        CancellationToken cancellationToken);
+
     Task<ContextMenuEntry?> AcknowledgeItemStateAsync(string itemId, CancellationToken cancellationToken);
 
     Task<ContextMenuEntry?> SetEnabledAsync(string itemId, bool enable, CancellationToken cancellationToken);

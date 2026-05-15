@@ -105,12 +105,20 @@ public partial class DetailedEditRuleViewModel : ObservableObject
                         throw new InvalidOperationException(_localization.Translate("NumberRuleInvalid"));
                     }
 
-                    _ruleService.WriteNumber(_definition, number);
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                    {
+                        await _ruleService.WriteNumberAsync(_definition, number, cts.Token);
+                    }
+
                     NumberText = _ruleService.ReadNumber(_definition).ToString();
                     break;
 
                 case RuleValueEditorKind.String:
-                    _ruleService.WriteString(_definition, StringValue);
+                    using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                    {
+                        await _ruleService.WriteStringAsync(_definition, StringValue, cts.Token);
+                    }
+
                     StringValue = _ruleService.ReadString(_definition);
                     break;
             }
@@ -157,7 +165,11 @@ public partial class DetailedEditRuleViewModel : ObservableObject
     {
         try
         {
-            _ruleService.WriteBoolean(_definition, value);
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            {
+                await _ruleService.WriteBooleanAsync(_definition, value, cts.Token);
+            }
+
             await ShowRestartHintIfNeededAsync();
         }
         catch (Exception ex)

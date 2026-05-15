@@ -9,12 +9,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="artifacts\**" />
     <Compile Remove="bin\**" />
     <Compile Remove="obj\**" />
+    <EmbeddedResource Remove="artifacts\**" />
     <EmbeddedResource Remove="bin\**" />
     <EmbeddedResource Remove="obj\**" />
+    <None Remove="artifacts\**" />
     <None Remove="bin\**" />
     <None Remove="obj\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="ContextMenuMgr.Contracts.csproj.lscache" />
   </ItemGroup>
 
 </Project>

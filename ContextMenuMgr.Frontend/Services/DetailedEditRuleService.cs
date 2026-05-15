@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using Microsoft.Win32;
 
 namespace ContextMenuMgr.Frontend.Services;
@@ -10,6 +11,16 @@ namespace ContextMenuMgr.Frontend.Services;
 /// </summary>
 public sealed class DetailedEditRuleService
 {
+    private readonly IBackendClient _backendClient;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DetailedEditRuleService"/> class.
+    /// </summary>
+    public DetailedEditRuleService(IBackendClient backendClient)
+    {
+        _backendClient = backendClient;
+    }
+
     /// <summary>
     /// Executes read Boolean.
     /// </summary>
@@ -38,14 +49,17 @@ public sealed class DetailedEditRuleService
     }
 
     /// <summary>
-    /// Executes write Boolean.
+    /// Executes write Boolean Async.
     /// </summary>
-    public void WriteBoolean(DetailedEditRuleDefinition definition, bool enabled)
+    public async Task WriteBooleanAsync(
+        DetailedEditRuleDefinition definition,
+        bool enabled,
+        CancellationToken cancellationToken)
     {
         foreach (var clause in definition.Clauses)
         {
             var targetValue = enabled ? clause.TurnOnValue : clause.TurnOffValue;
-            WriteValue(clause, targetValue);
+            await WriteValueAsync(clause, targetValue, cancellationToken);
         }
     }
 
@@ -70,13 +84,16 @@ public sealed class DetailedEditRuleService
     }
 
     /// <summary>
-    /// Executes write Number.
+    /// Executes write Number Async.
     /// </summary>
-    public void WriteNumber(DetailedEditRuleDefinition definition, int value)
+    public async Task WriteNumberAsync(
+        DetailedEditRuleDefinition definition,
+        int value,
+        CancellationToken cancellationToken)
     {
         var clamped = Math.Clamp(value, definition.MinNumber, definition.MaxNumber);
         var clause = definition.Clauses[0];
-        WriteValue(clause, clamped.ToString(CultureInfo.InvariantCulture));
+        await WriteValueAsync(clause, clamped.ToString(CultureInfo.InvariantCulture), cancellationToken);
     }
 
     /// <summary>
@@ -89,12 +106,15 @@ public sealed class DetailedEditRuleService
     }
 
     /// <summary>
-    /// Executes write String.
+    /// Executes write String Async.
     /// </summary>
-    public void WriteString(DetailedEditRuleDefinition definition, string value)
+    public async Task WriteStringAsync(
+        DetailedEditRuleDefinition definition,
+        string value,
+        CancellationToken cancellationToken)
     {
         var clause = definition.Clauses[0];
-        WriteValue(clause, value);
+        await WriteValueAsync(clause, value, cancellationToken);
     }
 
     private static string? ReadValue(DetailedEditRuleClauseDefinition clause)
@@ -105,6 +125,28 @@ public sealed class DetailedEditRuleService
             RuleStorageKind.Ini => ReadIniValue(clause),
             _ => null
         };
+    }
+
+    private async Task WriteValueAsync(
+        DetailedEditRuleClauseDefinition clause,
+        string? value,
+        CancellationToken cancellationToken)
+    {
+        if (clause.StorageKind == RuleStorageKind.Registry)
+        {
+            await _backendClient.SetDetailedEditRuleValueAsync(
+                clause.StorageKind.ToString(),
+                clause.Path,
+                clause.Section,
+                clause.KeyName,
+                clause.ValueKind.ToString(),
+                value,
+                GetCurrentUserSid(),
+                cancellationToken);
+            return;
+        }
+
+        WriteValue(clause, value);
     }
 
     private static void WriteValue(DetailedEditRuleClauseDefinition clause, string? value)
@@ -242,6 +284,18 @@ public sealed class DetailedEditRuleService
             "HKEY_USERS" or "HKU" => (Registry.Users, subPath),
             _ => throw new InvalidOperationException($"Unsupported registry root: {fullPath}")
         };
+    }
+
+    private static string? GetCurrentUserSid()
+    {
+        try
+        {
+            return WindowsIdentity.GetCurrent().User?.Value;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

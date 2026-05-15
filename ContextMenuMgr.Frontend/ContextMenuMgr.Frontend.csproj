@@ -22,6 +22,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="ContextMenuMgr.Frontend.csproj.lscache" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.6" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.6" />
@@ -44,14 +48,8 @@
       <TrayHostArtifacts Include="$(MSBuildThisFileDirectory)..\artifacts\trayhost\$(Configuration)\net10.0-windows10.0.17763.0\**\*.*" />
     </ItemGroup>
 
-    <Copy
-      SourceFiles="@(BackendArtifacts)"
-      DestinationFiles="@(BackendArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true" />
-    <Copy
-      SourceFiles="@(TrayHostArtifacts)"
-      DestinationFiles="@(TrayHostArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BackendArtifacts)" DestinationFiles="@(BackendArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(TrayHostArtifacts)" DestinationFiles="@(TrayHostArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

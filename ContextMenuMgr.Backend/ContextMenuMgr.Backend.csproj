@@ -24,6 +24,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="ContextMenuMgr.Backend.csproj.lscache" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ContextMenuMgr.Contracts\ContextMenuMgr.Contracts.csproj" />
   </ItemGroup>
 

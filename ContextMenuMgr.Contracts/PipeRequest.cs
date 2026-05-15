@@ -31,6 +31,41 @@ public sealed record PipeRequest
     public string? TextValue { get; init; }
 
     /// <summary>
+    /// Gets or sets the rule storage kind.
+    /// </summary>
+    public string? RuleStorageKind { get; init; }
+
+    /// <summary>
+    /// Gets or sets the rule path.
+    /// </summary>
+    public string? RulePath { get; init; }
+
+    /// <summary>
+    /// Gets or sets the INI section for rule values.
+    /// </summary>
+    public string? RuleSection { get; init; }
+
+    /// <summary>
+    /// Gets or sets the rule key name.
+    /// </summary>
+    public string? RuleKeyName { get; init; }
+
+    /// <summary>
+    /// Gets or sets the rule registry value kind.
+    /// </summary>
+    public string? RuleValueKind { get; init; }
+
+    /// <summary>
+    /// Gets or sets the rule value. Null means delete/reset.
+    /// </summary>
+    public string? RuleValue { get; init; }
+
+    /// <summary>
+    /// Gets or sets the interactive user SID for HKCU registry writes requested by the frontend.
+    /// </summary>
+    public string? RuleUserSid { get; init; }
+
+    /// <summary>
     /// Gets or sets the definition Xml.
     /// </summary>
     public string? DefinitionXml { get; init; }

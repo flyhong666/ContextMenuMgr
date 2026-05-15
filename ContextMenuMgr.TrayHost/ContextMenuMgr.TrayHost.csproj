@@ -20,6 +20,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="ContextMenuMgr.TrayHost.csproj.lscache" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ContextMenuMgr.Contracts\ContextMenuMgr.Contracts.csproj" />
   </ItemGroup>
 

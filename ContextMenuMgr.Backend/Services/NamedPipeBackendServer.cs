@@ -281,6 +281,16 @@ public sealed class NamedPipeBackendServer
                     request.Enable.Value,
                     request.CultureName,
                     cancellationToken),
+            PipeCommand.SetDetailedEditRuleValue
+                => await _catalog.SetDetailedEditRuleValueAsync(
+                    request.RuleStorageKind,
+                    request.RulePath,
+                    request.RuleSection,
+                    request.RuleKeyName,
+                    request.RuleValueKind,
+                    request.RuleValue,
+                    request.RuleUserSid,
+                    cancellationToken),
             PipeCommand.AcknowledgeItemState when request.ItemId is not null
                 => await _catalog.AcknowledgeItemStateAsync(request.ItemId, cancellationToken),
             PipeCommand.SetEnabled when request.ItemId is not null && request.Enable is not null

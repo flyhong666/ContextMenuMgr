@@ -12,6 +12,7 @@ public enum PipeCommand
     GetSnapshot,
     GetSceneSnapshot,
     SetEnhanceMenuItemEnabled,
+    SetDetailedEditRuleValue,
     AcknowledgeItemState,
     SetEnabled,
     SetShellAttribute,
