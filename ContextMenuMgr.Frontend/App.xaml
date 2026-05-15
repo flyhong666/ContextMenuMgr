@@ -35,11 +35,13 @@
                 <Setter Property="TextElement.Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             </Style>
 
-            <Style TargetType="Label" BasedOn="{StaticResource {x:Type Label}}">
+            <Style BasedOn="{StaticResource {x:Type Label}}" TargetType="Label">
                 <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Language" Value="{DynamicResource CurrentLanguage}" />
             </Style>
 
-            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="TextBlock">
+                <Setter Property="Language" Value="{DynamicResource CurrentLanguage}" />
                 <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
                 <Style.Triggers>
                     <Trigger Property="IsEnabled" Value="False">
