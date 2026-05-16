@@ -425,3 +425,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Configuration R
 
 - https://github.com/BluePointLilac/ContextMenuManager
 - https://github.com/branhill/windows-11-context-menu-manager
+
+
+## Stargazers over time
+[![Stargazers over time](https://starchart.cc/PLFJY/ContextMenuMgr.svg?variant=adaptive)](https://starchart.cc/PLFJY/ContextMenuMgr)
+
+​                    
