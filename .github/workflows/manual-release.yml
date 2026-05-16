@@ -105,7 +105,7 @@ jobs:
           $releaseBodyLines | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Build multi-arch installers
+      - name: Build installers and portable packages
         shell: pwsh
         run: >
           .\build.ps1
@@ -115,9 +115,10 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ContextMenuManagerPlus-${{ steps.release_meta.outputs.release_tag }}
+          name: CTMMPlus-${{ steps.release_meta.outputs.release_tag }}
           path: |
             build/dist/*.exe
+            build/dist/*.zip
             build/dist/artifacts.txt
           if-no-files-found: error
 
@@ -130,3 +131,4 @@ jobs:
           body: ${{ steps.release_meta.outputs.release_body }}
           files: |
             build/dist/*.exe
+            build/dist/*.zip
