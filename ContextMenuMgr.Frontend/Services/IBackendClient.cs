@@ -45,7 +45,11 @@ public interface IBackendClient : IAsyncDisposable
 
     Task<ContextMenuEntry?> AcknowledgeItemStateAsync(string itemId, CancellationToken cancellationToken);
 
-    Task<ContextMenuEntry?> SetEnabledAsync(string itemId, bool enable, CancellationToken cancellationToken);
+    Task<ContextMenuEntry?> SetEnabledAsync(
+        string itemId,
+        bool enable,
+        CancellationToken cancellationToken,
+        ContextMenuEntry? item = null);
 
     Task<ContextMenuEntry?> SetShellAttributeAsync(
         string itemId,

@@ -21,6 +21,11 @@ public sealed record PipeRequest
     public bool? Enable { get; init; }
 
     /// <summary>
+    /// Gets or sets the item payload used when a command targets a scene-only item.
+    /// </summary>
+    public ContextMenuEntry? Item { get; init; }
+
+    /// <summary>
     /// Gets or sets the shell Attribute.
     /// </summary>
     public ContextMenuShellAttribute? ShellAttribute { get; init; }

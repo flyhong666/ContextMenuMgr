@@ -173,14 +173,19 @@ public sealed class NamedPipeBackendClient : IBackendClient
     /// <summary>
     /// Sets enabled Async.
     /// </summary>
-    public async Task<ContextMenuEntry?> SetEnabledAsync(string itemId, bool enable, CancellationToken cancellationToken)
+    public async Task<ContextMenuEntry?> SetEnabledAsync(
+        string itemId,
+        bool enable,
+        CancellationToken cancellationToken,
+        ContextMenuEntry? item = null)
     {
         var response = await SendRequestAsync(
             new PipeRequest
             {
                 Command = PipeCommand.SetEnabled,
                 ItemId = itemId,
-                Enable = enable
+                Enable = enable,
+                Item = item
             },
             cancellationToken);
 

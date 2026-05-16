@@ -294,7 +294,7 @@ public sealed class NamedPipeBackendServer
             PipeCommand.AcknowledgeItemState when request.ItemId is not null
                 => await _catalog.AcknowledgeItemStateAsync(request.ItemId, cancellationToken),
             PipeCommand.SetEnabled when request.ItemId is not null && request.Enable is not null
-                => await _catalog.ApplyDesiredStateAsync(request.ItemId, request.Enable.Value, cancellationToken),
+                => await _catalog.ApplyDesiredStateAsync(request.ItemId, request.Enable.Value, cancellationToken, request.Item),
             PipeCommand.SetShellAttribute when request.ItemId is not null && request.Enable is not null && request.ShellAttribute is not null
                 => await _catalog.ApplyShellAttributeAsync(request.ItemId, request.ShellAttribute.Value, request.Enable.Value, cancellationToken),
             PipeCommand.SetDisplayText when request.ItemId is not null && request.TextValue is not null

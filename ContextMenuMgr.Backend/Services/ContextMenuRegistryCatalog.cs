@@ -351,10 +351,19 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Applies desired State Async.
     /// </summary>
-    public async Task<PipeResponse> ApplyDesiredStateAsync(string itemId, bool enable, CancellationToken cancellationToken)
+    public async Task<PipeResponse> ApplyDesiredStateAsync(
+        string itemId,
+        bool enable,
+        CancellationToken cancellationToken,
+        ContextMenuEntry? fallbackItem = null)
     {
         var snapshot = await GetSnapshotAsync(cancellationToken);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            item = TryUseSceneFallbackItem(itemId, fallbackItem);
+        }
+
         if (item is null)
         {
             return CreateFailure($"Menu item '{itemId}' was not found.");
@@ -646,7 +655,9 @@ public sealed class ContextMenuRegistryCatalog
 
             var states = await _stateStore.LoadAsync(cancellationToken);
             var state = GetOrCreateState(states, item);
+            state.DisplayName = NormalizeDisplayName(parsedText);
             state.EditableText = parsedText;
+            state.ObservedEnabled = item.IsEnabled;
             state.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await _stateStore.SaveAsync(states, cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
@@ -1325,7 +1336,7 @@ public sealed class ContextMenuRegistryCatalog
 
                 iconPath = GuidMetadataCatalog.NormalizeCandidatePath(iconPath, filePath);
 
-                var effectiveRelativePath = $@"{root.StableRelativePath}\{subKeyName}";
+                var effectiveRelativePath = $@"{root.RelativePath}\{subKeyName}";
                 var isEnabled = root.EntryKind switch
                 {
                     ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
@@ -1600,6 +1611,51 @@ public sealed class ContextMenuRegistryCatalog
         return state;
     }
 
+    private static ContextMenuEntry? TryUseSceneFallbackItem(string itemId, ContextMenuEntry? fallbackItem)
+    {
+        if (fallbackItem is null
+            || !string.Equals(fallbackItem.Id, itemId, StringComparison.OrdinalIgnoreCase)
+            || fallbackItem.IsDeleted
+            || !fallbackItem.IsPresentInRegistry
+            || string.IsNullOrWhiteSpace(fallbackItem.BackendRegistryPath)
+            || string.IsNullOrWhiteSpace(fallbackItem.RegistryPath)
+            || string.IsNullOrWhiteSpace(fallbackItem.SourceRootPath))
+        {
+            return null;
+        }
+
+        if (fallbackItem.EntryKind is not ContextMenuEntryKind.ShellVerb
+            and not ContextMenuEntryKind.ShellExtension)
+        {
+            return null;
+        }
+
+        using var itemKey = OpenRegistryKey(fallbackItem.BackendRegistryPath, writable: false);
+        if (itemKey is null)
+        {
+            return null;
+        }
+
+        if (fallbackItem.EntryKind == ContextMenuEntryKind.ShellExtension)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackItem.HandlerClsid))
+            {
+                return null;
+            }
+
+            var actualHandlerClsid = ResolveShellExtensionHandlerClsid(
+                fallbackItem.KeyName,
+                itemKey.GetValue(null)?.ToString());
+
+            if (!string.Equals(actualHandlerClsid, fallbackItem.HandlerClsid, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+        }
+
+        return fallbackItem;
+    }
+
     private static IReadOnlyList<ContextMenuEntry> GetStateLinkedEntries(
         IReadOnlyList<ContextMenuEntry> snapshot,
         ContextMenuEntry item)
@@ -1613,6 +1669,9 @@ public sealed class ContextMenuRegistryCatalog
             .Where(entry =>
                 entry.EntryKind == ContextMenuEntryKind.ShellExtension
                 && string.Equals(entry.HandlerClsid, item.HandlerClsid, StringComparison.OrdinalIgnoreCase))
+            .Append(item)
+            .GroupBy(static entry => entry.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
             .ToArray();
     }
 
@@ -2472,12 +2531,7 @@ public sealed class ContextMenuRegistryCatalog
 
         foreach (var root in CreateShellSceneRoots(ContextMenuCategory.File, progId))
         {
-            yield return new RegistryRootDescriptor(
-                root.Category,
-                root.RelativePath,
-                root.EntryKind,
-                $@"SystemFileAssociations\{extension}",
-                root.IsDisabledContainer);
+            yield return root;
         }
     }
 

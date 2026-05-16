@@ -174,13 +174,19 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     /// </summary>
     public async Task<bool> SetEnabledAsync(ContextMenuItemViewModel item, bool enable)
     {
+        var isWorkspaceItem = Items.Any(existing => string.Equals(existing.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var updated = await _backendClient.SetEnabledAsync(item.Id, enable, cts.Token);
+            var updated = await _backendClient.SetEnabledAsync(item.Id, enable, cts.Token, item.Entry);
             if (updated is not null)
             {
-                UpsertItem(updated);
+                if (isWorkspaceItem)
+                {
+                    UpsertItem(updated);
+                }
+
                 return true;
             }
         }
