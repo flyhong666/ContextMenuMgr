@@ -10,9 +10,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border
-            Background="{DynamicResource LayerFillColorAltBrush}"
-            Style="{StaticResource CardBorderStyle}">
+        <Border Background="{DynamicResource LayerFillColorAltBrush}" Style="{StaticResource CardBorderStyle}">
             <StackPanel>
                 <TextBlock
                     FontSize="24"
@@ -58,9 +56,7 @@
                             MinWidth="260"
                             Padding="10,6"
                             Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <StackPanel
-                            Margin="0,10,0,0"
-                            Visibility="{Binding ShowDropEffectSelector, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowDropEffectSelector, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock
                                 Margin="0,0,0,6"
                                 FontSize="12"
@@ -81,18 +77,11 @@
             </StackPanel>
         </Border>
 
-        <TreeView
+        <ItemsControl
             Grid.Row="1"
-            Background="Transparent"
-            BorderThickness="0"
             ItemsSource="{Binding WinXGroups}"
             Visibility="{Binding ShowWinXTree, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <TreeView.ItemContainerStyle>
-                <Style TargetType="{x:Type TreeViewItem}">
-                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Style>
-            </TreeView.ItemContainerStyle>
-            <TreeView.Resources>
+            <ItemsControl.Resources>
                 <DataTemplate x:Key="WinXEntryTemplate" DataType="{x:Type viewModels:SpecialMenuItemViewModel}">
                     <Border
                         Margin="0,4,0,4"
@@ -184,85 +173,84 @@
                         </Grid>
                     </Border>
                 </DataTemplate>
-            </TreeView.Resources>
-            <TreeView.ItemTemplate>
-                <HierarchicalDataTemplate
-                    DataType="{x:Type viewModels:WinXGroupNodeViewModel}"
-                    ItemTemplate="{StaticResource WinXEntryTemplate}"
-                    ItemsSource="{Binding Items}">
-                    <Border
-                        Margin="0,6,0,6"
-                        Padding="10"
-                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                        BorderBrush="{DynamicResource CardStrokeColorSecondaryBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal">
-                                <Border
-                                    Width="30"
-                                    Height="30"
-                                    Margin="0,0,10,0"
-                                    Background="{DynamicResource ControlFillColorTertiaryBrush}"
-                                    CornerRadius="6">
-                                    <ui:SymbolIcon
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Symbol="Folder24" />
-                                </Border>
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    FontSize="15"
-                                    FontWeight="SemiBold"
-                                    Text="{Binding Group.DisplayName}" />
-                            </StackPanel>
-                            <StackPanel
-                                Grid.Column="1"
-                                Margin="12,0,0,0"
-                                Orientation="Horizontal">
-                                <ui:ToggleSwitch
-                                    Margin="0,0,8,0"
-                                    IsChecked="{Binding Group.IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Visibility="{Binding Group.CanToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ui:Button
-                                    Width="32"
-                                    Height="32"
-                                    Margin="0,0,6,0"
-                                    Padding="0"
-                                    Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding Group}"
-                                    Icon="{ui:SymbolIcon Symbol=Edit24}"
-                                    ToolTip="{Binding DataContext.EditText, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    Visibility="{Binding Group.CanEdit, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ui:Button
-                                    Width="32"
-                                    Height="32"
-                                    Padding="0"
-                                    Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding Group}"
-                                    Icon="{ui:SymbolIcon Symbol=Delete24}"
-                                    Visibility="{Binding Group.CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </HierarchicalDataTemplate>
-            </TreeView.ItemTemplate>
-        </TreeView>
+            </ItemsControl.Resources>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type viewModels:WinXGroupNodeViewModel}">
+                    <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <Expander.Header>
+                            <Border
+                                Margin="0,6,0,6"
+                                Padding="10"
+                                BorderBrush="{DynamicResource CardStrokeColorSecondaryBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border
+                                            Width="30"
+                                            Height="30"
+                                            Margin="0,0,10,0"
+                                            Background="{DynamicResource ControlFillColorTertiaryBrush}"
+                                            CornerRadius="6">
+                                            <ui:SymbolIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Symbol="Folder24" />
+                                        </Border>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="15"
+                                            FontWeight="SemiBold"
+                                            Text="{Binding Group.DisplayName}" />
+                                    </StackPanel>
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        Margin="12,0,0,0"
+                                        Orientation="Horizontal">
+                                        <ui:ToggleSwitch
+                                            Margin="0,0,8,0"
+                                            IsChecked="{Binding Group.IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Visibility="{Binding Group.CanToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding Group}"
+                                            Icon="{ui:SymbolIcon Symbol=Edit24}"
+                                            ToolTip="{Binding DataContext.EditText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            Visibility="{Binding Group.CanEdit, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Padding="0"
+                                            Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding Group}"
+                                            Icon="{ui:SymbolIcon Symbol=Delete24}"
+                                            Visibility="{Binding Group.CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Expander.Header>
+                        <ItemsControl
+                            Margin="24,0,0,0"
+                            ItemTemplate="{StaticResource WinXEntryTemplate}"
+                            ItemsSource="{Binding Items}" />
+                    </Expander>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
-        <ListBox
+        <ItemsControl
             Grid.Row="1"
-            Background="Transparent"
-            BorderThickness="0"
-            ItemContainerStyle="{StaticResource ScrollableListBoxItemStyle}"
             ItemsSource="{Binding ItemsView}"
-            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-            ScrollViewer.VerticalScrollBarVisibility="Auto"
             Visibility="{Binding ShowWinXTree, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
-            <ListBox.ItemTemplate>
+            <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type viewModels:SpecialMenuItemViewModel}">
                     <Border
                         Margin="0,0,0,10"
@@ -283,101 +271,101 @@
                                 <Grid.Visibility>
                                     <Binding Converter="{StaticResource InverseBooleanToVisibilityConverter}" Path="IsSeparator" />
                                 </Grid.Visibility>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border
-                                        Width="30"
-                                        Height="30"
-                                        Margin="0,0,10,0"
-                                        Background="{DynamicResource ControlFillColorTertiaryBrush}"
-                                        CornerRadius="6">
-                                        <Image
-                                            Width="20"
-                                            Height="20"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Source="{Binding IconSource}" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock
-                                            FontSize="15"
-                                            FontWeight="SemiBold"
-                                            Text="{Binding DisplayName}" />
-                                        <TextBlock
-                                            Margin="0,3,0,0"
-                                            FontFamily="Consolas"
-                                            FontSize="11"
-                                            Opacity="0.65"
-                                            Text="{Binding Subtitle}"
-                                            TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </Grid>
-                                <TextBlock
-                                    Margin="0,8,0,0"
-                                    Opacity="0.72"
-                                    Text="{Binding Detail}"
-                                    TextWrapping="Wrap"
-                                    Visibility="{Binding HasDetail, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                                <ui:ToggleSwitch
-                                    Margin="0,0,0,8"
-                                    IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    Visibility="{Binding CanToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                                    <ui:Button
-                                        Width="32"
-                                        Height="32"
-                                        Margin="0,0,6,0"
-                                        Padding="0"
-                                        Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        Icon="{ui:SymbolIcon Symbol=Edit24}"
-                                        ToolTip="{Binding DataContext.EditText, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        Visibility="{Binding CanEdit, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <ui:Button
-                                        Width="32"
-                                        Height="32"
-                                        Margin="0,0,6,0"
-                                        Padding="0"
-                                        Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        Icon="{ui:SymbolIcon Symbol=ArrowUp24}"
-                                        IsEnabled="{Binding CanMoveUp}"
-                                        Visibility="{Binding CanMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <ui:Button
-                                        Width="32"
-                                        Height="32"
-                                        Margin="0,0,6,0"
-                                        Padding="0"
-                                        Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        Icon="{ui:SymbolIcon Symbol=ArrowDown24}"
-                                        IsEnabled="{Binding CanMoveDown}"
-                                        Visibility="{Binding CanMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <ui:Button
-                                        Width="32"
-                                        Height="32"
-                                        Padding="0"
-                                        Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        Icon="{ui:SymbolIcon Symbol=Delete24}"
-                                        Visibility="{Binding CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border
+                                            Width="30"
+                                            Height="30"
+                                            Margin="0,0,10,0"
+                                            Background="{DynamicResource ControlFillColorTertiaryBrush}"
+                                            CornerRadius="6">
+                                            <Image
+                                                Width="20"
+                                                Height="20"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Source="{Binding IconSource}" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock
+                                                FontSize="15"
+                                                FontWeight="SemiBold"
+                                                Text="{Binding DisplayName}" />
+                                            <TextBlock
+                                                Margin="0,3,0,0"
+                                                FontFamily="Consolas"
+                                                FontSize="11"
+                                                Opacity="0.65"
+                                                Text="{Binding Subtitle}"
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock
+                                        Margin="0,8,0,0"
+                                        Opacity="0.72"
+                                        Text="{Binding Detail}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasDetail, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
-                            </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                    <ui:ToggleSwitch
+                                        Margin="0,0,0,8"
+                                        IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Visibility="{Binding CanToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Icon="{ui:SymbolIcon Symbol=Edit24}"
+                                            ToolTip="{Binding DataContext.EditText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            Visibility="{Binding CanEdit, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Icon="{ui:SymbolIcon Symbol=ArrowUp24}"
+                                            IsEnabled="{Binding CanMoveUp}"
+                                            Visibility="{Binding CanMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Icon="{ui:SymbolIcon Symbol=ArrowDown24}"
+                                            IsEnabled="{Binding CanMoveDown}"
+                                            Visibility="{Binding CanMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Padding="0"
+                                            Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Icon="{ui:SymbolIcon Symbol=Delete24}"
+                                            Visibility="{Binding CanDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    </StackPanel>
+                                </StackPanel>
                             </Grid>
                         </Grid>
                     </Border>
                 </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
     </Grid>
 </UserControl>

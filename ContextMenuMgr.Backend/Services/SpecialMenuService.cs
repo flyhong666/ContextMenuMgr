@@ -589,6 +589,7 @@ public sealed class SpecialMenuService
         }
 
         var attributes = File.GetAttributes(path);
+        var (iconPath, iconIndex, iconFallback) = ResolveSendToIcon(path, shortcut);
         return new SpecialMenuEntry
         {
             Id = EncodeId(SpecialMenuKind.SendTo, path),
@@ -596,9 +597,10 @@ public sealed class SpecialMenuService
             DisplayName = displayName,
             KeyName = Path.GetFileName(path),
             IsEnabled = (attributes & FileAttributes.Hidden) == 0,
-            IconPath = shortcut?.IconLocation.Split(',').FirstOrDefault(),
+            IconPath = iconPath,
+            IconIndex = iconIndex,
             Path = path,
-            TargetPath = shortcut?.TargetPath,
+            TargetPath = iconFallback ?? shortcut?.TargetPath,
             Arguments = shortcut?.Arguments,
             WorkingDirectory = shortcut?.WorkingDirectory,
             Notes = shortcut?.RunAsAdministrator == true ? "Run as administrator" : null,
@@ -607,6 +609,49 @@ public sealed class SpecialMenuService
                 ["EntryType"] = Directory.Exists(path) ? "Directory" : Path.GetExtension(path).TrimStart('.')
             }
         };
+    }
+
+    private static (string? IconPath, int IconIndex, string? FallbackPath) ResolveSendToIcon(string path, ShortcutInfo? shortcut)
+    {
+        if (shortcut is not null)
+        {
+            var (shortcutIconPath, shortcutIconIndex) = ParseIconLocation(shortcut.IconLocation);
+            if (string.IsNullOrWhiteSpace(shortcutIconPath))
+            {
+                shortcutIconPath = shortcut.TargetPath;
+                shortcutIconIndex = 0;
+            }
+
+            var fallback = File.Exists(shortcut.TargetPath) || Directory.Exists(shortcut.TargetPath)
+                ? shortcut.TargetPath
+                : path;
+            return (shortcutIconPath, shortcutIconIndex, fallback);
+        }
+
+        if (Directory.Exists(path))
+        {
+            return (path, 0, path);
+        }
+
+        var extension = Path.GetExtension(path);
+        if (!string.IsNullOrWhiteSpace(extension))
+        {
+            using var extensionKey = Registry.ClassesRoot.OpenSubKey(extension, writable: false);
+            var progId = extensionKey?.GetValue(null)?.ToString();
+            if (!string.IsNullOrWhiteSpace(progId))
+            {
+                using var defaultIconKey = Registry.ClassesRoot.OpenSubKey($@"{progId}\DefaultIcon", writable: false);
+                var (defaultIconPath, defaultIconIndex) = ParseIconLocation(defaultIconKey?.GetValue(null)?.ToString());
+                if (!string.IsNullOrWhiteSpace(defaultIconPath))
+                {
+                    return (defaultIconPath, defaultIconIndex, path);
+                }
+            }
+
+            return (extension, 0, path);
+        }
+
+        return (path, 0, path);
     }
 
     private static IReadOnlyList<SpecialMenuEntry> GetWinXItems(BackendUserContext context)

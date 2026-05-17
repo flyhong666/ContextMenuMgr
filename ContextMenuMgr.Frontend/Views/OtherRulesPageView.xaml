@@ -44,6 +44,7 @@
                             <ui:ListView
                                 Grid.Row="1"
                                 BorderThickness="0"
+                                ItemContainerStyle="{StaticResource DisplayOnlyListViewItemStyle}"
                                 ItemsSource="{Binding EnhanceGroups}"
                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -238,6 +239,7 @@
                                 Grid.Row="1"
                                 Background="Transparent"
                                 BorderThickness="0"
+                                ItemContainerStyle="{StaticResource DisplayOnlyListViewItemStyle}"
                                 ItemsSource="{Binding DetailedEditGroups}"
                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                 ScrollViewer.VerticalScrollBarVisibility="Auto"

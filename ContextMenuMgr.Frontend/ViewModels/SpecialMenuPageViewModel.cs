@@ -503,31 +503,41 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     private void ApplySnapshot(IEnumerable<SpecialMenuEntry> snapshot)
     {
-        var existing = Items.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in snapshot)
+        var entries = snapshot.ToArray();
+        var existing = new Dictionary<string, SpecialMenuItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in Items)
         {
-            if (existing.Remove(entry.Id, out var current))
+            existing[item.Id] = item;
+        }
+
+        Items.Clear();
+        foreach (var entry in entries)
+        {
+            if (existing.TryGetValue(entry.Id, out var current))
             {
                 current.Update(entry);
             }
             else
             {
-                Items.Add(new SpecialMenuItemViewModel(entry, _iconPreviewService, _localization, SetEnabledAsync));
+                current = new SpecialMenuItemViewModel(entry, _iconPreviewService, _localization, SetEnabledAsync);
             }
+
+            Items.Add(current);
         }
 
-        foreach (var stale in existing.Values)
-        {
-            Items.Remove(stale);
-        }
-
-        UpdatePageStateFromSnapshot(snapshot);
+        UpdatePageStateFromSnapshot(entries);
         RebuildWinXGroups();
         ItemsView.Refresh();
     }
 
     private void Upsert(SpecialMenuEntry entry)
     {
+        if (Kind == SpecialMenuKind.WinX)
+        {
+            _ = RefreshAsync();
+            return;
+        }
+
         var current = Items.FirstOrDefault(item => string.Equals(item.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
         if (current is null)
         {
@@ -563,10 +573,21 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     private void OnNotificationReceived(object? sender, BackendNotification notification)
     {
-        if (notification.SpecialKind == Kind && notification.SpecialItem is not null)
+        if (notification.SpecialKind != Kind || notification.SpecialItem is null)
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() => Upsert(notification.SpecialItem));
+            return;
         }
+
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (Kind == SpecialMenuKind.WinX)
+            {
+                _ = RefreshAsync();
+                return;
+            }
+
+            Upsert(notification.SpecialItem);
+        });
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
@@ -686,14 +707,6 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
 
         WinXGroups.Clear();
-        var flatItems = Items
-            .Where(static item => item.Entry.Metadata.GetValueOrDefault("EntryType") == "Entry")
-            .ToArray();
-        for (var index = 0; index < flatItems.Length; index++)
-        {
-            flatItems[index].SetMoveAvailability(index > 0, index < flatItems.Length - 1);
-        }
-
         WinXGroupNodeViewModel? currentGroup = null;
         foreach (var item in Items)
         {
@@ -730,6 +743,37 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
             currentGroup.Items.Add(item);
         }
+
+        UpdateWinXMoveAvailability();
+    }
+
+    private void UpdateWinXMoveAvailability()
+    {
+        for (var groupIndex = 0; groupIndex < WinXGroups.Count; groupIndex++)
+        {
+            var group = WinXGroups[groupIndex];
+            var entries = group.Items
+                .Where(static item => item.Entry.Metadata.GetValueOrDefault("EntryType") == "Entry")
+                .ToArray();
+
+            for (var itemIndex = 0; itemIndex < entries.Length; itemIndex++)
+            {
+                var hasItemAboveInGroup = itemIndex > 0;
+                var hasItemBelowInGroup = itemIndex < entries.Length - 1;
+                var hasGroupAbove = HasAdjacentWinXGroup(groupIndex, moveUp: true);
+                var hasGroupBelow = HasAdjacentWinXGroup(groupIndex, moveUp: false);
+
+                entries[itemIndex].SetMoveAvailability(
+                    hasItemAboveInGroup || hasGroupAbove,
+                    hasItemBelowInGroup || hasGroupBelow);
+            }
+        }
+    }
+
+    private bool HasAdjacentWinXGroup(int groupIndex, bool moveUp)
+    {
+        var nextIndex = moveUp ? groupIndex - 1 : groupIndex + 1;
+        return nextIndex >= 0 && nextIndex < WinXGroups.Count;
     }
 
     private WinXGroupNodeViewModel CreateWinXGroupNode(SpecialMenuItemViewModel group)

@@ -31,21 +31,27 @@ public sealed class IconPreviewService
             iconIndex = parsedIconIndex;
         }
 
-        var normalizedPath = string.IsNullOrWhiteSpace(iconPath)
-            ? DefaultIconPath
-            : NormalizeIconPath(iconPath);
-        var normalizedIndex = string.IsNullOrWhiteSpace(iconPath)
-            ? DefaultIconIndex
-            : iconIndex;
+        var hasExplicitIcon = !string.IsNullOrWhiteSpace(iconPath);
+        var normalizedPath = hasExplicitIcon ? NormalizeIconPath(iconPath!) : DefaultIconPath;
+        var normalizedIndex = hasExplicitIcon ? iconIndex : DefaultIconIndex;
         var normalizedFallbackFilePath = string.IsNullOrWhiteSpace(fallbackFilePath)
             ? string.Empty
             : NormalizeIconPath(fallbackFilePath);
-        var cacheKey = $"{normalizedPath}|{normalizedIndex}|{normalizedFallbackFilePath}";
-        return _cache.GetOrAdd(cacheKey, _ => LoadIcon(normalizedPath, normalizedIndex, normalizedFallbackFilePath));
+        var cacheKey = $"{normalizedPath}|{normalizedIndex}|{normalizedFallbackFilePath}|{hasExplicitIcon}";
+        return _cache.GetOrAdd(cacheKey, _ => LoadIcon(normalizedPath, normalizedIndex, normalizedFallbackFilePath, preferFallback: !hasExplicitIcon));
     }
 
-    private static ImageSource? LoadIcon(string iconPath, int iconIndex, string? fallbackFilePath)
+    private static ImageSource? LoadIcon(string iconPath, int iconIndex, string? fallbackFilePath, bool preferFallback = false)
     {
+        if (preferFallback && !string.IsNullOrWhiteSpace(fallbackFilePath))
+        {
+            var fallbackIcon = TryLoadIcon(fallbackFilePath, 0, useShellFileInfoFirst: true);
+            if (fallbackIcon is not null)
+            {
+                return fallbackIcon;
+            }
+        }
+
         var icon = TryLoadIcon(iconPath, iconIndex);
         if (icon is not null)
         {
