@@ -18,7 +18,10 @@ public sealed class NamedPipeBackendServer
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ContextMenuRegistryCatalog _catalog;
+    private readonly SpecialMenuService _specialMenuService;
+    private readonly FileTypeSceneMenuService _fileTypeSceneMenuService;
     private readonly FileLogger _logger;
+    private readonly BackendUserContextResolver _userContextResolver;
     private readonly ConcurrentDictionary<Guid, PipeClientConnection> _clients = new();
     private CancellationTokenSource? _acceptLoopCts;
     private Task? _acceptLoopTask;
@@ -29,10 +32,18 @@ public sealed class NamedPipeBackendServer
     /// <summary>
     /// Initializes a new instance of the <see cref="NamedPipeBackendServer"/> class.
     /// </summary>
-    public NamedPipeBackendServer(ContextMenuRegistryCatalog catalog, FileLogger logger)
+    public NamedPipeBackendServer(
+        ContextMenuRegistryCatalog catalog,
+        SpecialMenuService specialMenuService,
+        FileTypeSceneMenuService fileTypeSceneMenuService,
+        FileLogger logger,
+        BackendUserContextResolver userContextResolver)
     {
         _catalog = catalog;
+        _specialMenuService = specialMenuService;
+        _fileTypeSceneMenuService = fileTypeSceneMenuService;
         _logger = logger;
+        _userContextResolver = userContextResolver;
     }
 
     /// <summary>
@@ -144,10 +155,20 @@ public sealed class NamedPipeBackendServer
         await _logger.LogAsync("HandleClientAsync entered.", cancellationToken);
         var connection = new PipeClientConnection(stream);
         _clients[connection.Id] = connection;
+        var clientUserContext = _userContextResolver.TryResolveFromPipeClient(stream)
+            ?? _userContextResolver.TryResolveInteractiveUserFallback();
 
         try
         {
             await _logger.LogAsync($"Pipe client connected: {connection.Id}", cancellationToken);
+            if (clientUserContext is not null)
+            {
+                await _logger.LogAsync($"Pipe client user context: {clientUserContext.UserName} ({clientUserContext.Sid}), profile={clientUserContext.ProfilePath}.", cancellationToken);
+            }
+            else
+            {
+                await _logger.LogAsync($"Pipe client user context could not be resolved for {connection.Id}.", cancellationToken);
+            }
 
             while (stream.IsConnected && !cancellationToken.IsCancellationRequested)
             {
@@ -185,7 +206,7 @@ public sealed class NamedPipeBackendServer
                 {
                     // Request handlers are allowed to fail independently; the pipe
                     // stays alive and the caller receives a structured error response.
-                    response = await HandleRequestAsync(envelope.Request, cancellationToken);
+                    response = await HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -219,6 +240,22 @@ public sealed class NamedPipeBackendServer
                             Kind = PipeNotificationKind.ItemStateChanged,
                             Item = response.Item,
                             Message = response.Message,
+                            ClientOperationId = response.ClientOperationId,
+                            Timestamp = DateTimeOffset.UtcNow
+                        },
+                        cancellationToken);
+                }
+
+                if (response.Success && response.SpecialItem is not null)
+                {
+                    await BroadcastNotificationAsync(
+                        new BackendNotification
+                        {
+                            Kind = PipeNotificationKind.ItemStateChanged,
+                            SpecialKind = response.SpecialItem.Kind,
+                            SpecialItem = response.SpecialItem,
+                            Message = response.Message,
+                            ClientOperationId = response.ClientOperationId,
                             Timestamp = DateTimeOffset.UtcNow
                         },
                         cancellationToken);
@@ -240,8 +277,20 @@ public sealed class NamedPipeBackendServer
         }
     }
 
-    private async Task<PipeResponse> HandleRequestAsync(PipeRequest request, CancellationToken cancellationToken)
+    private async Task<PipeResponse> HandleRequestAsync(PipeRequest request, BackendUserContext? userContext, CancellationToken cancellationToken)
     {
+        if (request.Command == PipeCommand.SetDetailedEditRuleValue
+            && !string.IsNullOrWhiteSpace(request.RuleUserSid)
+            && userContext is not null
+            && !string.Equals(request.RuleUserSid, userContext.Sid, StringComparison.OrdinalIgnoreCase))
+        {
+            return new PipeResponse
+            {
+                Success = false,
+                Message = "The requested user SID does not match the authenticated pipe client."
+            };
+        }
+
         return request.Command switch
         {
             PipeCommand.Ping => new PipeResponse
@@ -289,7 +338,7 @@ public sealed class NamedPipeBackendServer
                     request.RuleKeyName,
                     request.RuleValueKind,
                     request.RuleValue,
-                    request.RuleUserSid,
+                    userContext?.Sid ?? request.RuleUserSid,
                     cancellationToken),
             PipeCommand.AcknowledgeItemState when request.ItemId is not null
                 => await _catalog.AcknowledgeItemStateAsync(request.ItemId, cancellationToken),
@@ -314,6 +363,53 @@ public sealed class NamedPipeBackendServer
                 => await _catalog.UndoDeleteAsync(request.ItemId, cancellationToken),
             PipeCommand.PurgeDeletedItem when request.ItemId is not null
                 => await _catalog.PurgeDeletedItemAsync(request.ItemId, cancellationToken),
+            PipeCommand.GetSpecialMenuSnapshot when request.SpecialKind is not null
+                => new PipeResponse
+                {
+                    Success = true,
+                    Message = "Special menu snapshot loaded.",
+                    SpecialItems = await _specialMenuService.GetSnapshotAsync(request.SpecialKind.Value, userContext, cancellationToken)
+                },
+            PipeCommand.SetSpecialMenuItemEnabled when request.SpecialItem is not null && request.Enable is not null
+                => await _specialMenuService.SetEnabledAsync(
+                    request.SpecialItem,
+                    request.Enable.Value,
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.CreateSpecialMenuItem
+                => await _specialMenuService.CreateAsync(request, userContext, cancellationToken),
+            PipeCommand.UpdateSpecialMenuItem
+                => await _specialMenuService.UpdateAsync(request, userContext, cancellationToken),
+            PipeCommand.DeleteSpecialMenuItem when request.SpecialItem is not null
+                => await _specialMenuService.DeleteAsync(request.SpecialItem, request.ClientOperationId, userContext, cancellationToken),
+            PipeCommand.MoveSpecialMenuItem
+                => await _specialMenuService.MoveAsync(request, userContext, cancellationToken),
+            PipeCommand.RestoreSpecialMenuDefaults when request.SpecialKind is not null
+                => await _specialMenuService.RestoreDefaultsAsync(
+                    request.SpecialKind.Value,
+                    request.ScopeValue,
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.SetShellNewOrderLock when request.ShellNewLock is not null
+                => await _specialMenuService.SetShellNewOrderLockAsync(
+                    request.ShellNewLock.Lock,
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.AnalyzeFileTypeContext when request.FileTypeAnalysis is not null
+                => new PipeResponse
+                {
+                    Success = true,
+                    Message = "File type context analyzed.",
+                    FileTypeAnalysisResults = await _fileTypeSceneMenuService.AnalyzeAsync(request.FileTypeAnalysis, cancellationToken)
+                },
+            PipeCommand.CreateSceneMenuItem when request.CreateSceneMenuItem is not null
+                => await _fileTypeSceneMenuService.CreateSceneMenuItemAsync(
+                    request.CreateSceneMenuItem,
+                    request.ClientOperationId,
+                    cancellationToken),
             _ => new PipeResponse
             {
                 Success = false,

@@ -24,6 +24,15 @@
                     Opacity="0.72"
                     Text="{Binding Description}"
                     TextWrapping="Wrap" />
+                <DockPanel Margin="0,12,0,0">
+                    <ui:Button
+                        Padding="14,6"
+                        HorizontalAlignment="Right"
+                        Command="{Binding AddMenuItemCommand}"
+                        Content="{Binding AddMenuItemText}"
+                        DockPanel.Dock="Right"
+                        Icon="{ui:SymbolIcon Symbol=Add24}" />
+                </DockPanel>
 
                 <StackPanel
                     Margin="0,12,0,0"

@@ -144,6 +144,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>刷新</value>
   </data>
+  <data name="Add" xml:space="preserve">
+    <value>新增</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>编辑</value>
+  </data>
   <data name="RestartExplorer" xml:space="preserve">
     <value>重启资源管理器</value>
   </data>
@@ -866,5 +872,89 @@
   </data>
   <data name="DictionaryReadOnlyHint" xml:space="preserve">
     <value>这一版先把目标程序中的字典内容迁到新的规则页里，后续再继续把编辑操作接上。</value>
+  </data>
+  <data name="ShellNewPageTitle" xml:space="preserve">
+    <value>新建菜单</value>
+  </data>
+  <data name="ShellNewPageDescription" xml:space="preserve">
+    <value>通过后端服务管理 ShellNew 项、排序和可见性。</value>
+  </data>
+  <data name="SendToPageTitle" xml:space="preserve">
+    <value>发送到</value>
+  </data>
+  <data name="SendToPageDescription" xml:space="preserve">
+    <value>管理当前用户 SendTo 目录中的文件和快捷方式。</value>
+  </data>
+  <data name="WinXPageTitle" xml:space="preserve">
+    <value>Win+X</value>
+  </data>
+  <data name="WinXPageDescription" xml:space="preserve">
+    <value>管理 Win+X 分组和带 hash 的快捷方式。</value>
+  </data>
+  <data name="DragDropPageTitle" xml:space="preserve">
+    <value>右键拖拽</value>
+  </data>
+  <data name="DragDropPageDescription" xml:space="preserve">
+    <value>管理 ShellEx DragDropHandlers 和默认拖放效果。</value>
+  </data>
+  <data name="CommandStorePageTitle" xml:space="preserve">
+    <value>公共引用</value>
+  </data>
+  <data name="CommandStorePageDescription" xml:space="preserve">
+    <value>管理可被多个右键菜单场景引用的 CommandStore shell 项。</value>
+  </data>
+  <data name="GuidBlockPageTitle" xml:space="preserve">
+    <value>GUID 锁</value>
+  </data>
+  <data name="GuidBlockPageDescription" xml:space="preserve">
+    <value>管理全局阻止的 Shell 扩展 GUID。</value>
+  </data>
+  <data name="IeMenuPageTitle" xml:space="preserve">
+    <value>IE 菜单</value>
+  </data>
+  <data name="IeMenuPageDescription" xml:space="preserve">
+    <value>在系统仍存在时管理旧版 Internet Explorer MenuExt 项。</value>
+  </data>
+  <data name="MenuAnalysisTitle" xml:space="preserve">
+    <value>菜单分析</value>
+  </data>
+  <data name="MenuAnalysisDescription" xml:space="preserve">
+    <value>分析文件、文件夹或快捷方式，并跳转到匹配的右键菜单场景。</value>
+  </data>
+  <data name="AnalyzeFile" xml:space="preserve">
+    <value>分析文件</value>
+  </data>
+  <data name="AnalyzeFolder" xml:space="preserve">
+    <value>分析文件夹</value>
+  </data>
+  <data name="AddMenuItem" xml:space="preserve">
+    <value>新增菜单项</value>
+  </data>
+  <data name="RestoreDefault" xml:space="preserve">
+    <value>恢复默认</value>
+  </data>
+  <data name="LockNewMenu" xml:space="preserve">
+    <value>锁定新建菜单顺序</value>
+  </data>
+  <data name="DefaultDropEffect" xml:space="preserve">
+    <value>默认拖放效果</value>
+  </data>
+  <data name="SystemLevelItems" xml:space="preserve">
+    <value>系统级项目</value>
+  </data>
+  <data name="UserLevelItems" xml:space="preserve">
+    <value>用户级项目</value>
+  </data>
+  <data name="ShellNewFolder" xml:space="preserve">
+    <value>文件夹</value>
+  </data>
+  <data name="ShellNewShortcut" xml:space="preserve">
+    <value>快捷方式</value>
+  </data>
+  <data name="ShellNewLibrary" xml:space="preserve">
+    <value>库</value>
+  </data>
+  <data name="ShellNewSeparator" xml:space="preserve">
+    <value>&gt;&gt;&gt;&gt;&gt;&gt; 分割线 &lt;&lt;&lt;&lt;&lt;&lt;</value>
   </data>
 </root>

@@ -48,8 +48,11 @@ public sealed class BackendRuntime : IDisposable
         var protectionSettingsStore = new BackendProtectionSettingsStore(Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"));
         var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory);
         var catalog = new ContextMenuRegistryCatalog(logger, stateStore, backupService, protectionSettingsStore);
+        var specialMenuService = new SpecialMenuService(logger);
+        var fileTypeSceneMenuService = new FileTypeSceneMenuService(catalog, stateStore, logger);
+        var userContextResolver = new BackendUserContextResolver(logger);
         var monitor = new ContextMenuRegistryMonitor(catalog, logger);
-        var pipeServer = new NamedPipeBackendServer(catalog, logger);
+        var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, fileTypeSceneMenuService, logger, userContextResolver);
         var frontendAutostartLauncher = new FrontendAutostartLauncher(AppContext.BaseDirectory);
 
         return new BackendRuntime(logger, monitor, pipeServer, frontendAutostartLauncher);

@@ -163,6 +163,36 @@ public sealed class FileTypesPage : NavigationPageHost<FileTypesPageView>
 }
 
 /// <summary>
+/// Represents the shell new page.
+/// </summary>
+public sealed class ShellNewPage : NavigationPageHost<SpecialMenuPageView>
+{
+    public ShellNewPage(ShellNewPageViewModel viewModel) : base(viewModel)
+    {
+    }
+}
+
+/// <summary>
+/// Represents the send to page.
+/// </summary>
+public sealed class SendToPage : NavigationPageHost<SpecialMenuPageView>
+{
+    public SendToPage(SendToPageViewModel viewModel) : base(viewModel)
+    {
+    }
+}
+
+/// <summary>
+/// Represents the win x page.
+/// </summary>
+public sealed class WinXPage : NavigationPageHost<SpecialMenuPageView>
+{
+    public WinXPage(WinXPageViewModel viewModel) : base(viewModel)
+    {
+    }
+}
+
+/// <summary>
 /// Represents the windows11 Context Menu Page.
 /// </summary>
 public sealed class Windows11ContextMenuPage : NavigationPageHost<Windows11ContextMenuPageView>

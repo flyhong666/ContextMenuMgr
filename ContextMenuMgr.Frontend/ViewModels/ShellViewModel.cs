@@ -80,6 +80,12 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public string FileTypesPageTitle => _localization.Translate("FileTypesPageTitle");
 
+    public string ShellNewPageTitle => _localization.Translate("ShellNewPageTitle");
+
+    public string SendToPageTitle => _localization.Translate("SendToPageTitle");
+
+    public string WinXPageTitle => _localization.Translate("WinXPageTitle");
+
     public string Windows11PageTitle => _localization.Translate("Windows11PageTitle");
 
     public bool IsWindows11ContextMenuSupported => _windows11Service.IsSupported;
@@ -167,6 +173,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ComputerCategoryName));
         OnPropertyChanged(nameof(RecycleBinCategoryName));
         OnPropertyChanged(nameof(FileTypesPageTitle));
+        OnPropertyChanged(nameof(ShellNewPageTitle));
+        OnPropertyChanged(nameof(SendToPageTitle));
+        OnPropertyChanged(nameof(WinXPageTitle));
         OnPropertyChanged(nameof(Windows11PageTitle));
         OnPropertyChanged(nameof(OtherRulesPageTitle));
         OnPropertyChanged(nameof(ApprovalsTitle));

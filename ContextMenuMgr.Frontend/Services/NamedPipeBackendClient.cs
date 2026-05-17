@@ -328,6 +328,130 @@ public sealed class NamedPipeBackendClient : IBackendClient
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<SpecialMenuEntry>> GetSpecialMenuSnapshotAsync(
+        SpecialMenuKind kind,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.GetSpecialMenuSnapshot,
+                SpecialKind = kind
+            },
+            cancellationToken);
+
+        return response.SpecialItems;
+    }
+
+    public async Task<SpecialMenuEntry?> SetSpecialMenuItemEnabledAsync(
+        SpecialMenuEntry item,
+        bool enable,
+        Guid clientOperationId,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetSpecialMenuItemEnabled,
+                SpecialItem = item,
+                Enable = enable,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+
+        return response.SpecialItem;
+    }
+
+    public async Task<SpecialMenuEntry?> CreateSpecialMenuItemAsync(PipeRequest request, CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(request with { Command = PipeCommand.CreateSpecialMenuItem }, cancellationToken);
+        return response.SpecialItem;
+    }
+
+    public async Task<SpecialMenuEntry?> UpdateSpecialMenuItemAsync(PipeRequest request, CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(request with { Command = PipeCommand.UpdateSpecialMenuItem }, cancellationToken);
+        return response.SpecialItem;
+    }
+
+    public async Task DeleteSpecialMenuItemAsync(SpecialMenuEntry item, Guid clientOperationId, CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.DeleteSpecialMenuItem,
+                SpecialKind = item.Kind,
+                SpecialItem = item,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+    }
+
+    public async Task<SpecialMenuEntry?> MoveSpecialMenuItemAsync(PipeRequest request, CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(request with { Command = PipeCommand.MoveSpecialMenuItem }, cancellationToken);
+        return response.SpecialItem;
+    }
+
+    public async Task RestoreSpecialMenuDefaultsAsync(
+        SpecialMenuKind kind,
+        string? scopeValue,
+        Guid clientOperationId,
+        CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.RestoreSpecialMenuDefaults,
+                SpecialKind = kind,
+                ScopeValue = scopeValue,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+    }
+
+    public async Task SetShellNewOrderLockAsync(bool locked, Guid clientOperationId, CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetShellNewOrderLock,
+                ShellNewLock = new ShellNewLockRequest(locked),
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<FileTypeAnalysisResult>> AnalyzeFileTypeContextAsync(string path, CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.AnalyzeFileTypeContext,
+                FileTypeAnalysis = new FileTypeAnalysisRequest(path)
+            },
+            cancellationToken);
+
+        return response.FileTypeAnalysisResults;
+    }
+
+    public async Task<ContextMenuEntry?> CreateSceneMenuItemAsync(
+        CreateSceneMenuItemRequest request,
+        Guid clientOperationId,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.CreateSceneMenuItem,
+                CreateSceneMenuItem = request,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+
+        return response.Item;
+    }
+
     /// <summary>
     /// Releases resources used by the current instance.
     /// </summary>
@@ -402,7 +526,10 @@ public sealed class NamedPipeBackendClient : IBackendClient
                     FrontendDebugLog.Info(
                         "NamedPipeBackendClient",
                         $"Notification received on request channel: {responseEnvelope.Notification.Kind}, ItemId={responseEnvelope.Notification.Item?.Id}");
-                    NotificationReceived?.Invoke(this, responseEnvelope.Notification);
+                    if (responseEnvelope.Notification.ClientOperationId != request.ClientOperationId)
+                    {
+                        NotificationReceived?.Invoke(this, responseEnvelope.Notification);
+                    }
                     continue;
                 }
 

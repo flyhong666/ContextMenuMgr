@@ -175,6 +175,18 @@
                         Icon="{ui:SymbolIcon Symbol=DocumentText24}"
                         TargetPageType="{x:Type pages:FileTypesPage}" />
                     <ui:NavigationViewItem
+                        Content="{Binding ShellNewPageTitle}"
+                        Icon="{ui:SymbolIcon Symbol=DocumentAdd24}"
+                        TargetPageType="{x:Type pages:ShellNewPage}" />
+                    <ui:NavigationViewItem
+                        Content="{Binding SendToPageTitle}"
+                        Icon="{ui:SymbolIcon Symbol=Send24}"
+                        TargetPageType="{x:Type pages:SendToPage}" />
+                    <ui:NavigationViewItem
+                        Content="{Binding WinXPageTitle}"
+                        Icon="{ui:SymbolIcon Symbol=WindowDevTools24}"
+                        TargetPageType="{x:Type pages:WinXPage}" />
+                    <ui:NavigationViewItem
                         Content="{Binding Windows11PageTitle}"
                         Icon="{ui:SymbolIcon Symbol=AppsList24}"
                         TargetPageType="{x:Type pages:Windows11ContextMenuPage}"

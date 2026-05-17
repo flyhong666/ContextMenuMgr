@@ -24,4 +24,19 @@ public sealed record BackendNotification
     /// Gets or sets the item.
     /// </summary>
     public ContextMenuEntry? Item { get; init; }
+
+    /// <summary>
+    /// Gets or sets the special menu kind.
+    /// </summary>
+    public SpecialMenuKind? SpecialKind { get; init; }
+
+    /// <summary>
+    /// Gets or sets the special menu item.
+    /// </summary>
+    public SpecialMenuEntry? SpecialItem { get; init; }
+
+    /// <summary>
+    /// Gets or sets the client operation id that caused this notification.
+    /// </summary>
+    public Guid? ClientOperationId { get; init; }
 }

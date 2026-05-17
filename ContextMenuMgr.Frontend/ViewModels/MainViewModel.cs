@@ -105,6 +105,12 @@ public partial class MainViewModel : ObservableObject
 
     public string PendingApprovalDescription => _localization.Translate("PendingApprovalDescription");
 
+    public string ShellNewPageTitle => _localization.Translate("ShellNewPageTitle");
+
+    public string SendToPageTitle => _localization.Translate("SendToPageTitle");
+
+    public string WinXPageTitle => _localization.Translate("WinXPageTitle");
+
     public string ServiceNotesTitle => _localization.Translate("ServiceNotesTitle");
 
     public string ServiceNotesDescription => _localization.Translate("ServiceNotesDescription");
@@ -417,6 +423,9 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(MonitoredCategoriesDescription));
         OnPropertyChanged(nameof(PendingApprovalTitle));
         OnPropertyChanged(nameof(PendingApprovalDescription));
+        OnPropertyChanged(nameof(ShellNewPageTitle));
+        OnPropertyChanged(nameof(SendToPageTitle));
+        OnPropertyChanged(nameof(WinXPageTitle));
         OnPropertyChanged(nameof(ServiceNotesTitle));
         OnPropertyChanged(nameof(ServiceNotesDescription));
         OnPropertyChanged(nameof(AllowText));

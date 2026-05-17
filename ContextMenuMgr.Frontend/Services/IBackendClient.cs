@@ -73,4 +73,37 @@ public interface IBackendClient : IAsyncDisposable
     Task<ContextMenuEntry?> UndoDeleteAsync(string itemId, CancellationToken cancellationToken);
 
     Task PurgeDeletedItemAsync(string itemId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SpecialMenuEntry>> GetSpecialMenuSnapshotAsync(
+        SpecialMenuKind kind,
+        CancellationToken cancellationToken);
+
+    Task<SpecialMenuEntry?> SetSpecialMenuItemEnabledAsync(
+        SpecialMenuEntry item,
+        bool enable,
+        Guid clientOperationId,
+        CancellationToken cancellationToken);
+
+    Task<SpecialMenuEntry?> CreateSpecialMenuItemAsync(PipeRequest request, CancellationToken cancellationToken);
+
+    Task<SpecialMenuEntry?> UpdateSpecialMenuItemAsync(PipeRequest request, CancellationToken cancellationToken);
+
+    Task DeleteSpecialMenuItemAsync(SpecialMenuEntry item, Guid clientOperationId, CancellationToken cancellationToken);
+
+    Task<SpecialMenuEntry?> MoveSpecialMenuItemAsync(PipeRequest request, CancellationToken cancellationToken);
+
+    Task RestoreSpecialMenuDefaultsAsync(
+        SpecialMenuKind kind,
+        string? scopeValue,
+        Guid clientOperationId,
+        CancellationToken cancellationToken);
+
+    Task SetShellNewOrderLockAsync(bool locked, Guid clientOperationId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<FileTypeAnalysisResult>> AnalyzeFileTypeContextAsync(string path, CancellationToken cancellationToken);
+
+    Task<ContextMenuEntry?> CreateSceneMenuItemAsync(
+        CreateSceneMenuItemRequest request,
+        Guid clientOperationId,
+        CancellationToken cancellationToken);
 }

@@ -29,4 +29,24 @@ public sealed record PipeResponse
     /// Gets or sets the registry Protection Enabled.
     /// </summary>
     public bool? RegistryProtectionEnabled { get; init; }
+
+    /// <summary>
+    /// Gets or sets the special menu items.
+    /// </summary>
+    public IReadOnlyList<SpecialMenuEntry> SpecialItems { get; init; } = [];
+
+    /// <summary>
+    /// Gets or sets the special menu item.
+    /// </summary>
+    public SpecialMenuEntry? SpecialItem { get; init; }
+
+    /// <summary>
+    /// Gets or sets file type analysis results.
+    /// </summary>
+    public IReadOnlyList<FileTypeAnalysisResult> FileTypeAnalysisResults { get; init; } = [];
+
+    /// <summary>
+    /// Gets or sets the client operation id.
+    /// </summary>
+    public Guid? ClientOperationId { get; init; }
 }

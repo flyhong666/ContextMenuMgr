@@ -55,7 +55,7 @@ public sealed class IconPreviewService
         if (!string.IsNullOrWhiteSpace(fallbackFilePath)
             && !string.Equals(iconPath, fallbackFilePath, StringComparison.OrdinalIgnoreCase))
         {
-            icon = TryLoadIcon(fallbackFilePath, 0);
+            icon = TryLoadIcon(fallbackFilePath, 0, useShellFileInfoFirst: true);
             if (icon is not null)
             {
                 return icon;
@@ -74,14 +74,28 @@ public sealed class IconPreviewService
         return TryLoadIcon(DefaultIconPath, DefaultIconIndex);
     }
 
-    private static ImageSource? TryLoadIcon(string iconPath, int iconIndex)
+    private static ImageSource? TryLoadIcon(string iconPath, int iconIndex, bool useShellFileInfoFirst = false)
     {
         try
         {
             var resolvedPath = ResolveIconFilePath(iconPath);
             if (string.IsNullOrWhiteSpace(resolvedPath))
             {
+                if (LooksLikeExtension(iconPath))
+                {
+                    return TryLoadShellIcon(iconPath, FILE_ATTRIBUTE_NORMAL, useFileAttributes: true);
+                }
+
                 return null;
+            }
+
+            if (useShellFileInfoFirst)
+            {
+                var shellIcon = TryLoadShellIcon(resolvedPath);
+                if (shellIcon is not null)
+                {
+                    return shellIcon;
+                }
             }
 
             var largeIcons = new nint[1];
@@ -170,6 +184,29 @@ public sealed class IconPreviewService
         catch
         {
             return null;
+        }
+    }
+
+    private static ImageSource? TryLoadShellIcon(string resolvedPath, uint fileAttributes = 0, bool useFileAttributes = false)
+    {
+        var iconHandle = GetShellIconHandle(resolvedPath, fileAttributes, useFileAttributes);
+        if (iconHandle == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            var source = Imaging.CreateBitmapSourceFromHIcon(
+                iconHandle,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromWidthAndHeight(20, 20));
+            source.Freeze();
+            return source;
+        }
+        finally
+        {
+            DestroyIcon(iconHandle);
         }
     }
 
@@ -267,13 +304,21 @@ public sealed class IconPreviewService
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private static nint GetShellIconHandle(string path)
+    private static nint GetShellIconHandle(string path, uint fileAttributes = 0, bool useFileAttributes = false)
     {
         var info = new SHFILEINFO();
         var flags = SHGFI_ICON | SHGFI_SMALLICON;
-        var result = SHGetFileInfoW(path, 0, ref info, (uint)Marshal.SizeOf<SHFILEINFO>(), flags);
+        if (useFileAttributes)
+        {
+            flags |= SHGFI_USEFILEATTRIBUTES;
+        }
+
+        var result = SHGetFileInfoW(path, fileAttributes, ref info, (uint)Marshal.SizeOf<SHFILEINFO>(), flags);
         return result == nint.Zero ? nint.Zero : info.hIcon;
     }
+
+    private static bool LooksLikeExtension(string value) =>
+        value.StartsWith(".", StringComparison.Ordinal) && value.Length > 1 && !value.Contains('\\') && !value.Contains('/');
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "ExtractIconExW", SetLastError = true)]
     private static extern uint ExtractIconExW(
@@ -327,4 +372,6 @@ public sealed class IconPreviewService
 
     private const uint SHGFI_ICON = 0x000000100;
     private const uint SHGFI_SMALLICON = 0x000000001;
+    private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
+    private const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
 }

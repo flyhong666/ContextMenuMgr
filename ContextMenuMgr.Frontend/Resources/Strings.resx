@@ -144,6 +144,12 @@
   <data name="Refresh" xml:space="preserve">
     <value>Refresh</value>
   </data>
+  <data name="Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
   <data name="RestartExplorer" xml:space="preserve">
     <value>Restart Explorer</value>
   </data>
@@ -866,5 +872,89 @@
   </data>
   <data name="DictionaryReadOnlyHint" xml:space="preserve">
     <value>This first migration step brings the target app's dictionary content into the new rules page. Editing actions will be wired next.</value>
+  </data>
+  <data name="ShellNewPageTitle" xml:space="preserve">
+    <value>New Menu</value>
+  </data>
+  <data name="ShellNewPageDescription" xml:space="preserve">
+    <value>Manage ShellNew entries, ordering, and visibility through the backend service.</value>
+  </data>
+  <data name="SendToPageTitle" xml:space="preserve">
+    <value>Send To</value>
+  </data>
+  <data name="SendToPageDescription" xml:space="preserve">
+    <value>Manage the current user's SendTo folder entries and shortcuts.</value>
+  </data>
+  <data name="WinXPageTitle" xml:space="preserve">
+    <value>Win+X</value>
+  </data>
+  <data name="WinXPageDescription" xml:space="preserve">
+    <value>Manage Win+X groups and hashed shortcuts.</value>
+  </data>
+  <data name="DragDropPageTitle" xml:space="preserve">
+    <value>Right Drag</value>
+  </data>
+  <data name="DragDropPageDescription" xml:space="preserve">
+    <value>Manage ShellEx DragDropHandlers and the default drop effect.</value>
+  </data>
+  <data name="CommandStorePageTitle" xml:space="preserve">
+    <value>Public References</value>
+  </data>
+  <data name="CommandStorePageDescription" xml:space="preserve">
+    <value>Manage CommandStore shell entries shared by context menu scenes.</value>
+  </data>
+  <data name="GuidBlockPageTitle" xml:space="preserve">
+    <value>GUID Block</value>
+  </data>
+  <data name="GuidBlockPageDescription" xml:space="preserve">
+    <value>Manage globally blocked shell extension GUIDs.</value>
+  </data>
+  <data name="IeMenuPageTitle" xml:space="preserve">
+    <value>IE Menus</value>
+  </data>
+  <data name="IeMenuPageDescription" xml:space="preserve">
+    <value>Manage legacy Internet Explorer MenuExt entries when present.</value>
+  </data>
+  <data name="MenuAnalysisTitle" xml:space="preserve">
+    <value>Menu Analysis</value>
+  </data>
+  <data name="MenuAnalysisDescription" xml:space="preserve">
+    <value>Analyze a file, folder, or shortcut and jump to the matching context menu scene.</value>
+  </data>
+  <data name="AnalyzeFile" xml:space="preserve">
+    <value>Analyze File</value>
+  </data>
+  <data name="AnalyzeFolder" xml:space="preserve">
+    <value>Analyze Folder</value>
+  </data>
+  <data name="AddMenuItem" xml:space="preserve">
+    <value>Add Menu Item</value>
+  </data>
+  <data name="RestoreDefault" xml:space="preserve">
+    <value>Restore Defaults</value>
+  </data>
+  <data name="LockNewMenu" xml:space="preserve">
+    <value>Lock new-menu order</value>
+  </data>
+  <data name="DefaultDropEffect" xml:space="preserve">
+    <value>Default drop effect</value>
+  </data>
+  <data name="SystemLevelItems" xml:space="preserve">
+    <value>System-level items</value>
+  </data>
+  <data name="UserLevelItems" xml:space="preserve">
+    <value>User-level items</value>
+  </data>
+  <data name="ShellNewFolder" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="ShellNewShortcut" xml:space="preserve">
+    <value>Shortcut</value>
+  </data>
+  <data name="ShellNewLibrary" xml:space="preserve">
+    <value>Library</value>
+  </data>
+  <data name="ShellNewSeparator" xml:space="preserve">
+    <value>&gt;&gt;&gt;&gt;&gt;&gt; Separator &lt;&lt;&lt;&lt;&lt;&lt;</value>
   </data>
 </root>

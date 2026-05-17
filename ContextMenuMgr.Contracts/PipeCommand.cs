@@ -23,5 +23,17 @@ public enum PipeCommand
     DeleteItem,
     UndoDelete,
     PurgeDeletedItem,
+    GetSpecialMenuSnapshot,
+    SetSpecialMenuItemEnabled,
+    CreateSpecialMenuItem,
+    UpdateSpecialMenuItem,
+    DeleteSpecialMenuItem,
+    MoveSpecialMenuItem,
+    RestoreSpecialMenuDefaults,
+    SetShellNewOrderLock,
+    AnalyzeFileTypeContext,
+    CreateSceneMenuItem,
+    GetEnhanceMenuDefinitions,
+    GetEnhanceMenuState,
     RequestShutdown
 }

@@ -64,6 +64,7 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         RegistryMissingText = localization.Translate("RegistryMissingText");
         CancelText = localization.Translate("DialogCancel");
         SearchLabel = localization.Translate("SearchLabel");
+        AddMenuItemText = localization.Translate("AddMenuItem");
 
         _settingsService.SettingsChanged += OnSettingsChanged;
         _localization.LanguageChanged += OnLanguageChanged;
@@ -143,6 +144,9 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     /// </summary>
     [ObservableProperty]
     public partial string SearchLabel { get; set; }
+
+    [ObservableProperty]
+    public partial string AddMenuItemText { get; set; }
 
     /// <summary>
     /// Gets or sets the delete Text.
@@ -272,6 +276,45 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     }
 
     [RelayCommand]
+    private async Task AddMenuItemAsync()
+    {
+        var scopeValue = ResolveScopeValue();
+        if (RequiresScopeValue() && string.IsNullOrWhiteSpace(scopeValue))
+        {
+            EmptyText = _localization.Translate("SceneSelectionRequired");
+            return;
+        }
+
+        var text = await TextInputDialog.ShowAsync(
+            AddMenuItemText,
+            "verb:Key|Name|Command|Icon or shellex:Key|GUID",
+            "verb:open-with-notepad|Open with Notepad|notepad.exe \"%1\"|notepad.exe");
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            var request = ParseCreateSceneMenuItemRequest(text, scopeValue);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var updated = await _backendClient.CreateSceneMenuItemAsync(request, Guid.NewGuid(), cts.Token);
+            if (updated is not null)
+            {
+                ApplySnapshot(Items.Select(static item => item.Entry).Append(updated).ToArray());
+            }
+            else
+            {
+                await RefreshAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, AddMenuItemText);
+        }
+    }
+
+    [RelayCommand]
     private Task OpenPermanentDeleteFlyoutAsync(ContextMenuItemViewModel? item)
     {
         if (item is not null)
@@ -296,35 +339,17 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
 
     private async Task<bool> SetEnabledAsync(ContextMenuItemViewModel item, bool enable)
     {
-        var success = await _workspace.SetEnabledAsync(item, enable);
-        if (success)
-        {
-            await RefreshAsync();
-        }
-
-        return success;
+        return await _workspace.SetEnabledAsync(item, enable);
     }
 
     private async Task<bool> SetShellAttributeAsync(ContextMenuItemViewModel item, ContextMenuShellAttribute attribute, bool enable)
     {
-        var success = await _workspace.SetShellAttributeAsync(item, attribute, enable);
-        if (success)
-        {
-            await RefreshAsync();
-        }
-
-        return success;
+        return await _workspace.SetShellAttributeAsync(item, attribute, enable);
     }
 
     private async Task<bool> SetDisplayTextAsync(ContextMenuItemViewModel item, string textValue)
     {
-        var success = await _workspace.SetDisplayTextAsync(item, textValue);
-        if (success)
-        {
-            await RefreshAsync();
-        }
-
-        return success;
+        return await _workspace.SetDisplayTextAsync(item, textValue);
     }
 
     private async Task RunAndRefreshAsync(Func<Task> action)
@@ -424,6 +449,49 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
                && value.Contains(search, StringComparison.OrdinalIgnoreCase);
     }
 
+    private CreateSceneMenuItemRequest ParseCreateSceneMenuItemRequest(string text, string? scopeValue)
+    {
+        if (text.StartsWith("shellex:", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = text[8..].Split('|');
+            if (parts.Length < 2)
+            {
+                throw new InvalidOperationException("ShellEx format is shellex:Key|GUID.");
+            }
+
+            return new CreateSceneMenuItemRequest
+            {
+                SceneKind = _sceneKind,
+                ScopeValue = scopeValue,
+                ItemKind = SceneMenuItemKind.ShellExtension,
+                KeyName = parts[0].Trim(),
+                GuidText = parts[1].Trim()
+            };
+        }
+
+        if (text.StartsWith("verb:", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text[5..];
+        }
+
+        var verbParts = text.Split('|');
+        if (verbParts.Length < 3)
+        {
+            throw new InvalidOperationException("Verb format is verb:Key|Name|Command|Icon.");
+        }
+
+        return new CreateSceneMenuItemRequest
+        {
+            SceneKind = _sceneKind,
+            ScopeValue = scopeValue,
+            ItemKind = SceneMenuItemKind.ShellVerb,
+            KeyName = verbParts[0].Trim(),
+            DisplayName = verbParts[1].Trim(),
+            Command = verbParts[2].Trim(),
+            Icon = verbParts.Length > 3 ? verbParts[3].Trim() : null
+        };
+    }
+
     private void OnSettingsChanged(object? sender, EventArgs e)
     {
         ItemsView.Refresh();
@@ -437,6 +505,7 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         RegistryMissingText = _localization.Translate("RegistryMissingText");
         CancelText = _localization.Translate("DialogCancel");
         SearchLabel = _localization.Translate("SearchLabel");
+        AddMenuItemText = _localization.Translate("AddMenuItem");
         if (!Items.Any())
         {
             EmptyText = RequiresScopeValue() && string.IsNullOrWhiteSpace(ResolveScopeValue())

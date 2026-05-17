@@ -417,6 +417,54 @@
                     <views:SceneBrowserView DataContext="{Binding CustomRegistryPathTab}" />
                 </Grid>
             </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Margin="0,0,6,0" Symbol="CursorHover24" />
+                        <TextBlock Text="{Binding DragDropTab.Title}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid Margin="12">
+                    <views:SpecialMenuPageView DataContext="{Binding DragDropTab}" />
+                </Grid>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Margin="0,0,6,0" Symbol="Library24" />
+                        <TextBlock Text="{Binding CommandStoreTab.Title}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid Margin="12">
+                    <views:SpecialMenuPageView DataContext="{Binding CommandStoreTab}" />
+                </Grid>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Margin="0,0,6,0" Symbol="DismissCircle24" />
+                        <TextBlock Text="{Binding GuidBlockTab.Title}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid Margin="12">
+                    <views:SpecialMenuPageView DataContext="{Binding GuidBlockTab}" />
+                </Grid>
+            </TabItem>
+
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Margin="0,0,6,0" Symbol="Globe24" />
+                        <TextBlock Text="{Binding IeMenuTab.Title}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid Margin="12">
+                    <views:SpecialMenuPageView DataContext="{Binding IeMenuTab}" />
+                </Grid>
+            </TabItem>
         </TabControl>
     </Grid>
 </UserControl>

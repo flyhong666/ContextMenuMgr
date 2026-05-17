@@ -1,6 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
+using Microsoft.Win32;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
 
@@ -10,6 +13,7 @@ namespace ContextMenuMgr.Frontend.ViewModels;
 public partial class FileTypesPageViewModel : ObservableObject, IDisposable
 {
     private readonly LocalizationService _localization;
+    private readonly IBackendClient _backendClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileTypesPageViewModel"/> class.
@@ -23,6 +27,7 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
         FrontendSettingsService settingsService)
     {
         _localization = localization;
+        _backendClient = backendClient;
 
         ShortcutTab = new SceneContextMenuTabViewModel(
             "Link24",
@@ -162,7 +167,17 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
     /// </summary>
     public SceneContextMenuTabViewModel UnknownTypeTab { get; }
 
+    public ObservableCollection<FileTypeAnalysisResult> AnalysisResults { get; } = [];
+
     public string Title => _localization.Translate("FileTypesPageTitle");
+
+    public string MenuAnalysisTitle => _localization.Translate("MenuAnalysisTitle");
+
+    public string MenuAnalysisDescription => _localization.Translate("MenuAnalysisDescription");
+
+    public string AnalyzeFileText => _localization.Translate("AnalyzeFile");
+
+    public string AnalyzeFolderText => _localization.Translate("AnalyzeFolder");
 
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
@@ -191,6 +206,76 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
         UnknownTypeTab.Title = _localization.Translate("SceneUnknownTypeTitle");
         UnknownTypeTab.Description = _localization.Translate("SceneUnknownTypeDescription");
         OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(MenuAnalysisTitle));
+        OnPropertyChanged(nameof(MenuAnalysisDescription));
+        OnPropertyChanged(nameof(AnalyzeFileText));
+        OnPropertyChanged(nameof(AnalyzeFolderText));
+    }
+
+    [RelayCommand]
+    private async Task AnalyzeFileAsync()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { DereferenceLinks = false };
+        if (dialog.ShowDialog() == true)
+        {
+            await AnalyzePathAsync(dialog.FileName);
+        }
+    }
+
+    [RelayCommand]
+    private async Task AnalyzeFolderAsync()
+    {
+        var folderPath = await TextInputDialog.ShowAsync(MenuAnalysisTitle, AnalyzeFolderText, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        if (!string.IsNullOrWhiteSpace(folderPath))
+        {
+            await AnalyzePathAsync(folderPath);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ApplyAnalysisResultAsync(FileTypeAnalysisResult? result)
+    {
+        var tab = result?.SceneKind switch
+        {
+            ContextMenuSceneKind.LnkFile => ShortcutTab,
+            ContextMenuSceneKind.UwpShortcut => UwpShortcutTab,
+            ContextMenuSceneKind.ExeFile => ExecutableTab,
+            ContextMenuSceneKind.CustomExtension => CustomExtensionTab,
+            ContextMenuSceneKind.PerceivedType => PerceivedTypeTab,
+            ContextMenuSceneKind.DirectoryType => DirectoryTypeTab,
+            ContextMenuSceneKind.UnknownType => UnknownTypeTab,
+            _ => null
+        };
+
+        if (tab is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result?.ScopeValue))
+        {
+            tab.ScopeValue = result.ScopeValue;
+        }
+
+        await tab.RefreshAsync();
+    }
+
+    private async Task AnalyzePathAsync(string path)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var results = await _backendClient.AnalyzeFileTypeContextAsync(path, cts.Token);
+            AnalysisResults.Clear();
+            foreach (var result in results)
+            {
+                AnalysisResults.Add(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, MenuAnalysisTitle);
+        }
     }
 
     private static IReadOnlyList<SceneOptionViewModel> CreatePerceivedTypeOptions(LocalizationService localization)

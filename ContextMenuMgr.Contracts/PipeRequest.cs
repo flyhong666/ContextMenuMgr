@@ -94,4 +94,53 @@ public sealed record PipeRequest
     /// Gets or sets the decision.
     /// </summary>
     public ContextMenuDecision? Decision { get; init; }
+
+    /// <summary>
+    /// Gets or sets the client operation id used to suppress duplicate local notifications.
+    /// </summary>
+    public Guid? ClientOperationId { get; init; }
+
+    /// <summary>
+    /// Gets or sets the special menu kind.
+    /// </summary>
+    public SpecialMenuKind? SpecialKind { get; init; }
+
+    /// <summary>
+    /// Gets or sets the special menu item.
+    /// </summary>
+    public SpecialMenuEntry? SpecialItem { get; init; }
+
+    public ShellNewCreateRequest? ShellNewCreate { get; init; }
+
+    public ShellNewUpdateRequest? ShellNewUpdate { get; init; }
+
+    public ShellNewSortRequest? ShellNewSort { get; init; }
+
+    public ShellNewLockRequest? ShellNewLock { get; init; }
+
+    public SendToCreateRequest? SendToCreate { get; init; }
+
+    public SendToUpdateRequest? SendToUpdate { get; init; }
+
+    public WinXCreateGroupRequest? WinXCreateGroup { get; init; }
+
+    public WinXCreateEntryRequest? WinXCreateEntry { get; init; }
+
+    public WinXUpdateEntryRequest? WinXUpdateEntry { get; init; }
+
+    public WinXMoveRequest? WinXMove { get; init; }
+
+    public DragDropCreateRequest? DragDropCreate { get; init; }
+
+    public GuidBlockCreateRequest? GuidBlockCreate { get; init; }
+
+    public IeMenuCreateRequest? IeMenuCreate { get; init; }
+
+    public IeMenuUpdateRequest? IeMenuUpdate { get; init; }
+
+    public FileTypeAnalysisRequest? FileTypeAnalysis { get; init; }
+
+    public CreateSceneMenuItemRequest? CreateSceneMenuItem { get; init; }
+
+    public DefaultDropEffect? DefaultDropEffect { get; init; }
 }

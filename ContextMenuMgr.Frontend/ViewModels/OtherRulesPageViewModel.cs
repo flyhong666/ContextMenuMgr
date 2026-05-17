@@ -55,6 +55,35 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
             @"HKCR\*\shell");
         _ = CustomRegistryPathTab.RefreshAsync();
 
+        DragDropTab = new SpecialMenuPageViewModel(
+            SpecialMenuKind.DragDrop,
+            "DragDropPageTitle",
+            "DragDropPageDescription",
+            backendClient,
+            iconPreviewService,
+            localization);
+        CommandStoreTab = new SpecialMenuPageViewModel(
+            SpecialMenuKind.CommandStore,
+            "CommandStorePageTitle",
+            "CommandStorePageDescription",
+            backendClient,
+            iconPreviewService,
+            localization);
+        GuidBlockTab = new SpecialMenuPageViewModel(
+            SpecialMenuKind.GuidBlock,
+            "GuidBlockPageTitle",
+            "GuidBlockPageDescription",
+            backendClient,
+            iconPreviewService,
+            localization);
+        IeMenuTab = new SpecialMenuPageViewModel(
+            SpecialMenuKind.InternetExplorer,
+            "IeMenuPageTitle",
+            "IeMenuPageDescription",
+            backendClient,
+            iconPreviewService,
+            localization);
+
         _workspace.Items.CollectionChanged += OnWorkspaceItemsCollectionChanged;
         foreach (var item in _workspace.Items)
         {
@@ -69,6 +98,14 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
     /// Gets the custom Registry Path Tab.
     /// </summary>
     public SceneContextMenuTabViewModel CustomRegistryPathTab { get; }
+
+    public SpecialMenuPageViewModel DragDropTab { get; }
+
+    public SpecialMenuPageViewModel CommandStoreTab { get; }
+
+    public SpecialMenuPageViewModel GuidBlockTab { get; }
+
+    public SpecialMenuPageViewModel IeMenuTab { get; }
 
     /// <summary>
     /// Gets or sets the enhance Groups.
@@ -216,5 +253,9 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         }
 
         CustomRegistryPathTab.Dispose();
+        DragDropTab.Dispose();
+        CommandStoreTab.Dispose();
+        GuidBlockTab.Dispose();
+        IeMenuTab.Dispose();
     }
 }
