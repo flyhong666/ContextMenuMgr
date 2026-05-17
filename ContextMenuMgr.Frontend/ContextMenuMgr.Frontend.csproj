@@ -30,7 +30,8 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.6" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.6" />
-    <PackageReference Include="WPF-UI" Version="4.2.0" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+    <PackageReference Include="WPF-UI.DependencyInjection" Version="4.3.0" />
     <ProjectReference Include="..\ContextMenuMgr.Contracts\ContextMenuMgr.Contracts.csproj" />
     <ProjectReference Include="..\ContextMenuMgr.Backend\ContextMenuMgr.Backend.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\ContextMenuMgr.TrayHost\ContextMenuMgr.TrayHost.csproj" ReferenceOutputAssembly="false" />

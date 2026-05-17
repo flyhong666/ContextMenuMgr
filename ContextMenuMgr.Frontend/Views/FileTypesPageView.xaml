@@ -5,7 +5,7 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views">
     <Grid>
-        <TabControl Margin="0,8,0,0" SelectedIndex="{Binding SelectedTabIndex}">
+        <TabControl x:Name="MainTabControl" Margin="0,8,0,0">
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
@@ -115,7 +115,7 @@
                                     Margin="8,0,0,0"
                                     Command="{Binding AnalyzeFolderCommand}"
                                     Content="{Binding AnalyzeFolderText}"
-                                    Icon="{ui:SymbolIcon Symbol=FolderSearch24}" />
+                                    Icon="{ui:SymbolIcon Symbol=FolderSync24}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>

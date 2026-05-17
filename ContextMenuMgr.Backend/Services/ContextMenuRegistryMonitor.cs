@@ -82,9 +82,9 @@ public sealed class ContextMenuRegistryMonitor
 
                 foreach (var item in currentSnapshot.Where(item => !knownItems.ContainsKey(item.Id)))
                 {
-                    knownItems[item.Id] = item;
                     if (await _catalog.TryConsumeSuppressedDetectionAsync(item.Id, cancellationToken))
                     {
+                        knownItems[item.Id] = item;
                         await _logger.LogAsync($"Suppressed review prompt for restored menu item: {item.DisplayName}", cancellationToken);
                         continue;
                     }
@@ -95,6 +95,7 @@ public sealed class ContextMenuRegistryMonitor
                     // items should be auto-quarantined for review.
                     if (item.DetectedChangeKind != ContextMenuChangeKind.Added)
                     {
+                        knownItems[item.Id] = item;
                         continue;
                     }
 
@@ -111,7 +112,6 @@ public sealed class ContextMenuRegistryMonitor
 
                     if (RequiresApprovalForExternalReenable(previous, item))
                     {
-                        knownItems[item.Id] = item;
                         await _logger.LogAsync($"Detected externally re-enabled menu item: {item.DisplayName}", cancellationToken);
                         ItemDetected?.Invoke(this, item);
                         continue;

@@ -2479,6 +2479,20 @@ public sealed class ContextMenuRegistryCatalog
             InheritanceFlags.None,
             PropagationFlags.None,
             AccessControlType.Deny);
+
+        yield return new RegistryAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+            rights,
+            InheritanceFlags.ContainerInherit,
+            PropagationFlags.None,
+            AccessControlType.Deny);
+
+        yield return new RegistryAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            rights,
+            InheritanceFlags.ContainerInherit,
+            PropagationFlags.None,
+            AccessControlType.Deny);
     }
 
     private static IEnumerable<RegistryRootDescriptor> GetSceneRoots(ContextMenuSceneKind sceneKind, string? scopeValue)

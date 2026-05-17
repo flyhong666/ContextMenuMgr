@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿﻿using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.AccessControl;
@@ -210,7 +210,7 @@ public sealed class NamedPipeBackendServer
                     // Request handlers are allowed to fail independently; the pipe
                     // stays alive and the caller receives a structured error response.
                     
-                    PipeResponse impersonatedResponse = null;
+                    PipeResponse? impersonatedResponse = null;
                     Exception? impersonationException = null;
                     
                     try
@@ -460,7 +460,7 @@ public sealed class NamedPipeBackendServer
             Notification = notification
         };
 
-        foreach (var connection in _clients.Values.ToList())
+        foreach (var connection in _clients.Values.Where(static connection => connection.IsNotificationSubscriber).ToList())
         {
             try
             {

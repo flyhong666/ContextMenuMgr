@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -6,6 +6,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ContextMenuMgr.Frontend.Views.Pages;
 using Wpf.Ui.Appearance;
+using Wpf.Ui;
+using Wpf.Ui.Controls;
 
 namespace ContextMenuMgr.Frontend;
 
@@ -21,11 +23,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     /// </summary>
     public MainWindow(
         ViewModels.ShellViewModel viewModel,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        INavigationService navigationService)
     {
         SystemThemeWatcher.Watch(this);
         InitializeComponent();
         RootNavigation.SetServiceProvider(serviceProvider);
+        navigationService.SetNavigationControl(RootNavigation);
         RootNavigation.Navigated += OnRootNavigationNavigated;
         DataContext = viewModel;
 

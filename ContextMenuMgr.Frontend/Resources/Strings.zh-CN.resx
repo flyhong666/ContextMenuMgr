@@ -996,6 +996,18 @@
   <data name="AnalysisResultDirectoryTypeReason" xml:space="preserve">
     <value>如果此文件夹匹配特定目录类型，则使用该类型。</value>
   </data>
+  <data name="JumpToAllFilesHint" xml:space="preserve">
+    <value>"所有文件"场景对应于主页中的"文件"类别。请在左侧导航栏中选择"目录"下的相关选项进行管理。</value>
+  </data>
+  <data name="JumpToAllObjectsHint" xml:space="preserve">
+    <value>"所有文件系统对象"同时适用于文件和文件夹。您可以在"目录"或"桌面背景"类别中找到相关设置。</value>
+  </data>
+  <data name="JumpToCustomPathHint" xml:space="preserve">
+    <value>该场景对应于自定义注册表路径：{0}\n\n此路径可能需要通过注册表编辑器直接管理，或在主页中查找对应的类别。</value>
+  </data>
+  <data name="UnsupportedSceneKind" xml:space="preserve">
+    <value>不支持的场景类型：{0}</value>
+  </data>
   <data name="AddMenuItem" xml:space="preserve">
     <value>新增菜单项</value>
   </data>

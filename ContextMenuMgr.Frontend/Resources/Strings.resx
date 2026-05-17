@@ -996,6 +996,18 @@
   <data name="AnalysisResultDirectoryTypeReason" xml:space="preserve">
     <value>Use a specific directory type if one matches this folder.</value>
   </data>
+  <data name="JumpToAllFilesHint" xml:space="preserve">
+    <value>The "All files" scene corresponds to the "File" category on the Home page. Please select the relevant option under "Directory" in the left navigation bar to manage it.</value>
+  </data>
+  <data name="JumpToAllObjectsHint" xml:space="preserve">
+    <value>"All filesystem objects" applies to both files and folders. You can find related settings in the "Directory" or "Desktop Background" category.</value>
+  </data>
+  <data name="JumpToCustomPathHint" xml:space="preserve">
+    <value>This scene corresponds to a custom registry path: {0}\n\nThis path may need to be managed directly through Registry Editor, or find the corresponding category on the Home page.</value>
+  </data>
+  <data name="UnsupportedSceneKind" xml:space="preserve">
+    <value>Unsupported scene kind: {0}</value>
+  </data>
   <data name="AddMenuItem" xml:space="preserve">
     <value>Add Menu Item</value>
   </data>

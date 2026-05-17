@@ -3,7 +3,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
+using ContextMenuMgr.Frontend.Views.Pages;
 using Microsoft.Win32;
+using Wpf.Ui;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
 
@@ -14,6 +16,7 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
 {
     private readonly LocalizationService _localization;
     private readonly IBackendClient _backendClient;
+    private readonly INavigationService _navigationService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileTypesPageViewModel"/> class.
@@ -24,10 +27,12 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
         LocalizationService localization,
         IconPreviewService iconPreviewService,
         ContextMenuItemActionsService actionsService,
-        FrontendSettingsService settingsService)
+        FrontendSettingsService settingsService,
+        INavigationService navigationService)
     {
         _localization = localization;
         _backendClient = backendClient;
+        _navigationService = navigationService;
 
         ShortcutTab = new SceneContextMenuTabViewModel(
             "Link24",
@@ -182,7 +187,7 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
     public string JumpText => _localization.Translate("JumpToScene");
 
     [ObservableProperty]
-    private int _selectedTabIndex = 7;
+    private int _selectedTabIndex = -1;
 
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
@@ -241,25 +246,89 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ApplyAnalysisResultAsync(FileTypeAnalysisResult? result)
     {
-        (SceneContextMenuTabViewModel targetTab, int tabIndex) = result?.SceneKind switch
+        if (result is null)
         {
-            ContextMenuSceneKind.LnkFile => (ShortcutTab, 0),
-            ContextMenuSceneKind.UwpShortcut => (UwpShortcutTab, 1),
-            ContextMenuSceneKind.ExeFile => (ExecutableTab, 2),
-            ContextMenuSceneKind.CustomExtension => (CustomExtensionTab, 3),
-            ContextMenuSceneKind.PerceivedType => (PerceivedTypeTab, 4),
-            ContextMenuSceneKind.DirectoryType => (DirectoryTypeTab, 5),
-            ContextMenuSceneKind.UnknownType => (UnknownTypeTab, 6),
-            _ => throw new NotSupportedException($"Unsupported scene kind: {result?.SceneKind}")
-        };
-
-        if (!string.IsNullOrWhiteSpace(result?.ScopeValue))
-        {
-            targetTab.ScopeValue = result.ScopeValue;
+            return;
         }
 
-        SelectedTabIndex = tabIndex;
-        await targetTab.RefreshAsync();
+        switch (result.SceneKind)
+        {
+            case ContextMenuSceneKind.LnkFile:
+                ShortcutTab.ScopeValue = "lnkfile";
+                SelectedTabIndex = 0;
+                await ShortcutTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.UwpShortcut:
+                UwpShortcutTab.ScopeValue = "Launcher.ImmersiveApplication";
+                SelectedTabIndex = 1;
+                await UwpShortcutTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.ExeFile:
+                ExecutableTab.ScopeValue = "exefile";
+                SelectedTabIndex = 2;
+                await ExecutableTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.CustomExtension:
+                CustomExtensionTab.ScopeValue = result.ScopeValue ?? string.Empty;
+                SelectedTabIndex = 3;
+                await CustomExtensionTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.PerceivedType:
+                PerceivedTypeTab.ScopeValue = result.ScopeValue ?? string.Empty;
+                SelectedTabIndex = 4;
+                await PerceivedTypeTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.DirectoryType:
+                DirectoryTypeTab.ScopeValue = result.ScopeValue ?? "Document";
+                SelectedTabIndex = 5;
+                await DirectoryTypeTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.UnknownType:
+                UnknownTypeTab.ScopeValue = "Unknown";
+                SelectedTabIndex = 6;
+                await UnknownTypeTab.RefreshAsync();
+                break;
+            case ContextMenuSceneKind.CustomRegistryPath:
+                await HandleCustomRegistryPathJumpAsync(result);
+                break;
+            default:
+                await FrontendMessageBox.ShowErrorAsync(
+                    _localization.Format("UnsupportedSceneKind", result.SceneKind),
+                    MenuAnalysisTitle);
+                break;
+        }
+    }
+
+    private async Task HandleCustomRegistryPathJumpAsync(FileTypeAnalysisResult result)
+    {
+        var scopeValue = result.ScopeValue ?? string.Empty;
+
+        if (scopeValue.Contains(@"HKCR\*\shell", StringComparison.OrdinalIgnoreCase))
+        {
+            _navigationService.Navigate(typeof(FileContextMenuPage));
+        }
+        else if (scopeValue.Contains(@"HKCR\AllFilesystemObjects\shell", StringComparison.OrdinalIgnoreCase))
+        {
+            _navigationService.Navigate(typeof(AllObjectsContextMenuPage));
+        }
+        else if (scopeValue.Contains(@"HKCR\Folder\shell", StringComparison.OrdinalIgnoreCase))
+        {
+            _navigationService.Navigate(typeof(FolderContextMenuPage));
+        }
+        else if (scopeValue.Contains(@"HKCR\Drive\shell", StringComparison.OrdinalIgnoreCase))
+        {
+            _navigationService.Navigate(typeof(DriveContextMenuPage));
+        }
+        else if (scopeValue.Contains(@"HKCR\Directory\shell", StringComparison.OrdinalIgnoreCase))
+        {
+            _navigationService.Navigate(typeof(DirectoryContextMenuPage));
+        }
+        else
+        {
+            await FrontendMessageBox.ShowInfoAsync(
+                _localization.Format("JumpToCustomPathHint", scopeValue),
+                MenuAnalysisTitle);
+        }
     }
 
     private async Task AnalyzePathAsync(string path)

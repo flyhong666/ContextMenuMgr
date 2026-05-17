@@ -2,6 +2,8 @@
 using ContextMenuMgr.Frontend.ViewModels;
 using ContextMenuMgr.Frontend.Views.Pages;
 using Microsoft.Extensions.DependencyInjection;
+using Wpf.Ui;
+using Wpf.Ui.DependencyInjection;
 
 namespace ContextMenuMgr.Frontend;
 
@@ -14,12 +16,15 @@ public partial class App
     {
         var services = new ServiceCollection();
 
+        services.AddNavigationViewPageProvider();
+        services.AddSingleton<INavigationService, NavigationService>();
+
         services.AddSingleton<FrontendSettingsService>();
         services.AddSingleton<FrontendStartupService>();
         services.AddSingleton<TrayHostProcessService>();
         services.AddSingleton<FrontendNavigationState>();
         services.AddSingleton<LocalizationService>();
-        services.AddSingleton<ThemeService>();
+        services.AddSingleton<Services.ThemeService>();
         services.AddSingleton<IconPreviewService>();
         services.AddSingleton<RuleDictionaryCatalogService>();
         services.AddSingleton<EnhanceMenuRuleService>();
@@ -32,7 +37,10 @@ public partial class App
         services.AddSingleton<ExplorerRestartStateService>();
 
         services.AddSingleton<ShellViewModel>();
-        services.AddSingleton<MainWindow>();
+        services.AddSingleton<MainWindow>(sp => new MainWindow(
+            sp.GetRequiredService<ShellViewModel>(),
+            sp,
+            sp.GetRequiredService<INavigationService>()));
 
         services.AddSingleton<FileContextMenuPageViewModel>();
         services.AddSingleton<AllObjectsContextMenuPageViewModel>();

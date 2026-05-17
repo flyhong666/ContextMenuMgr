@@ -1,5 +1,6 @@
 ﻿using ContextMenuMgr.Backend.Services;
 using ContextMenuMgr.Contracts;
+using System.Collections.Concurrent;
 using System.IO;
 
 namespace ContextMenuMgr.Backend.Hosting;
@@ -16,6 +17,7 @@ public sealed class BackendRuntime : IDisposable
     private readonly FrontendAutostartLauncher _frontendAutostartLauncher;
     private readonly Lock _approvalNotificationSyncRoot = new();
     private readonly Dictionary<string, DateTimeOffset> _recentApprovalNotificationKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _quarantineInProgress = new(StringComparer.OrdinalIgnoreCase);
     private bool _ensureTrayHostOnStartup;
     private bool _shutdownFrontendOnStop = true;
     private CancellationTokenSource? _lifetimeCts;
@@ -215,6 +217,11 @@ public sealed class BackendRuntime : IDisposable
 
     private void OnItemDetected(object? sender, ContextMenuEntry item)
     {
+        if (!_quarantineInProgress.TryAdd(item.Id, 0))
+        {
+            return;
+        }
+
         _ = HandleNewItemDetectedAsync(item);
     }
 
@@ -244,6 +251,10 @@ public sealed class BackendRuntime : IDisposable
         catch (Exception ex)
         {
             await _logger.LogAsync($"Failed to quarantine new menu item {item.DisplayName}: {ex.Message}", CancellationToken.None);
+        }
+        finally
+        {
+            _quarantineInProgress.TryRemove(item.Id, out _);
         }
     }
 

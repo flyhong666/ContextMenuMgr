@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
@@ -19,7 +19,11 @@ public sealed class FileLogger
     public FileLogger(string logPath)
     {
         _logPath = logPath;
-        _fallbackLogPath = Path.Combine(Path.GetTempPath(), "ContextMenuMgr", "backend.log");
+        _fallbackLogPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "ContextMenuMgr",
+            "Logs",
+            "backend-fallback.log");
 
         EnsureDirectoryExists(_logPath);
         EnsureDirectoryExists(_fallbackLogPath);
@@ -43,7 +47,14 @@ public sealed class FileLogger
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or DirectoryNotFoundException)
             {
-                await File.AppendAllTextAsync(_fallbackLogPath, line, cancellationToken);
+                try
+                {
+                    await File.AppendAllTextAsync(_fallbackLogPath, line, cancellationToken);
+                }
+                catch
+                {
+                    // 静默处理 - 日志不应该导致功能失败
+                }
             }
         }
         finally
