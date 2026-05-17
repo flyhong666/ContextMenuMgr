@@ -52,7 +52,7 @@ public sealed class Windows11BlocksService
             }
             else
             {
-                await _logger.LogAsync("No user context provided for user-level Win11 block operation.", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, "No user context provided for user-level Win11 block operation.", cancellationToken);
             }
 
             await _logger.LogAsync($"Win11 context menu item blocked: {normalizedClsid} (Machine={blockMachine}, User={userContext is not null})", cancellationToken);
@@ -65,7 +65,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to block Win11 item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to block Win11 item: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -100,7 +100,7 @@ public sealed class Windows11BlocksService
             }
             else
             {
-                await _logger.LogAsync("No user context provided for user-level Win11 unblock operation.", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, "No user context provided for user-level Win11 unblock operation.", cancellationToken);
             }
 
             await _logger.LogAsync($"Win11 context menu item unblocked: {normalizedClsid} (Machine={unblockMachine}, User={userContext is not null})", cancellationToken);
@@ -113,7 +113,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to unblock Win11 item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to unblock Win11 item: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -146,7 +146,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to get Win11 blocked items: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get Win11 blocked items: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -220,7 +220,7 @@ public sealed class Windows11BlocksService
         }
         catch (UnauthorizedAccessException ex)
         {
-            await _logger.LogAsync($"Permission denied adding to user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied adding to user blocked list: {ex.Message}", cancellationToken);
             throw new InvalidOperationException(
                 "Cannot write to the registry key. The backend service may not have sufficient permissions to modify the current user's registry. " +
                 "Please ensure the backend service is running with adequate privileges or run the application as administrator.",
@@ -228,7 +228,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to add to user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to add to user blocked list: {ex.Message}", cancellationToken);
             throw;
         }
     }
@@ -247,7 +247,7 @@ public sealed class Windows11BlocksService
         }
         catch (UnauthorizedAccessException ex)
         {
-            await _logger.LogAsync($"Permission denied removing from user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied removing from user blocked list: {ex.Message}", cancellationToken);
             throw new InvalidOperationException(
                 "Cannot write to the registry key. The backend service may not have sufficient permissions to modify the current user's registry. " +
                 "Please ensure the backend service is running with adequate privileges or run the application as administrator.",
@@ -255,7 +255,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to remove from user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to remove from user blocked list: {ex.Message}", cancellationToken);
             throw;
         }
     }
@@ -283,7 +283,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            _logger.LogAsync($"Error reading user blocked items for {userContext.Sid}: {ex.Message}, returning empty list.", CancellationToken.None).GetAwaiter().GetResult();
+            _logger.LogAsync(RuntimeLogLevel.Warning, $"Error reading user blocked items for {userContext.Sid}: {ex.Message}, returning empty list.", CancellationToken.None).GetAwaiter().GetResult();
         }
 
         return items;

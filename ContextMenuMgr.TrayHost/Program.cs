@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using ContextMenuMgr.Contracts;
 using ContextMenuMgr.TrayHost;
 
 /// <summary>
@@ -26,7 +27,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            logger.LogAsync($"TrayHost crashed: {ex}").GetAwaiter().GetResult();
+            logger.LogAsync(RuntimeLogLevel.Error, $"TrayHost crashed: {ex}").GetAwaiter().GetResult();
             return -1;
         }
     }
@@ -53,7 +54,7 @@ internal static class Program
             return;
         }
 
-        logger.LogAsync($"Toast AppUserModelID shortcut unavailable: {errorMessage}").GetAwaiter().GetResult();
+        logger.LogAsync(RuntimeLogLevel.Warning, $"Toast AppUserModelID shortcut unavailable: {errorMessage}").GetAwaiter().GetResult();
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]

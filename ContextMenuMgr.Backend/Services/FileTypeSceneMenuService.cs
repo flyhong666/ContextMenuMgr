@@ -112,7 +112,7 @@ public sealed class FileTypeSceneMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to create scene menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create scene menu item: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }

@@ -591,6 +591,17 @@ public sealed class NamedPipeBackendClient : IBackendClient
         return response.AutoStartEnabled ?? false;
     }
 
+    public async Task SetLogLevelAsync(RuntimeLogLevel logLevel, CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetLogLevel,
+                LogLevel = logLevel
+            },
+            cancellationToken);
+    }
+
     /// <summary>
     /// Releases resources used by the current instance.
     /// </summary>
@@ -615,16 +626,12 @@ public sealed class NamedPipeBackendClient : IBackendClient
 
     private async Task<PipeResponse> SendRequestAsync(PipeRequest request, CancellationToken cancellationToken)
     {
-        FrontendDebugLog.Info("NamedPipeBackendClient", $"SendRequestAsync -> {request.Command}, ItemId={request.ItemId}");
-
         await _sendLock.WaitAsync(cancellationToken);
         try
         {
             using var stream = new NamedPipeClientStream(".", PipeConstants.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            FrontendDebugLog.Info("NamedPipeBackendClient", $"Connecting one-shot pipe for {request.Command}.");
             await stream.ConnectAsync(2000, cancellationToken);
             stream.ReadMode = PipeTransmissionMode.Byte;
-            FrontendDebugLog.Info("NamedPipeBackendClient", $"Connected one-shot pipe for {request.Command}.");
 
             using var reader = new StreamReader(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), detectEncodingFromByteOrderMarks: false, leaveOpen: true);
             using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), leaveOpen: true)
@@ -640,20 +647,16 @@ public sealed class NamedPipeBackendClient : IBackendClient
             };
 
             var payload = JsonSerializer.Serialize(envelope, JsonOptions);
-            FrontendDebugLog.Info("NamedPipeBackendClient", $"Writing request payload for {request.Command}.");
             await writer.WriteLineAsync(payload).WaitAsync(cancellationToken);
-            FrontendDebugLog.Info("NamedPipeBackendClient", $"Request payload written for {request.Command}.");
 
             while (true)
             {
-                FrontendDebugLog.Info("NamedPipeBackendClient", $"Waiting for response line for {request.Command}.");
                 var line = await reader.ReadLineAsync().WaitAsync(cancellationToken);
                 if (line is null)
                 {
                     throw new InvalidOperationException("The backend pipe closed before returning a response.");
                 }
 
-                FrontendDebugLog.Info("NamedPipeBackendClient", $"Received line for {request.Command}. Length={line.Length}");
                 var responseEnvelope = JsonSerializer.Deserialize<PipeEnvelope>(line, JsonOptions);
                 if (responseEnvelope is null)
                 {
@@ -679,7 +682,7 @@ public sealed class NamedPipeBackendClient : IBackendClient
 
                 if (!responseEnvelope.Response.Success)
                 {
-                    FrontendDebugLog.Info(
+                    FrontendDebugLog.Warning(
                         "NamedPipeBackendClient",
                         $"SendRequestAsync <- {request.Command} failed. Message={responseEnvelope.Response.Message}");
                     throw new InvalidOperationException(responseEnvelope.Response.Message);
@@ -691,7 +694,7 @@ public sealed class NamedPipeBackendClient : IBackendClient
         }
         catch (TimeoutException ex)
         {
-            FrontendDebugLog.Info("NamedPipeBackendClient", $"SendRequestAsync timed out for {request.Command}: {ex.Message}");
+            FrontendDebugLog.Warning("NamedPipeBackendClient", $"SendRequestAsync timed out for {request.Command}: {ex.Message}");
             throw;
         }
         catch (Exception ex)

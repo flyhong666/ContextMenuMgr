@@ -126,6 +126,12 @@
   <data name="AppDescription" xml:space="preserve">
     <value>查看文件和文件夹右键菜单项，安全地启用或禁用，并对后台服务检测到的新项目进行审核。</value>
   </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>发现新版本</value>
+  </data>
+  <data name="UpdateAvailableMessage" xml:space="preserve">
+    <value>GitHub Releases 已发布 {0}。</value>
+  </data>
   <data name="BackendStatusTitle" xml:space="preserve">
     <value>后端状态</value>
   </data>

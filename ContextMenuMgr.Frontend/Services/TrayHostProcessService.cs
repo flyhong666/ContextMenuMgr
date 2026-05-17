@@ -64,7 +64,19 @@ public sealed class TrayHostProcessService
     public async Task<bool> RequestReloadLocalizationAsync(CancellationToken cancellationToken)
         => await SendCommandAsync(TrayHostControlCommand.ReloadLocalization, cancellationToken);
 
+    public async Task<bool> SetLogLevelAsync(RuntimeLogLevel logLevel, CancellationToken cancellationToken)
+        => await SendCommandAsync(
+            new TrayHostControlRequest
+            {
+                Command = TrayHostControlCommand.SetLogLevel,
+                LogLevel = logLevel
+            },
+            cancellationToken);
+
     private static async Task<bool> SendCommandAsync(TrayHostControlCommand command, CancellationToken cancellationToken)
+        => await SendCommandAsync(new TrayHostControlRequest { Command = command }, cancellationToken);
+
+    private static async Task<bool> SendCommandAsync(TrayHostControlRequest request, CancellationToken cancellationToken)
     {
         try
         {
@@ -75,7 +87,7 @@ public sealed class TrayHostProcessService
             using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
 
             await writer.WriteLineAsync(JsonSerializer.Serialize(
-                new TrayHostControlRequest { Command = command },
+                request,
                 JsonOptions)).WaitAsync(cancellationToken);
 
             var line = await reader.ReadLineAsync().WaitAsync(cancellationToken);

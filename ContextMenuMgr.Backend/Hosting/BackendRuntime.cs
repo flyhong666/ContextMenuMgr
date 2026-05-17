@@ -252,7 +252,7 @@ public sealed class BackendRuntime : IDisposable
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to quarantine new menu item {item.DisplayName}: {ex.Message}", CancellationToken.None);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to quarantine new menu item {item.DisplayName}: {ex.Message}", CancellationToken.None);
         }
         finally
         {
@@ -289,7 +289,7 @@ public sealed class BackendRuntime : IDisposable
         }
         catch (Exception ex)
         {
-            _ = _logger.LogAsync($"Failed to launch tray host from service: {ex.Message}", CancellationToken.None);
+            _ = _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to launch tray host from service: {ex.Message}", CancellationToken.None);
         }
     }
 

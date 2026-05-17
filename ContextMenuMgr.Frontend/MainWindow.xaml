@@ -24,6 +24,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -47,7 +48,7 @@
                 Text="{Binding ServiceAttentionText}"
                 Visibility="{Binding ServiceAttentionText, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal">
                 <ui:Button
                     MinWidth="108"
                     Margin="0,0,8,0"
@@ -70,7 +71,62 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="2" Margin="5,0,5,5">
+        <Border
+            x:Name="RootInfoBar"
+            Grid.Row="2"
+            Padding="16,10"
+            Margin="12,0,12,12"
+            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="4"
+            Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:SymbolIcon
+                    Grid.Column="0"
+                    Margin="0,0,12,0"
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                    Symbol="Info24" />
+                <WrapPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal">
+                    <TextBlock
+                        x:Name="RootInfoBarTitle"
+                        VerticalAlignment="Center"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="RootInfoBarMessage"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center" />
+                    <ui:HyperlinkButton
+                        x:Name="RootInfoBarLink"
+                        Margin="8,0,0,0"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        Icon="{ui:SymbolIcon Symbol=Open24}"
+                        Visibility="Collapsed" />
+                </WrapPanel>
+                <ui:Button
+                    x:Name="RootInfoBarClose"
+                    Grid.Column="2"
+                    Width="32"
+                    Height="32"
+                    Padding="0"
+                    HorizontalAlignment="Right"
+                    Appearance="Transparent"
+                    Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3" Margin="5,0,5,5">
             <ui:NavigationView
                 x:Name="RootNavigation"
                 IsBackButtonVisible="Collapsed"

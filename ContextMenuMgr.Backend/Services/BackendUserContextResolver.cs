@@ -2,6 +2,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
+using ContextMenuMgr.Contracts;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
 
@@ -39,7 +40,7 @@ public sealed class BackendUserContextResolver
         }
         catch (Exception ex)
         {
-            _ = _logger.LogAsync($"Unable to resolve pipe client user context: {ex.Message}", CancellationToken.None);
+            _ = _logger.LogAsync(RuntimeLogLevel.Warning, $"Unable to resolve pipe client user context: {ex.Message}", CancellationToken.None);
             return null;
         }
     }

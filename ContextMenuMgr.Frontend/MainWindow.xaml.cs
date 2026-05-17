@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using ContextMenuMgr.Frontend.Services;
 using ContextMenuMgr.Frontend.Views.Pages;
 using Wpf.Ui.Appearance;
 using Wpf.Ui;
@@ -16,6 +17,7 @@ namespace ContextMenuMgr.Frontend;
 /// </summary>
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
+    private readonly UpdateCheckService _updateCheckService;
     private Type? _pendingPageType;
 
     /// <summary>
@@ -24,16 +26,24 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     public MainWindow(
         ViewModels.ShellViewModel viewModel,
         IServiceProvider serviceProvider,
-        INavigationService navigationService)
+        INavigationService navigationService,
+        IInfoBarService infoBarService,
+        UpdateCheckService updateCheckService)
     {
+        _updateCheckService = updateCheckService;
         SystemThemeWatcher.Watch(this);
         InitializeComponent();
+        infoBarService.SetInfoBarControl(RootInfoBar, RootInfoBarTitle, RootInfoBarMessage, RootInfoBarLink);
+        RootInfoBarClose.Click += (_, _) => infoBarService.CloseInfoBar();
         RootNavigation.SetServiceProvider(serviceProvider);
         navigationService.SetNavigationControl(RootNavigation);
         RootNavigation.Navigated += OnRootNavigationNavigated;
         DataContext = viewModel;
 
         ApplyWindowIcon();
+#if DEBUG
+        AddDebugUpdatePromptButton();
+#endif
         Loaded += OnLoaded;
     }
 
@@ -65,6 +75,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         var targetPageType = _pendingPageType ?? typeof(FileContextMenuPage);
         RootNavigation.Navigate(targetPageType);
+        _updateCheckService.StartInitialCheck();
     }
 
     private void OnRootNavigationNavigated(
@@ -131,4 +142,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             Icon = BitmapFrame.Create(new Uri(iconPath, UriKind.Absolute));
         }
     }
+
+#if DEBUG
+    private void AddDebugUpdatePromptButton()
+    {
+        var button = new Wpf.Ui.Controls.Button
+        {
+            MinWidth = 108,
+            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(14, 8, 14, 8),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Appearance = ControlAppearance.Secondary,
+            Content = "强制更新提示"
+        };
+        button.Click += (_, _) => _updateCheckService.ShowDebugUpdatePrompt();
+        HeaderActions.Children.Insert(0, button);
+    }
+#endif
 }

@@ -6,5 +6,6 @@
 public enum TrayHostControlCommand
 {
     Exit,
-    ReloadLocalization
+    ReloadLocalization,
+    SetLogLevel
 }

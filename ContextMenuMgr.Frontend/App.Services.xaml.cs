@@ -35,12 +35,16 @@ public partial class App
         services.AddSingleton<IBackendServiceManager, BackendServiceManager>();
         services.AddSingleton<ContextMenuWorkspaceService>();
         services.AddSingleton<ExplorerRestartStateService>();
+        services.AddSingleton<IInfoBarService, InfoBarService>();
+        services.AddSingleton<UpdateCheckService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<MainWindow>(sp => new MainWindow(
             sp.GetRequiredService<ShellViewModel>(),
             sp,
-            sp.GetRequiredService<INavigationService>()));
+            sp.GetRequiredService<INavigationService>(),
+            sp.GetRequiredService<IInfoBarService>(),
+            sp.GetRequiredService<UpdateCheckService>()));
 
         services.AddSingleton<FileContextMenuPageViewModel>();
         services.AddSingleton<AllObjectsContextMenuPageViewModel>();

@@ -58,7 +58,7 @@ internal sealed class TrayHostRunner : IDisposable
             _systemToastNotificationService = new SystemToastNotificationService();
             if (!ProtocolActivationRegistrar.TryRegister(AppContext.BaseDirectory, out var protocolRegistrationError))
             {
-                _ = _logger.LogAsync($"Protocol activation registration failed: {protocolRegistrationError}");
+                _ = _logger.LogAsync(RuntimeLogLevel.Warning, $"Protocol activation registration failed: {protocolRegistrationError}");
             }
 
             // The tray host only surfaces lightweight session-side UI. All real
@@ -171,7 +171,7 @@ internal sealed class TrayHostRunner : IDisposable
             }
             catch (Exception ex)
             {
-                await _logger.LogAsync($"Failed to request backend shutdown from tray host: {ex.Message}");
+                await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to request backend shutdown from tray host: {ex.Message}");
             }
             finally
             {
@@ -209,7 +209,7 @@ internal sealed class TrayHostRunner : IDisposable
 
     private void OnBackendUnavailable(object? sender, EventArgs e)
     {
-        _ = _logger.LogAsync("Backend became unavailable while tray host stays alive.");
+        _ = _logger.LogAsync(RuntimeLogLevel.Warning, "Backend became unavailable while tray host stays alive.");
     }
 
     private static string? ResolveTrayIconPath()
@@ -227,6 +227,11 @@ internal sealed class TrayHostRunner : IDisposable
         else if (request.Command == TrayHostControlCommand.ReloadLocalization)
         {
             ReloadLocalization();
+        }
+        else if (request is { Command: TrayHostControlCommand.SetLogLevel, LogLevel: not null })
+        {
+            _logger.Configure(request.LogLevel.Value);
+            _ = _logger.LogAsync($"Tray host log level set to {request.LogLevel.Value}.");
         }
 
         return Task.FromResult(new TrayHostControlResponse

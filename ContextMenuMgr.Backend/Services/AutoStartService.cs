@@ -61,7 +61,7 @@ public sealed class AutoStartService
         }
         catch (UnauthorizedAccessException ex)
         {
-            await _logger.LogAsync($"Permission denied setting auto-start: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied setting auto-start: {ex.Message}", cancellationToken);
             return Failure(
                 "Cannot write to the registry key. The backend service may not have sufficient permissions. " +
                 "Please ensure the backend service is running with adequate privileges or run as administrator.",
@@ -69,7 +69,7 @@ public sealed class AutoStartService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to set auto-start: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set auto-start: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -126,7 +126,7 @@ public sealed class AutoStartService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to get auto-start status: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get auto-start status: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }

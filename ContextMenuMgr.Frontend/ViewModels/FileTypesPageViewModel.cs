@@ -236,10 +236,14 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task AnalyzeFolderAsync()
     {
-        var folderPath = await TextInputDialog.ShowAsync(MenuAnalysisTitle, AnalyzeFolderText, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        if (!string.IsNullOrWhiteSpace(folderPath))
+        var dialog = new OpenFolderDialog
         {
-            await AnalyzePathAsync(folderPath);
+            Title = AnalyzeFolderText,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            await AnalyzePathAsync(dialog.FolderName);
         }
     }
 

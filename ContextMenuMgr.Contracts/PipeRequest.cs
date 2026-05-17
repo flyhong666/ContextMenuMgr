@@ -163,4 +163,9 @@ public sealed record PipeRequest
     /// Gets or sets whether auto-start is enabled.
     /// </summary>
     public bool? AutoStartEnabled { get; init; }
+
+    /// <summary>
+    /// Gets or sets the shared runtime log level.
+    /// </summary>
+    public RuntimeLogLevel? LogLevel { get; init; }
 }

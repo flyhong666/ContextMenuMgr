@@ -372,13 +372,13 @@ public class MenuItemFormDialog
                     }
                     break;
                 case DialogType.Folder:
-                    var folderDialog = new System.Windows.Forms.FolderBrowserDialog
+                    var folderDialog = new Microsoft.Win32.OpenFolderDialog
                     {
-                        Description = _localization.Translate("MenuFormSelectFolder")
+                        Title = _localization.Translate("MenuFormSelectFolder")
                     };
-                    if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                    if (folderDialog.ShowDialog() == true)
                     {
-                        textBox.Text = folderDialog.SelectedPath;
+                        textBox.Text = folderDialog.FolderName;
                     }
                     break;
                 case DialogType.Icon:

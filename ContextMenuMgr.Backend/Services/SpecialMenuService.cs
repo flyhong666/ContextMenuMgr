@@ -71,7 +71,7 @@ public sealed class SpecialMenuService
             }
             catch (UnauthorizedAccessException ex)
             {
-                await _logger.LogAsync($"Permission denied when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
 
                 if (item.Kind == SpecialMenuKind.DragDrop)
                 {
@@ -86,7 +86,7 @@ public sealed class SpecialMenuService
             }
             catch (SecurityException ex)
             {
-                await _logger.LogAsync($"Security exception when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
                 return Failure($"Security error: {ex.Message}. This operation may require elevated privileges.", operationId);
             }
 
@@ -96,7 +96,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to toggle special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to toggle special menu item {item.Id}: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -124,7 +124,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to create special menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create special menu item: {ex.Message}", cancellationToken);
             return Failure(ex.Message, request.ClientOperationId);
         }
     }
@@ -150,7 +150,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to update special menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update special menu item: {ex.Message}", cancellationToken);
             return Failure(ex.Message, request.ClientOperationId);
         }
     }
@@ -204,7 +204,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to delete special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete special menu item {item.Id}: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -254,7 +254,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to restore special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore special menu item {item.Id}: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -299,7 +299,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to permanently delete special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently delete special menu item {item.Id}: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -452,7 +452,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to move special menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to move special menu item: {ex.Message}", cancellationToken);
             return Failure(ex.Message, request.ClientOperationId);
         }
     }
@@ -488,7 +488,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to restore defaults for {kind}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore defaults for {kind}: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -501,7 +501,7 @@ public sealed class SpecialMenuService
 
             if (!EnableSecurityPrivilege())
             {
-                await _logger.LogAsync("Unable to enable SeSecurityPrivilege. Proceeding without it.", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, "Unable to enable SeSecurityPrivilege. Proceeding without it.", cancellationToken);
             }
 
             RegistryKey? key;
@@ -511,17 +511,17 @@ public sealed class SpecialMenuService
             }
             catch (UnauthorizedAccessException)
             {
-                await _logger.LogAsync($"Access denied when opening ShellNew ordering ACL for user {userContextToUse.Sid}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Access denied when opening ShellNew ordering ACL for user {userContextToUse.Sid}", cancellationToken);
                 return Failure("Permission denied: Cannot change ShellNew ordering lock. This operation requires permission to change the registry key ACL.", operationId);
             }
             catch (SecurityException ex)
             {
-                await _logger.LogAsync($"Security exception when opening ShellNew ordering ACL: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when opening ShellNew ordering ACL: {ex.Message}", cancellationToken);
                 return Failure($"Security error: {ex.Message}. This operation requires permission to change the registry key ACL.", operationId);
             }
             catch (Exception ex)
             {
-                await _logger.LogAsync($"Unable to open ShellNew ordering key ACL: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Unable to open ShellNew ordering key ACL: {ex.Message}", cancellationToken);
                 return Failure($"Unable to open ShellNew ordering key: {ex.Message}", operationId);
             }
 
@@ -541,7 +541,7 @@ public sealed class SpecialMenuService
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    await _logger.LogAsync("Access denied when modifying ACL on ShellNew ordering key. Attempting ownership fallback.", cancellationToken);
+                    await _logger.LogAsync(RuntimeLogLevel.Warning, "Access denied when modifying ACL on ShellNew ordering key. Attempting ownership fallback.", cancellationToken);
                     try
                     {
                         EnsureShellNewOrderAclAccess(createIfMissing: locked);
@@ -551,13 +551,13 @@ public sealed class SpecialMenuService
                     }
                     catch (Exception retryEx)
                     {
-                        await _logger.LogAsync($"Ownership fallback failed when modifying ShellNew ordering ACL: {retryEx.Message}", cancellationToken);
+                        await _logger.LogAsync(RuntimeLogLevel.Error, $"Ownership fallback failed when modifying ShellNew ordering ACL: {retryEx.Message}", cancellationToken);
                         return Failure("Permission denied: Cannot modify access control list (ACL) on ShellNew ordering key. This operation requires permission to change the registry key ACL.", operationId);
                     }
                 }
                 catch (SecurityException ex)
                 {
-                    await _logger.LogAsync($"Security exception when modifying ACL: {ex.Message}. Attempting ownership fallback.", cancellationToken);
+                    await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when modifying ACL: {ex.Message}. Attempting ownership fallback.", cancellationToken);
                     try
                     {
                         EnsureShellNewOrderAclAccess(createIfMissing: locked);
@@ -567,20 +567,20 @@ public sealed class SpecialMenuService
                     }
                     catch (Exception retryEx)
                     {
-                        await _logger.LogAsync($"Ownership fallback failed after security exception: {retryEx.Message}", cancellationToken);
+                        await _logger.LogAsync(RuntimeLogLevel.Error, $"Ownership fallback failed after security exception: {retryEx.Message}", cancellationToken);
                         return Failure($"Security error modifying ACL: {ex.Message}. This operation requires permission to change the registry key ACL.", operationId);
                     }
                 }
                 catch (Exception ex)
                 {
-                    await _logger.LogAsync($"Failed to modify ShellNew order lock: {ex.Message}", cancellationToken);
+                    await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to modify ShellNew order lock: {ex.Message}", cancellationToken);
                     return Failure(ex.Message, operationId);
                 }
             }
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Unexpected error in SetShellNewOrderLockAsync: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Unexpected error in SetShellNewOrderLockAsync: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -2920,7 +2920,7 @@ public sealed class SpecialMenuService
         return Encoding.UTF8.GetString(Convert.FromBase64String(id[(index + 1)..]));
     }
 
-    private static PipeResponse Success(string message, SpecialMenuEntry item, Guid? operationId) => new()
+    private static PipeResponse Success(string message, SpecialMenuEntry? item, Guid? operationId) => new()
     {
         Success = true,
         Message = message,

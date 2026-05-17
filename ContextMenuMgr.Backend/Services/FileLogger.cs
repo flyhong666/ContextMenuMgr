@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
@@ -9,9 +10,11 @@ namespace ContextMenuMgr.Backend.Services;
 public sealed class FileLogger
 {
     private static readonly TimeSpan LogRetention = TimeSpan.FromDays(7);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _logPath;
     private readonly string _fallbackLogPath;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private RuntimeLogLevel _currentLevel = RuntimeLogLevel.Warning;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileLogger"/> class.
@@ -29,13 +32,29 @@ public sealed class FileLogger
         EnsureDirectoryExists(_fallbackLogPath);
         PruneOldLogs(_logPath);
         PruneOldLogs(_fallbackLogPath);
+        Configure(TryLoadPersistedLogLevel());
+    }
+
+    public RuntimeLogLevel CurrentLevel => _currentLevel;
+
+    public void Configure(RuntimeLogLevel logLevel)
+    {
+        _currentLevel = logLevel;
     }
 
     /// <summary>
     /// Executes log Async.
     /// </summary>
     public async Task LogAsync(string message, CancellationToken cancellationToken = default)
+        => await LogAsync(RuntimeLogLevel.Information, message, cancellationToken);
+
+    public async Task LogAsync(RuntimeLogLevel level, string message, CancellationToken cancellationToken = default)
     {
+        if (level < _currentLevel)
+        {
+            return;
+        }
+
         var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}";
 
         await _writeLock.WaitAsync(cancellationToken);
@@ -67,6 +86,38 @@ public sealed class FileLogger
     /// Executes log Fire And Forget.
     /// </summary>
     public void LogFireAndForget(string message) => _ = LogAsync(message);
+
+    public void LogFireAndForget(RuntimeLogLevel level, string message) => _ = LogAsync(level, message);
+
+    private static RuntimeLogLevel TryLoadPersistedLogLevel()
+    {
+        try
+        {
+            if (!File.Exists(RuntimePaths.SettingsPath))
+            {
+                return RuntimeLogLevel.Warning;
+            }
+
+            using var document = JsonDocument.Parse(File.ReadAllText(RuntimePaths.SettingsPath));
+            if (!document.RootElement.TryGetProperty("logLevel", out var property))
+            {
+                return RuntimeLogLevel.Warning;
+            }
+
+            return property.ValueKind switch
+            {
+                JsonValueKind.Number when property.TryGetInt32(out var value) && Enum.IsDefined(typeof(RuntimeLogLevel), value)
+                    => (RuntimeLogLevel)value,
+                JsonValueKind.String when Enum.TryParse<RuntimeLogLevel>(property.GetString(), ignoreCase: true, out var level)
+                    => level,
+                _ => RuntimeLogLevel.Warning
+            };
+        }
+        catch
+        {
+            return RuntimeLogLevel.Warning;
+        }
+    }
 
     private static void EnsureDirectoryExists(string path)
     {

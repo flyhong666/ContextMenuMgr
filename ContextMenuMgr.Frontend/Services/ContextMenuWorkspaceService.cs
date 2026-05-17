@@ -16,6 +16,8 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     private readonly ContextMenuItemActionsService _itemActionsService;
     private readonly IconPreviewService _iconPreviewService;
     private readonly LocalizationService _localization;
+    private readonly FrontendSettingsService _settingsService;
+    private readonly TrayHostProcessService _trayHostProcessService;
     private readonly HashSet<string> _seenPendingApprovalIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _seenChangedItemIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
@@ -34,13 +36,17 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         IBackendServiceManager backendServiceManager,
         ContextMenuItemActionsService itemActionsService,
         IconPreviewService iconPreviewService,
-        LocalizationService localization)
+        LocalizationService localization,
+        FrontendSettingsService settingsService,
+        TrayHostProcessService trayHostProcessService)
     {
         _backendClient = backendClient;
         _backendServiceManager = backendServiceManager;
         _itemActionsService = itemActionsService;
         _iconPreviewService = iconPreviewService;
         _localization = localization;
+        _settingsService = settingsService;
+        _trayHostProcessService = trayHostProcessService;
         _backendClient.NotificationReceived += OnBackendNotificationReceived;
         ConnectionStatus = _localization.Translate("ConnectingStatus");
     }
@@ -88,6 +94,8 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
 
             if (await EnsureBackendReadyAsync(suppressBootstrapPrompt))
             {
+                await SyncBackendLogLevelAsync();
+                await SyncTrayHostLogLevelAsync();
                 await EnsureNotificationConnectionAsync();
                 _uiStateActive = true;
                 await RefreshAsync();
@@ -127,6 +135,8 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             if (await EnsureBackendReadyAsync(suppressBootstrapPrompt))
             {
                 _uiStateActive = false;
+                await SyncBackendLogLevelAsync();
+                await SyncTrayHostLogLevelAsync();
                 await EnsureNotificationConnectionAsync();
                 return;
             }
@@ -166,6 +176,32 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                     ? ServiceAttentionState.Unavailable
                     : ServiceAttentionState.Missing);
             ConnectionStatus = _localization.Format("BackendUnavailableStatus", ex.Message);
+        }
+    }
+
+    public async Task SyncBackendLogLevelAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await _backendClient.SetLogLevelAsync(_settingsService.Current.LogLevel.ToRuntimeLogLevel(), cts.Token);
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("ContextMenuWorkspaceService", $"Failed to sync backend log level: {ex.Message}");
+        }
+    }
+
+    public async Task SyncTrayHostLogLevelAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await _trayHostProcessService.SetLogLevelAsync(_settingsService.Current.LogLevel.ToRuntimeLogLevel(), cts.Token);
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("ContextMenuWorkspaceService", $"Failed to sync tray-host log level: {ex.Message}");
         }
     }
 
@@ -566,6 +602,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             await _backendClient.EnsureTrayHostAsync(cts.Token);
             _trayHostEnsured = true;
+            await SyncTrayHostLogLevelAsync();
             FrontendDebugLog.Info("ContextMenuWorkspaceService", "EnsureTrayHostAsync succeeded.");
         }
         catch (Exception ex)

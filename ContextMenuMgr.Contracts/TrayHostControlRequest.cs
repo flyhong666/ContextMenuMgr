@@ -9,4 +9,9 @@ public sealed record TrayHostControlRequest
     /// Gets or sets the command.
     /// </summary>
     public TrayHostControlCommand Command { get; init; }
+
+    /// <summary>
+    /// Gets or sets the shared runtime log level.
+    /// </summary>
+    public RuntimeLogLevel? LogLevel { get; init; }
 }

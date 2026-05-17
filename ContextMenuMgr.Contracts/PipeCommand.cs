@@ -43,6 +43,7 @@ public enum PipeCommand
     CreateSceneMenuItem,
     GetEnhanceMenuDefinitions,
     GetEnhanceMenuState,
+    SetLogLevel,
     RequestShutdown,
     RestartExplorer
 }

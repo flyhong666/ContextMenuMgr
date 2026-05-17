@@ -126,6 +126,12 @@
   <data name="AppDescription" xml:space="preserve">
     <value>Review file and folder context-menu entries, toggle them safely, and review new additions detected by the backend service.</value>
   </data>
+  <data name="UpdateAvailableTitle" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="UpdateAvailableMessage" xml:space="preserve">
+    <value>Version {0} is available on GitHub Releases.</value>
+  </data>
   <data name="BackendStatusTitle" xml:space="preserve">
     <value>Backend status</value>
   </data>

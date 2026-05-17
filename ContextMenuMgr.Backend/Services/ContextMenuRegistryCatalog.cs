@@ -449,7 +449,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to update {item.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update {item.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -611,7 +611,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to set {attribute} for {item.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set {attribute} for {item.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -687,7 +687,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to update display text for {item.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update display text for {item.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -740,6 +740,7 @@ public sealed class ContextMenuRegistryCatalog
             catch (Exception ex)
             {
                 await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
                     $"Enhance menu registry update succeeded but state sync failed under {groupRegistryPath}. "
                     + $"KeyName={itemElement.Attribute("KeyName")?.Value?.Trim()}, Guid={itemElement.Element("Guid")?.Value?.Trim()}, Enable={enable}: {ex.Message}",
                     cancellationToken);
@@ -762,7 +763,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to update enhance menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update enhance menu item: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message);
         }
     }
@@ -818,7 +819,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to update detailed edit rule value {path}\\{keyName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update detailed edit rule value {path}\\{keyName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message);
         }
     }
@@ -961,7 +962,7 @@ public sealed class ContextMenuRegistryCatalog
         if (errors.Count > 0)
         {
             var detail = string.Join(Environment.NewLine, errors);
-            await _logger.LogAsync($"Registry write protection update skipped some protected roots:{Environment.NewLine}{detail}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Registry write protection update skipped some protected roots:{Environment.NewLine}{detail}", cancellationToken);
         }
 
         var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
@@ -1045,7 +1046,7 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             var displayName = item?.DisplayName ?? persistedState?.DisplayName ?? itemId;
-            await _logger.LogAsync($"Failed to delete {displayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete {displayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -1164,7 +1165,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to restore {state.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore {state.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, state.ToDeletedEntry());
         }
     }
@@ -1195,7 +1196,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to permanently remove {state.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently remove {state.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, state.ToDeletedEntry());
         }
     }

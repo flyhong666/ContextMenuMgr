@@ -133,4 +133,6 @@ public interface IBackendClient : IAsyncDisposable
     Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken);
 
     Task<bool> GetAutoStartEnabledAsync(CancellationToken cancellationToken);
+
+    Task SetLogLevelAsync(RuntimeLogLevel logLevel, CancellationToken cancellationToken);
 }

@@ -88,11 +88,9 @@ public sealed class NamedPipeBackendServer
             try
             {
                 server = CreateServerStream();
-                await _logger.LogAsync("Named pipe server instance created.", cancellationToken);
 
                 await server.WaitForConnectionAsync(cancellationToken);
                 server.ReadMode = PipeTransmissionMode.Byte;
-                await _logger.LogAsync("Named pipe client handshake completed.", cancellationToken);
                 _ = ObserveClientTaskAsync(server, cancellationToken);
             }
             catch (OperationCanceledException)
@@ -103,7 +101,7 @@ public sealed class NamedPipeBackendServer
             catch (Exception ex)
             {
                 server?.Dispose();
-                await _logger.LogAsync($"Named pipe accept loop failed: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Error, $"Named pipe accept loop failed: {ex.Message}", cancellationToken);
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             }
         }
@@ -161,7 +159,6 @@ public sealed class NamedPipeBackendServer
 
     private async Task HandleClientAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
     {
-        await _logger.LogAsync("HandleClientAsync entered.", cancellationToken);
         var connection = new PipeClientConnection(stream);
         _clients[connection.Id] = connection;
         var clientUserContext = _userContextResolver.TryResolveFromPipeClient(stream)
@@ -169,14 +166,9 @@ public sealed class NamedPipeBackendServer
 
         try
         {
-            await _logger.LogAsync($"Pipe client connected: {connection.Id}", cancellationToken);
-            if (clientUserContext is not null)
+            if (clientUserContext is null)
             {
-                await _logger.LogAsync($"Pipe client user context: {clientUserContext.UserName} ({clientUserContext.Sid}), profile={clientUserContext.ProfilePath}.", cancellationToken);
-            }
-            else
-            {
-                await _logger.LogAsync($"Pipe client user context could not be resolved for {connection.Id}.", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Pipe client user context could not be resolved for {connection.Id}.", cancellationToken);
             }
 
             while (stream.IsConnected && !cancellationToken.IsCancellationRequested)
@@ -187,16 +179,12 @@ public sealed class NamedPipeBackendServer
                     break;
                 }
 
-                await _logger.LogAsync($"Pipe request raw payload received from {connection.Id}. Length={line.Length}", cancellationToken);
-
                 var envelope = JsonSerializer.Deserialize<PipeEnvelope>(line, JsonOptions);
                 if (envelope?.MessageType != PipeMessageType.Request || envelope.Request is null)
                 {
-                    await _logger.LogAsync($"Pipe payload from {connection.Id} was not a valid request.", cancellationToken);
+                    await _logger.LogAsync(RuntimeLogLevel.Warning, $"Pipe payload from {connection.Id} was not a valid request.", cancellationToken);
                     continue;
                 }
-
-                await _logger.LogAsync($"Pipe request {envelope.Request.Command} received from {connection.Id}.", cancellationToken);
 
                 if (envelope.Request.Command == PipeCommand.SubscribeNotifications)
                 {
@@ -220,6 +208,7 @@ public sealed class NamedPipeBackendServer
                 catch (Exception ex)
                 {
                     await _logger.LogAsync(
+                        RuntimeLogLevel.Error,
                         $"Pipe request {envelope.Request.Command} failed for {connection.Id}: {ex.Message}",
                         cancellationToken);
                     response = new PipeResponse
@@ -237,7 +226,13 @@ public sealed class NamedPipeBackendServer
                         Response = response
                     },
                     cancellationToken);
-                await _logger.LogAsync($"Pipe response for {envelope.Request.Command} sent to {connection.Id}. Success={response.Success}", cancellationToken);
+                if (!response.Success)
+                {
+                    await _logger.LogAsync(
+                        RuntimeLogLevel.Warning,
+                        $"Pipe request {envelope.Request.Command} returned failure for {connection.Id}: {response.Message}",
+                        cancellationToken);
+                }
 
                 if (response.Success && response.Item is not null)
                 {
@@ -276,13 +271,17 @@ public sealed class NamedPipeBackendServer
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Pipe client error: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Pipe client error: {ex.Message}", cancellationToken);
         }
         finally
         {
+            var wasSubscriber = connection.IsNotificationSubscriber;
             _clients.TryRemove(connection.Id, out _);
             connection.Dispose();
-            await _logger.LogAsync($"Pipe client disconnected: {connection.Id}", CancellationToken.None);
+            if (wasSubscriber)
+            {
+                await _logger.LogAsync($"Pipe subscriber disconnected: {connection.Id}", CancellationToken.None);
+            }
         }
     }
 
@@ -319,6 +318,8 @@ public sealed class NamedPipeBackendServer
                 Message = "Notification subscription established."
             },
             PipeCommand.RequestShutdown => HandleShutdownRequest(),
+            PipeCommand.SetLogLevel when request.LogLevel is not null
+                => HandleSetLogLevelRequest(request.LogLevel.Value),
             PipeCommand.GetSnapshot => new PipeResponse
             {
                 Success = true,
@@ -528,6 +529,17 @@ public sealed class NamedPipeBackendServer
         {
             Success = true,
             Message = "Tray host startup requested."
+        };
+    }
+
+    private PipeResponse HandleSetLogLevelRequest(RuntimeLogLevel logLevel)
+    {
+        _logger.Configure(logLevel);
+        _logger.LogFireAndForget($"Backend log level set to {logLevel}.");
+        return new PipeResponse
+        {
+            Success = true,
+            Message = $"Backend log level set to {logLevel}."
         };
     }
 

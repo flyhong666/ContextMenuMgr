@@ -243,6 +243,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
         _settingsService.UpdateLogLevel(value.Option);
         FrontendDebugLog.Configure(value.Option);
+        _ = _workspace.SyncBackendLogLevelAsync();
+        _ = _workspace.SyncTrayHostLogLevelAsync();
     }
 
     partial void OnAutoStartOnLoginChanged(bool value)
@@ -405,6 +407,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
             FrontendDebugLog.Configure(AppLogLevel.Warning);
             SelectedLogLevel = AvailableLogLevels.FirstOrDefault(item => item.Option == AppLogLevel.Warning) ?? AvailableLogLevels[0];
+            await _workspace.SyncBackendLogLevelAsync();
+            await _workspace.SyncTrayHostLogLevelAsync();
 
             await NotifyTrayHostLocalizationChangedAsync();
 
