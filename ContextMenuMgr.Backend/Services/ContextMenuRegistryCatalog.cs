@@ -1852,7 +1852,7 @@ public sealed class ContextMenuRegistryCatalog
             return entry.IsEnabled != desiredEnabled;
         }
 
-        return state.ObservedEnabled != entry.IsEnabled;
+        return false;
     }
 
     private static bool IsShellExtensionBlocked(string? handlerClsid)
@@ -1950,7 +1950,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         else
         {
-            Registry.ClassesRoot.DeleteSubKeyTree(registryPath, throwOnMissingSubKey: false);
+            DeleteRegistrySubKeyTreeWithFallback(registryPath);
         }
     }
 
@@ -1971,16 +1971,34 @@ public sealed class ContextMenuRegistryCatalog
         var handlersPath = $@"{relativeGroupPath}\shellex\ContextMenuHandlers";
         if (enable)
         {
-            using var handlersKey = Registry.ClassesRoot.CreateSubKey(handlersPath, writable: true)
-                ?? throw new InvalidOperationException($"Unable to open {handlersPath} for writing.");
+            EnableBackupPrivilege();
+            EnableRestorePrivilege();
 
-            foreach (var subKeyName in handlersKey.GetSubKeyNames())
+            RegistryKey? handlersKey;
+            try
             {
-                using var subKey = handlersKey.OpenSubKey(subKeyName, writable: false);
-                var value = subKey?.GetValue(null)?.ToString();
-                if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
+                handlersKey = Registry.ClassesRoot.CreateSubKey(handlersPath, writable: true);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                handlersKey = machineRoot?.CreateSubKey(handlersPath, writable: true);
+                if (handlersKey is null)
                 {
-                    return;
+                    throw new InvalidOperationException($"Unable to open {handlersPath} for writing.");
+                }
+            }
+
+            using (handlersKey)
+            {
+                foreach (var subKeyName in handlersKey.GetSubKeyNames())
+                {
+                    using var subKey = handlersKey.OpenSubKey(subKeyName, writable: false);
+                    var value = subKey?.GetValue(null)?.ToString();
+                    if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
+                    {
+                        return;
+                    }
                 }
             }
 
@@ -1993,10 +2011,22 @@ public sealed class ContextMenuRegistryCatalog
                 targetPath = GetUniqueRegistryPath(handlersPath, keyName);
             }
 
-            Registry.SetValue($@"HKEY_CLASSES_ROOT\{targetPath}", string.Empty, guid.ToString("B"), RegistryValueKind.String);
+            try
+            {
+                Registry.SetValue($@"HKEY_CLASSES_ROOT\{targetPath}", string.Empty, guid.ToString("B"), RegistryValueKind.String);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                using var targetKeyWritable = machineRoot?.CreateSubKey(targetPath, writable: true);
+                targetKeyWritable?.SetValue(string.Empty, guid.ToString("B"), RegistryValueKind.String);
+            }
         }
         else
         {
+            EnableBackupPrivilege();
+            EnableRestorePrivilege();
+
             using var handlersKey = Registry.ClassesRoot.OpenSubKey(handlersPath, writable: true);
             if (handlersKey is null)
             {
@@ -2009,7 +2039,14 @@ public sealed class ContextMenuRegistryCatalog
                 var value = subKey?.GetValue(null)?.ToString();
                 if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
                 {
-                    handlersKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                    try
+                    {
+                        handlersKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        DeleteRegistrySubKeyTreeWithFallback($@"{handlersPath}\{subKeyName}");
+                    }
                 }
             }
         }
@@ -2022,10 +2059,22 @@ public sealed class ContextMenuRegistryCatalog
             return;
         }
 
+        EnableBackupPrivilege();
+        EnableRestorePrivilege();
+
         var defaultValue = keyElement.Attribute("Default")?.Value;
         if (!string.IsNullOrWhiteSpace(defaultValue))
         {
-            Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, Environment.ExpandEnvironmentVariables(defaultValue));
+            try
+            {
+                Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, Environment.ExpandEnvironmentVariables(defaultValue));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                using var key = machineRoot?.CreateSubKey(registryPath, writable: true);
+                key?.SetValue(string.Empty, Environment.ExpandEnvironmentVariables(defaultValue), RegistryValueKind.String);
+            }
         }
         else if (string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase))
         {
@@ -2053,36 +2102,82 @@ public sealed class ContextMenuRegistryCatalog
             return;
         }
 
-        using var key = Registry.ClassesRoot.CreateSubKey(registryPath, writable: true)
-            ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
+        EnableBackupPrivilege();
+        EnableRestorePrivilege();
 
-        foreach (var valueNode in valueElement.Elements().Where(element => ShouldIncludeNode(element, cultureName)))
+        RegistryKey? key;
+        try
         {
-            foreach (var attribute in valueNode.Attributes())
+            key = Registry.ClassesRoot.CreateSubKey(registryPath, writable: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+            key = machineRoot?.CreateSubKey(registryPath, writable: true);
+            if (key is null)
             {
-                if (string.IsNullOrWhiteSpace(attribute.Name.LocalName)
-                    || string.Equals(attribute.Name.LocalName, "Default", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
+                throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
+            }
+        }
 
-                var attributeValue = attribute.Value;
-                switch (valueNode.Name.LocalName)
+        using (key)
+        {
+            foreach (var valueNode in valueElement.Elements().Where(element => ShouldIncludeNode(element, cultureName)))
+            {
+                foreach (var attribute in valueNode.Attributes())
                 {
-                    case "REG_SZ":
-                        key.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
-                        break;
-                    case "REG_EXPAND_SZ":
-                        key.SetValue(attribute.Name.LocalName, attributeValue, RegistryValueKind.ExpandString);
-                        break;
-                    case "REG_BINARY":
-                        key.SetValue(attribute.Name.LocalName, ConvertToBinary(attributeValue), RegistryValueKind.Binary);
-                        break;
-                    case "REG_DWORD":
-                        var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
-                        var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
-                        key.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
-                        break;
+                    if (string.IsNullOrWhiteSpace(attribute.Name.LocalName)
+                        || string.Equals(attribute.Name.LocalName, "Default", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var attributeValue = attribute.Value;
+                    try
+                    {
+                        switch (valueNode.Name.LocalName)
+                        {
+                            case "REG_SZ":
+                                key.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
+                                break;
+                            case "REG_EXPAND_SZ":
+                                key.SetValue(attribute.Name.LocalName, attributeValue, RegistryValueKind.ExpandString);
+                                break;
+                            case "REG_BINARY":
+                                key.SetValue(attribute.Name.LocalName, ConvertToBinary(attributeValue), RegistryValueKind.Binary);
+                                break;
+                            case "REG_DWORD":
+                                var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
+                                var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
+                                key.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
+                                break;
+                        }
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                        using var machineKey = machineRoot?.CreateSubKey(registryPath, writable: true);
+                        if (machineKey is not null)
+                        {
+                            switch (valueNode.Name.LocalName)
+                            {
+                                case "REG_SZ":
+                                    machineKey.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
+                                    break;
+                                case "REG_EXPAND_SZ":
+                                    machineKey.SetValue(attribute.Name.LocalName, attributeValue, RegistryValueKind.ExpandString);
+                                    break;
+                                case "REG_BINARY":
+                                    machineKey.SetValue(attribute.Name.LocalName, ConvertToBinary(attributeValue), RegistryValueKind.Binary);
+                                    break;
+                                case "REG_DWORD":
+                                    var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
+                                    var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
+                                    machineKey.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
+                                    break;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2128,7 +2223,19 @@ public sealed class ContextMenuRegistryCatalog
             }
         }
 
-        Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, command, RegistryValueKind.String);
+        EnableBackupPrivilege();
+        EnableRestorePrivilege();
+
+        try
+        {
+            Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, command, RegistryValueKind.String);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+            using var key = machineRoot?.CreateSubKey(registryPath, writable: true);
+            key?.SetValue(string.Empty, command, RegistryValueKind.String);
+        }
     }
 
     private static string CreateEnhanceCommandFile(XElement? parentElement, string cultureName)
@@ -2931,6 +3038,232 @@ public sealed class ContextMenuRegistryCatalog
         /// Executes compose Absolute Path.
         /// </summary>
         public string ComposeAbsolutePath(string relativePath) => $@"{AbsoluteRootPath}\{relativePath}";
+    }
+
+    private const uint SE_PRIVILEGE_ENABLED = 0x00000002;
+    private const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
+    private const uint TOKEN_READ = 0x0008;
+    private const int ERROR_NOT_ALL_ASSIGNED = 1300;
+    private const string SE_RESTORE_NAME = "SeRestorePrivilege";
+    private const string SE_BACKUP_NAME = "SeBackupPrivilege";
+    private const string SE_TAKE_OWNERSHIP_NAME = "SeTakeOwnershipPrivilege";
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID
+    {
+        public uint LowPart;
+        public int HighPart;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID_AND_ATTRIBUTES
+    {
+        public LUID Luid;
+        public uint Attributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TOKEN_PRIVILEGES
+    {
+        public uint PrivilegeCount;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+        public LUID_AND_ATTRIBUTES[] Privileges;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool LookupPrivilegeValue(string? systemName, string privilegeName, out LUID lpLuid);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool AdjustTokenPrivileges(IntPtr tokenHandle, bool disableAllPrivileges, ref TOKEN_PRIVILEGES newState, uint bufferLength, IntPtr previousState, ref uint returnLength);
+
+    private static bool EnableBackupPrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_BACKUP_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool EnableRestorePrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_RESTORE_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool EnableTakeOwnershipPrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_TAKE_OWNERSHIP_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void DeleteRegistrySubKeyTreeWithFallback(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+        {
+            return;
+        }
+
+        EnableBackupPrivilege();
+        EnableRestorePrivilege();
+
+        try
+        {
+            DeleteRegistryKeyTree(fullPath);
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        if (TrySplitAbsoluteRegistryPath(fullPath, out var rootKey, out var subPath))
+        {
+            var parentPath = subPath.Contains('\\') ? subPath[..subPath.LastIndexOf('\\')] : string.Empty;
+            var keyName = subPath.Contains('\\') ? subPath[(subPath.LastIndexOf('\\') + 1)..] : subPath;
+
+            if (rootKey == Registry.ClassesRoot)
+            {
+                var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                if (machineRoot is not null)
+                {
+                    using var parent = machineRoot.OpenSubKey(parentPath, writable: true);
+                    parent?.DeleteSubKeyTree(keyName, throwOnMissingSubKey: false);
+                    return;
+                }
+            }
+        }
     }
 }
 
