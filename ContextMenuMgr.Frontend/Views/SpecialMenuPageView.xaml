@@ -22,7 +22,10 @@
                     Text="{Binding Description}"
                     TextWrapping="Wrap" />
                 <DockPanel Margin="0,12,0,0">
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <StackPanel
+                        VerticalAlignment="Bottom"
+                        DockPanel.Dock="Right"
+                        Orientation="Horizontal">
                         <ui:ToggleSwitch
                             Margin="8,0,0,0"
                             Content="{Binding LockNewMenuText}"
@@ -41,7 +44,6 @@
                             Icon="{ui:SymbolIcon Symbol=ArrowSync24}" />
                         <ui:Button
                             Margin="8,0,0,0"
-                            Appearance="Primary"
                             Command="{Binding AddCommand}"
                             Content="{Binding AddText}"
                             Icon="{ui:SymbolIcon Symbol=Add24}" />
