@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Wpf.Ui.Controls;
@@ -21,7 +22,7 @@ public static class FrontendMessageBox
     {
         var localization = ResolveLocalization();
         var owner = System.Windows.Application.Current?.MainWindow;
-        Keyboard.ClearFocus();
+        var previousFocusedElement = ClearFocusAndGetPrevious(owner);
         var messageBox = new MessageBox
         {
             Title = title,
@@ -32,7 +33,7 @@ public static class FrontendMessageBox
         };
 
         await messageBox.ShowDialogAsync();
-        await ClearDialogFocusAsync(owner);
+        await ClearDialogFocusAsync(owner, previousFocusedElement);
     }
 
     /// <summary>
@@ -45,7 +46,7 @@ public static class FrontendMessageBox
     {
         var localization = ResolveLocalization();
         var owner = System.Windows.Application.Current?.MainWindow;
-        Keyboard.ClearFocus();
+        var previousFocusedElement = ClearFocusAndGetPrevious(owner);
         var messageBox = new MessageBox
         {
             Title = title,
@@ -56,7 +57,7 @@ public static class FrontendMessageBox
         };
 
         await messageBox.ShowDialogAsync();
-        await ClearDialogFocusAsync(owner);
+        await ClearDialogFocusAsync(owner, previousFocusedElement);
     }
 
     /// <summary>
@@ -70,7 +71,7 @@ public static class FrontendMessageBox
     {
         var localization = ResolveLocalization();
         var owner = System.Windows.Application.Current?.MainWindow;
-        Keyboard.ClearFocus();
+        var previousFocusedElement = ClearFocusAndGetPrevious(owner);
         var messageBox = new MessageBox
         {
             Title = title,
@@ -83,11 +84,18 @@ public static class FrontendMessageBox
         };
 
         var result = await messageBox.ShowDialogAsync() == MessageBoxResult.Primary;
-        await ClearDialogFocusAsync(owner);
+        await ClearDialogFocusAsync(owner, previousFocusedElement);
         return result;
     }
 
-    private static async Task ClearDialogFocusAsync(System.Windows.Window? owner)
+    private static IInputElement? ClearFocusAndGetPrevious(Window? owner)
+    {
+        var previousFocusedElement = Keyboard.FocusedElement as IInputElement;
+        Keyboard.ClearFocus();
+        return previousFocusedElement;
+    }
+
+    private static async Task ClearDialogFocusAsync(Window? owner, IInputElement? previousFocusedElement)
     {
         if (owner is null)
         {
@@ -99,9 +107,17 @@ public static class FrontendMessageBox
             () =>
             {
                 Keyboard.ClearFocus();
-                owner.Focus();
+                if (owner.IsVisible && owner.IsEnabled)
+                {
+                    owner.Activate();
+                    var content = owner.Content as IInputElement;
+                    if (content is not null)
+                    {
+                        content.Focus();
+                    }
+                }
             },
-            DispatcherPriority.ApplicationIdle);
+            DispatcherPriority.Input);
     }
 
     private static LocalizationService? ResolveLocalization()

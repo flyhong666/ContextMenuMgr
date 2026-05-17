@@ -701,27 +701,17 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            var refreshed = false;
-            try
-            {
-                await RefreshAsync();
-                refreshed = true;
-            }
-            catch
-            {
-            }
-
             _suppressShellNewLockSync = true;
             try
             {
-                IsShellNewOrderLocked = refreshed ? IsShellNewOrderLocked : oldValue;
+                IsShellNewOrderLocked = oldValue;
             }
             finally
             {
                 _suppressShellNewLockSync = false;
             }
 
-            await FrontendMessageBox.ShowErrorAsync(ex.Message, Title);
+            StatusText = ex.Message;
         }
     }
 
