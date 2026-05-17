@@ -986,28 +986,40 @@ public sealed class ContextMenuRegistryCatalog
     {
         var snapshot = await GetSnapshotAsync(cancellationToken);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
-        if (item is null)
+        var states = await _stateStore.LoadAsync(cancellationToken);
+        var persistedState = states.GetValueOrDefault(itemId);
+
+        if (item is null && persistedState is null)
         {
-            return CreateFailure($"Menu item '{itemId}' was not found.");
+            item = await TryFindEntryByIdAsync(itemId, cancellationToken);
+            if (item is null)
+            {
+                return CreateFailure($"Menu item '{itemId}' was not found.");
+            }
         }
 
-        if (item.IsDeleted)
+        if (item is not null && item.IsDeleted)
         {
             return CreateFailure($"Menu item '{item.DisplayName}' is already deleted.", item);
         }
 
-        if (!item.IsPresentInRegistry)
+        if (item is not null && !item.IsPresentInRegistry)
         {
             return await RemoveMissingItemStateAsync(item, cancellationToken);
         }
 
         try
         {
-            var backupFilePath = await _backupService.ExportKeyAsync(item.BackendRegistryPath, cancellationToken);
-            DeleteRegistryKey(item.BackendRegistryPath);
+            var backendRegistryPath = item?.BackendRegistryPath ?? persistedState?.BackendRegistryPath;
+            if (string.IsNullOrWhiteSpace(backendRegistryPath))
+            {
+                return CreateFailure($"Cannot delete '{itemId}': registry path is unknown.");
+            }
 
-            var states = await _stateStore.LoadAsync(cancellationToken);
-            var state = GetOrCreateState(states, item);
+            var backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
+            DeleteRegistryKey(backendRegistryPath);
+
+            var state = GetOrCreateState(states, item ?? CreateMinimalEntry(itemId, persistedState!));
             state.DesiredEnabled = null;
             state.IsDeleted = true;
             state.IsPendingApproval = false;
@@ -1017,7 +1029,7 @@ public sealed class ContextMenuRegistryCatalog
             await _stateStore.SaveAsync(states, cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
 
-            await _logger.LogAsync($"Deleted {item.DisplayName} with backup {backupFilePath}.", cancellationToken);
+            await _logger.LogAsync($"Deleted {state.DisplayName} with backup {backupFilePath}.", cancellationToken);
 
             var refreshed = (await GetSnapshotAsync(cancellationToken))
                 .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
@@ -1026,13 +1038,14 @@ public sealed class ContextMenuRegistryCatalog
             return new PipeResponse
             {
                 Success = true,
-                Message = $"Deleted {item.DisplayName}.",
+                Message = $"Deleted {state.DisplayName}.",
                 Item = refreshed
             };
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to delete {item.DisplayName}: {ex.Message}", cancellationToken);
+            var displayName = item?.DisplayName ?? persistedState?.DisplayName ?? itemId;
+            await _logger.LogAsync($"Failed to delete {displayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -1606,6 +1619,172 @@ public sealed class ContextMenuRegistryCatalog
             HasConsistencyIssue = !string.IsNullOrWhiteSpace(issue),
             ConsistencyIssue = issue
         };
+    }
+
+    private static ContextMenuEntry CreateMinimalEntry(string itemId, PersistedContextMenuState state)
+    {
+        return new ContextMenuEntry
+        {
+            Id = itemId,
+            Category = state.Category,
+            EntryKind = state.EntryKind,
+            KeyName = state.KeyName,
+            DisplayName = state.DisplayName,
+            EditableText = state.EditableText,
+            RegistryPath = state.RegistryPath,
+            BackendRegistryPath = state.BackendRegistryPath,
+            SourceRootPath = state.SourceRootPath,
+            CommandText = state.CommandText,
+            HandlerClsid = state.HandlerClsid,
+            IconPath = state.IconPath,
+            IconIndex = state.IconIndex,
+            FilePath = state.FilePath,
+            IsWindows11ContextMenu = state.IsWindows11ContextMenu,
+            OnlyWithShift = state.OnlyWithShift,
+            OnlyInExplorer = state.OnlyInExplorer,
+            NoWorkingDirectory = state.NoWorkingDirectory,
+            NeverDefault = state.NeverDefault,
+            ShowAsDisabledIfHidden = state.ShowAsDisabledIfHidden,
+            IsPresentInRegistry = true,
+            IsEnabled = state.DesiredEnabled ?? true,
+            Notes = state.Notes
+        };
+    }
+
+    private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(string itemId, CancellationToken cancellationToken)
+    {
+        var separatorIndex = itemId.LastIndexOf('|');
+        if (separatorIndex < 0)
+        {
+            return null;
+        }
+
+        var stableRelativePath = itemId[..separatorIndex];
+        var keyName = itemId[(separatorIndex + 1)..];
+
+        foreach (var instance in EnumerateRootInstances())
+        {
+            using var baseKey = instance.OpenBaseKey(stableRelativePath);
+            if (baseKey is null)
+            {
+                continue;
+            }
+
+            using var itemKey = baseKey.OpenSubKey(keyName, writable: false);
+            if (itemKey is null)
+            {
+                continue;
+            }
+
+            var category = DetermineCategoryFromPath(stableRelativePath);
+            var entryKind = stableRelativePath.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
+                ? ContextMenuEntryKind.ShellExtension
+                : ContextMenuEntryKind.ShellVerb;
+            var defaultValue = itemKey.GetValue(null)?.ToString();
+            var handlerClsid = entryKind == ContextMenuEntryKind.ShellExtension
+                ? ResolveShellExtensionHandlerClsid(keyName, defaultValue)
+                : null;
+            var displayName = ResolveDisplayName(
+                new RegistryRootDescriptor(category, stableRelativePath, entryKind),
+                itemKey,
+                keyName,
+                defaultValue,
+                handlerClsid);
+            var editableText = entryKind == ContextMenuEntryKind.ShellVerb
+                ? ResolveEditableText(itemKey, defaultValue)
+                : null;
+            var commandText = entryKind == ContextMenuEntryKind.ShellVerb
+                ? itemKey.OpenSubKey("command", writable: false)?.GetValue(null)?.ToString()
+                : null;
+
+            var (iconPath, iconIndex) = entryKind switch
+            {
+                ContextMenuEntryKind.ShellVerb => ShellMetadataResolver.ResolveVerbIcon(itemKey, commandText),
+                ContextMenuEntryKind.ShellExtension => ShellMetadataResolver.ResolveShellExtensionIcon(handlerClsid),
+                _ => (null, 0)
+            };
+
+            var filePath = entryKind switch
+            {
+                ContextMenuEntryKind.ShellVerb => ShellMetadataResolver.ResolveVerbFilePath(itemKey, commandText),
+                ContextMenuEntryKind.ShellExtension => ShellMetadataResolver.ResolveShellExtensionFilePath(handlerClsid),
+                _ => null
+            };
+
+            iconPath = GuidMetadataCatalog.NormalizeCandidatePath(iconPath, filePath);
+
+            var effectiveRelativePath = $@"{stableRelativePath}\{keyName}";
+            var isEnabled = entryKind switch
+            {
+                ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
+                ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
+                _ => true
+            };
+
+            return new ContextMenuEntry
+            {
+                Id = itemId,
+                Category = category,
+                EntryKind = entryKind,
+                KeyName = keyName,
+                DisplayName = displayName,
+                EditableText = editableText,
+                RegistryPath = effectiveRelativePath,
+                BackendRegistryPath = instance.ComposeAbsolutePath(effectiveRelativePath),
+                SourceRootPath = stableRelativePath,
+                CommandText = commandText,
+                HandlerClsid = handlerClsid,
+                IconPath = iconPath,
+                IconIndex = iconIndex,
+                FilePath = filePath,
+                OnlyWithShift = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("Extended") is not null,
+                OnlyInExplorer = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("OnlyInBrowserWindow") is not null,
+                NoWorkingDirectory = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("NoWorkingDirectory") is not null,
+                NeverDefault = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("NeverDefault") is not null,
+                ShowAsDisabledIfHidden = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("ShowAsDisabledIfHidden") is not null,
+                IsEnabled = isEnabled,
+                IsPresentInRegistry = true,
+                Notes = BuildNotes(entryKind, commandText, handlerClsid)
+            };
+        }
+
+        return null;
+    }
+
+    private static ContextMenuCategory DetermineCategoryFromPath(string stableRelativePath)
+    {
+        if (stableRelativePath.StartsWith(@"AllFilesystemObjects", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.AllFileSystemObjects;
+        if (stableRelativePath.StartsWith(@"*\shell", StringComparison.OrdinalIgnoreCase) || stableRelativePath.StartsWith(@"*\shellex", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.File;
+        if (stableRelativePath.StartsWith(@"Folder\shell", StringComparison.OrdinalIgnoreCase) || stableRelativePath.StartsWith(@"Folder\shellex", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.Folder;
+        if (stableRelativePath.StartsWith(@"Directory\shell", StringComparison.OrdinalIgnoreCase) || stableRelativePath.StartsWith(@"Directory\shellex", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.Directory;
+        if (stableRelativePath.StartsWith(@"Directory\Background", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.DirectoryBackground;
+        if (stableRelativePath.StartsWith(@"DesktopBackground", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.DesktopBackground;
+        if (stableRelativePath.StartsWith(@"Drive", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.Drive;
+        if (stableRelativePath.StartsWith(@"LibraryFolder", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.Library;
+        if (stableRelativePath.StartsWith(@"UserLibraryFolder", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.Library;
+        if (stableRelativePath.StartsWith(@"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.Computer;
+        if (stableRelativePath.StartsWith(@"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.RecycleBin;
+        if (stableRelativePath.StartsWith(@"SystemFileAssociations", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.File;
+        if (stableRelativePath.StartsWith(@"Launcher.ImmersiveApplication", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.File;
+        if (stableRelativePath.StartsWith(@"lnkfile", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.File;
+        if (stableRelativePath.StartsWith(@"exefile", StringComparison.OrdinalIgnoreCase))
+            return ContextMenuCategory.File;
+
+        return ContextMenuCategory.File;
     }
 
     private static PersistedContextMenuState GetOrCreateState(
