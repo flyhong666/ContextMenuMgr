@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
@@ -70,17 +70,18 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         SelectedLanguage = AvailableLanguages.FirstOrDefault(item => item.Option == _localization.SelectedLanguage) ?? AvailableLanguages[0];
         SelectedTheme = AvailableThemes.FirstOrDefault(item => item.Option == _themeService.CurrentTheme) ?? AvailableThemes[0];
         SelectedLogLevel = AvailableLogLevels.FirstOrDefault(item => item.Option == _settingsService.Current.LogLevel) ?? AvailableLogLevels[1];
-        _suppressAutoStartSync = true;
-        AutoStartOnLogin = _startupService.IsAutoStartEnabled();
-        _suppressAutoStartSync = false;
-        _settingsService.UpdateAutoStartOnLogin(AutoStartOnLogin);
+
+        // Initialize with default values to avoid blocking UI thread
+        AutoStartOnLogin = false;
         KeepBackgroundAfterClose = _settingsService.Current.KeepBackgroundAfterClose;
         LockNewContextMenuItems = _settingsService.Current.LockNewContextMenuItems;
 
         _localization.LanguageChanged += OnLanguageChanged;
         RefreshLocalizedText();
         RefreshServiceState();
-        _ = LoadRegistryProtectionSettingAsync();
+
+        // Load async settings in background to avoid blocking UI thread
+        _ = LoadInitialSettingsAsync();
     }
 
     /// <summary>
@@ -367,7 +368,17 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             _suppressAutoStartSync = true;
             AutoStartOnLogin = false;
             _suppressAutoStartSync = false;
-            _startupService.SetAutoStartEnabled(false);
+
+            // Use async version to avoid blocking UI thread
+            try
+            {
+                await _startupService.SetAutoStartEnabledAsync(false, CancellationToken.None);
+            }
+            catch
+            {
+                // Ignore errors during reset
+            }
+
             if (_workspace.IsServiceInstalled())
             {
                 await _workspace.SetServiceAutoStartEnabledAsync(false);
@@ -492,6 +503,30 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         finally
         {
             _suppressProtectionSync = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads initial settings asynchronously to avoid blocking UI thread.
+    /// This method is called fire-and-forget from the constructor.
+    /// </summary>
+    private async Task LoadInitialSettingsAsync()
+    {
+        try
+        {
+            // Load auto-start setting from backend (async, non-blocking)
+            var autoStartEnabled = await _startupService.IsAutoStartEnabledAsync(CancellationToken.None);
+            _suppressAutoStartSync = true;
+            AutoStartOnLogin = autoStartEnabled;
+            _suppressAutoStartSync = false;
+            _settingsService.UpdateAutoStartOnLogin(autoStartEnabled);
+
+            // Load registry protection setting (async, non-blocking)
+            await LoadRegistryProtectionSettingAsync();
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("SettingsPageViewModel", $"Failed to load initial settings: {ex.Message}");
         }
     }
 
@@ -626,7 +661,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     {
         try
         {
-            _startupService.SetAutoStartEnabled(value);
+            // Use async version to avoid blocking UI thread
+            await _startupService.SetAutoStartEnabledAsync(value, CancellationToken.None);
             _settingsService.UpdateAutoStartOnLogin(value);
 
             if (_workspace.IsServiceInstalled())
@@ -640,7 +676,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            var actualValue = _startupService.IsAutoStartEnabled();
+            // Use async version to avoid blocking UI thread
+            var actualValue = await _startupService.IsAutoStartEnabledAsync(CancellationToken.None);
             _settingsService.UpdateAutoStartOnLogin(actualValue);
             _suppressAutoStartSync = true;
             AutoStartOnLogin = actualValue;

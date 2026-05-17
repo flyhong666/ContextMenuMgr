@@ -1015,7 +1015,7 @@
     <value>Restore Defaults</value>
   </data>
   <data name="LockNewMenu" xml:space="preserve">
-    <value>Lock new-menu order</value>
+    <value>Lock new menu and enable sorting</value>
   </data>
   <data name="DefaultDropEffect" xml:space="preserve">
     <value>Default drop effect</value>

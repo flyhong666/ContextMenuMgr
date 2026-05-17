@@ -49,4 +49,14 @@ public sealed record PipeResponse
     /// Gets or sets the client operation id.
     /// </summary>
     public Guid? ClientOperationId { get; init; }
+
+    /// <summary>
+    /// Gets or sets the Win11 blocked items list.
+    /// </summary>
+    public IReadOnlyList<Win11BlockedItem> Win11BlockedItems { get; init; } = [];
+
+    /// <summary>
+    /// Gets or sets whether auto-start is enabled.
+    /// </summary>
+    public bool? AutoStartEnabled { get; init; }
 }

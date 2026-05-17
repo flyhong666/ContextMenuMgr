@@ -463,6 +463,107 @@ public sealed class NamedPipeBackendClient : IBackendClient
     }
 
     /// <summary>
+    /// Sets Win11 blocked item Async.
+    /// </summary>
+    public async Task SetWin11BlockedItemAsync(
+        string handlerClsid,
+        string displayName,
+        bool blockMachine,
+        Guid clientOperationId,
+        CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetWin11BlockedItem,
+                ItemId = handlerClsid,
+                DisplayName = displayName,
+                BlockMachine = blockMachine,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes Win11 blocked item Async.
+    /// </summary>
+    public async Task RemoveWin11BlockedItemAsync(
+        string handlerClsid,
+        bool unblockMachine,
+        Guid clientOperationId,
+        CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.RemoveWin11BlockedItem,
+                ItemId = handlerClsid,
+                UnblockMachine = unblockMachine,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets Win11 blocked items Async.
+    /// </summary>
+    public async Task<IReadOnlyList<Win11BlockedItem>> GetWin11BlockedItemsAsync(CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.GetWin11BlockedItems
+            },
+            cancellationToken);
+
+        return response.Win11BlockedItems;
+    }
+
+    /// <summary>
+    /// Gets Win11 context menu snapshot Async.
+    /// </summary>
+    public async Task<IReadOnlyList<ContextMenuEntry>> GetWin11ContextMenuSnapshotAsync(CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.GetWin11ContextMenuSnapshot
+            },
+            cancellationToken);
+
+        return response.Items;
+    }
+
+    /// <summary>
+    /// Sets auto start enabled Async.
+    /// </summary>
+    public async Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetAutoStartEnabled,
+                AutoStartEnabled = enabled
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets auto start enabled Async.
+    /// </summary>
+    public async Task<bool> GetAutoStartEnabledAsync(CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.GetAutoStartEnabled
+            },
+            cancellationToken);
+
+        return response.AutoStartEnabled ?? false;
+    }
+
+    /// <summary>
     /// Releases resources used by the current instance.
     /// </summary>
     public ValueTask DisposeAsync()

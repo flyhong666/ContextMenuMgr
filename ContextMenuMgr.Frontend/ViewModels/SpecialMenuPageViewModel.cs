@@ -304,8 +304,14 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if ((moveUp && !item.CanMoveUp) || (!moveUp && !item.CanMoveDown))
+        {
+            return;
+        }
+
         try
         {
+            StatusText = string.Empty;
             item.IsBusy = true;
             var operationId = Guid.NewGuid();
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -334,6 +340,12 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            if (Kind == SpecialMenuKind.ShellNew && IsExpectedShellNewMoveFailure(ex))
+            {
+                StatusText = ex.Message;
+                return;
+            }
+
             await FrontendMessageBox.ShowErrorAsync(ex.Message, item.DisplayName);
         }
         finally
@@ -595,6 +607,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
 
         UpdatePageStateFromSnapshot(entries);
+        UpdateShellNewMoveAvailability();
         RebuildWinXGroups();
         ItemsView.Refresh();
     }
@@ -617,6 +630,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             current.Update(entry);
         }
 
+        UpdateShellNewMoveAvailability();
         ItemsView.Refresh();
         RebuildWinXGroups();
     }
@@ -687,10 +701,20 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            var refreshed = false;
+            try
+            {
+                await RefreshAsync();
+                refreshed = true;
+            }
+            catch
+            {
+            }
+
             _suppressShellNewLockSync = true;
             try
             {
-                IsShellNewOrderLocked = oldValue;
+                IsShellNewOrderLocked = refreshed ? IsShellNewOrderLocked : oldValue;
             }
             finally
             {
@@ -814,6 +838,39 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
 
         UpdateWinXMoveAvailability();
+    }
+
+    private void UpdateShellNewMoveAvailability()
+    {
+        if (Kind != SpecialMenuKind.ShellNew)
+        {
+            return;
+        }
+
+        var movableItems = Items
+            .Where(static item => item.Entry.CanMove)
+            .ToArray();
+
+        for (var index = 0; index < movableItems.Length; index++)
+        {
+            movableItems[index].SetMoveAvailability(
+                IsShellNewOrderLocked && index > 0,
+                IsShellNewOrderLocked && index < movableItems.Length - 1);
+        }
+
+        foreach (var item in Items.Where(static item => !item.Entry.CanMove))
+        {
+            item.SetMoveAvailability(false, false);
+        }
+    }
+
+    private static bool IsExpectedShellNewMoveFailure(Exception exception)
+    {
+        var message = exception.Message;
+        return message.Contains("ShellNew ordering", StringComparison.OrdinalIgnoreCase)
+            || message.Contains(@"Discardable\PostSetup\ShellNew", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Access to the registry key", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("registry key is denied", StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateWinXMoveAvailability()

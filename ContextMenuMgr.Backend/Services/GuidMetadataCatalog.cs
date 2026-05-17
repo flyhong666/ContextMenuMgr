@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -192,7 +192,7 @@ internal static class GuidMetadataCatalog
         });
     }
 
-    private static IEnumerable<RegistryKey> OpenClsidKeys(Guid guid)
+    private static IEnumerable<RegistryKey> OpenClsidKeys(Guid guid, BackendUserContext? userContext = null)
     {
         var guidText = guid.ToString("B");
 
@@ -216,7 +216,17 @@ internal static class GuidMetadataCatalog
 
         foreach (var userPath in UserClsidPaths)
         {
-            var currentUserKey = Registry.CurrentUser.OpenSubKey($@"{userPath}\{guidText}", writable: false);
+            RegistryKey? currentUserKey;
+
+            if (userContext is not null)
+            {
+                currentUserKey = Registry.Users.OpenSubKey($@"{userContext.Sid}\{userPath}\{guidText}", writable: false);
+            }
+            else
+            {
+                currentUserKey = null;
+            }
+
             if (currentUserKey is not null)
             {
                 yield return currentUserKey;

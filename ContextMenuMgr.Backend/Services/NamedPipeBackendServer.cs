@@ -19,6 +19,8 @@ public sealed class NamedPipeBackendServer
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ContextMenuRegistryCatalog _catalog;
     private readonly SpecialMenuService _specialMenuService;
+    private readonly Windows11BlocksService _windows11BlocksService;
+    private readonly AutoStartService _autoStartService;
     private readonly FileTypeSceneMenuService _fileTypeSceneMenuService;
     private readonly ExplorerRestartService _explorerRestartService;
     private readonly FileLogger _logger;
@@ -36,6 +38,8 @@ public sealed class NamedPipeBackendServer
     public NamedPipeBackendServer(
         ContextMenuRegistryCatalog catalog,
         SpecialMenuService specialMenuService,
+        Windows11BlocksService windows11BlocksService,
+        AutoStartService autoStartService,
         FileTypeSceneMenuService fileTypeSceneMenuService,
         ExplorerRestartService explorerRestartService,
         FileLogger logger,
@@ -43,6 +47,8 @@ public sealed class NamedPipeBackendServer
     {
         _catalog = catalog;
         _specialMenuService = specialMenuService;
+        _windows11BlocksService = windows11BlocksService;
+        _autoStartService = autoStartService;
         _fileTypeSceneMenuService = fileTypeSceneMenuService;
         _explorerRestartService = explorerRestartService;
         _logger = logger;
@@ -209,36 +215,7 @@ public sealed class NamedPipeBackendServer
                 {
                     // Request handlers are allowed to fail independently; the pipe
                     // stays alive and the caller receives a structured error response.
-                    
-                    PipeResponse? impersonatedResponse = null;
-                    Exception? impersonationException = null;
-                    
-                    try
-                    {
-                        stream.RunAsClient(() =>
-                        {
-                            var task = HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
-                            task.Wait(cancellationToken);
-                            impersonatedResponse = task.Result;
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        impersonationException = ex;
-                    }
-                    
-                    if (impersonatedResponse is not null)
-                    {
-                        response = impersonatedResponse;
-                    }
-                    else if (impersonationException is not null)
-                    {
-                        throw impersonationException;
-                    }
-                    else
-                    {
-                        response = await HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
-                    }
+                    response = await HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -346,7 +323,7 @@ public sealed class NamedPipeBackendServer
             {
                 Success = true,
                 Message = "Snapshot loaded.",
-                Items = await _catalog.GetSnapshotAsync(cancellationToken)
+                Items = await _catalog.GetSnapshotAsync(cancellationToken, userContext)
             },
             PipeCommand.GetSceneSnapshot when request.SceneKind is not null
                 => new PipeResponse
@@ -375,7 +352,7 @@ public sealed class NamedPipeBackendServer
             PipeCommand.AcknowledgeItemState when request.ItemId is not null
                 => await _catalog.AcknowledgeItemStateAsync(request.ItemId, cancellationToken),
             PipeCommand.SetEnabled when request.ItemId is not null && request.Enable is not null
-                => await _catalog.ApplyDesiredStateAsync(request.ItemId, request.Enable.Value, cancellationToken, request.Item),
+                => await _catalog.ApplyDesiredStateAsync(request.ItemId, request.Enable.Value, cancellationToken, userContext, request.Item),
             PipeCommand.SetShellAttribute when request.ItemId is not null && request.Enable is not null && request.ShellAttribute is not null
                 => await _catalog.ApplyShellAttributeAsync(request.ItemId, request.ShellAttribute.Value, request.Enable.Value, cancellationToken),
             PipeCommand.SetDisplayText when request.ItemId is not null && request.TextValue is not null
@@ -383,12 +360,13 @@ public sealed class NamedPipeBackendServer
             PipeCommand.GetRegistryProtectionSetting
                 => await _catalog.GetRegistryProtectionSettingAsync(cancellationToken),
             PipeCommand.SetRegistryProtectionSetting when request.Enable is not null
-                => await _catalog.SetRegistryProtectionSettingAsync(request.Enable.Value, cancellationToken),
+                => await _catalog.SetRegistryProtectionSettingAsync(request.Enable.Value, userContext, cancellationToken),
             PipeCommand.ApplyDecision when request.ItemId is not null && request.Decision is not null
                 => await _catalog.ApplyDecisionAsync(
                     request.ItemId,
                     request.Decision.Value,
-                    cancellationToken),
+                    cancellationToken,
+                    userContext),
             PipeCommand.DeleteItem when request.ItemId is not null
                 => await _catalog.DeleteItemAsync(request.ItemId, cancellationToken),
             PipeCommand.UndoDelete when request.ItemId is not null
@@ -441,9 +419,49 @@ public sealed class NamedPipeBackendServer
                 => await _fileTypeSceneMenuService.CreateSceneMenuItemAsync(
                     request.CreateSceneMenuItem,
                     request.ClientOperationId,
+                    userContext,
                     cancellationToken),
             PipeCommand.RestartExplorer
                 => HandleRestartExplorerRequest(userContext),
+            PipeCommand.SetWin11BlockedItem when request.ItemId is not null
+                => await _windows11BlocksService.SetWin11BlockedItemAsync(
+                    request.ItemId,
+                    request.DisplayName ?? string.Empty,
+                    request.BlockMachine ?? false,
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.RemoveWin11BlockedItem when request.ItemId is not null
+                => await _windows11BlocksService.RemoveWin11BlockedItemAsync(
+                    request.ItemId,
+                    request.UnblockMachine ?? false,
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.GetWin11BlockedItems
+                => await _windows11BlocksService.GetWin11BlockedItemsAsync(
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.GetWin11ContextMenuSnapshot
+                => new PipeResponse
+                {
+                    Success = true,
+                    Message = "Win11 context menu snapshot loaded.",
+                    Items = await _catalog.GetWindows11SnapshotAsync(cancellationToken, userContext),
+                    ClientOperationId = request.ClientOperationId
+                },
+            PipeCommand.SetAutoStartEnabled when request.AutoStartEnabled is not null
+                => await _autoStartService.SetAutoStartEnabledAsync(
+                    request.AutoStartEnabled.Value,
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
+            PipeCommand.GetAutoStartEnabled
+                => await _autoStartService.GetAutoStartEnabledAsync(
+                    request.ClientOperationId,
+                    userContext,
+                    cancellationToken),
             _ => new PipeResponse
             {
                 Success = false,

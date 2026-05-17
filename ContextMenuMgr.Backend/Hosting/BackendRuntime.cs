@@ -51,11 +51,13 @@ public sealed class BackendRuntime : IDisposable
         var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory);
         var catalog = new ContextMenuRegistryCatalog(logger, stateStore, backupService, protectionSettingsStore);
         var specialMenuService = new SpecialMenuService(logger);
+        var windows11BlocksService = new Windows11BlocksService(logger);
+        var autoStartService = new AutoStartService(logger);
         var fileTypeSceneMenuService = new FileTypeSceneMenuService(catalog, stateStore, logger);
         var explorerRestartService = new ExplorerRestartService();
         var userContextResolver = new BackendUserContextResolver(logger);
         var monitor = new ContextMenuRegistryMonitor(catalog, logger);
-        var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, fileTypeSceneMenuService, explorerRestartService, logger, userContextResolver);
+        var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, windows11BlocksService, autoStartService, fileTypeSceneMenuService, explorerRestartService, logger, userContextResolver);
         var frontendAutostartLauncher = new FrontendAutostartLauncher(AppContext.BaseDirectory);
 
         return new BackendRuntime(logger, monitor, pipeServer, frontendAutostartLauncher);

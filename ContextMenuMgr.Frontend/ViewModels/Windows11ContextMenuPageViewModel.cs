@@ -45,7 +45,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
 
         if (_service.IsSupported)
         {
-            if (_service.HasLoaded)
+            if (_service.CurrentItems.Count > 0)
             {
                 RebuildItems(_service.CurrentItems);
             }
@@ -108,8 +108,8 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         IsLoading = true;
         try
         {
-            var items = await _service.RefreshAsync(CancellationToken.None);
-            RebuildItems(items);
+            await _service.RefreshAsync(CancellationToken.None);
+            RebuildItems(_service.CurrentItems);
         }
         catch (Exception ex)
         {
@@ -145,8 +145,8 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         try
         {
             IsLoading = true;
-            var items = await _service.EnsureLoadedAsync(CancellationToken.None);
-            RebuildItems(items);
+            await _service.EnsureLoadedAsync(CancellationToken.None);
+            RebuildItems(_service.CurrentItems);
         }
         catch (Exception ex)
         {

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Xml;
@@ -25,9 +25,16 @@ internal sealed class Windows11ContextMenuCatalog
     /// <summary>
     /// Executes enumerate Entries Async.
     /// </summary>
-    public async Task<IReadOnlyList<ContextMenuEntry>> EnumerateEntriesAsync(CancellationToken cancellationToken, string? userSid = null)
+    public async Task<IReadOnlyList<ContextMenuEntry>> EnumerateEntriesAsync(CancellationToken cancellationToken, BackendUserContext? userContext = null)
     {
-        userSid ??= TryGetBestInteractiveUserSid();
+        var userSid = userContext?.Sid;
+        if (string.IsNullOrWhiteSpace(userSid))
+        {
+            // 只有在没有提供用户上下文时才回退到交互式用户检测
+            // 这不应该发生，因为 NamedPipeBackendServer 应该总是传递 userContext
+            userSid = TryGetBestInteractiveUserSid();
+        }
+
         if (!IsSupported || string.IsNullOrWhiteSpace(userSid))
         {
             return [];
@@ -65,7 +72,7 @@ internal sealed class Windows11ContextMenuCatalog
 
                     foreach (var definition in definitions)
                     {
-                        var isEnabled = GetIsEnabled(definition.Id, userSid);
+                        var isEnabled = GetIsEnabled(definition.Id, userContext);
                         foreach (var category in MapCategories(definition.ContextTypes))
                         {
                             var entry = CreateEntry(definition, category, isEnabled, userSid);
@@ -87,9 +94,15 @@ internal sealed class Windows11ContextMenuCatalog
     /// <summary>
     /// Sets enabled.
     /// </summary>
-    public bool SetEnabled(string handlerClsid, string displayName, string? userSid, bool enable)
+    public bool SetEnabled(string handlerClsid, string displayName, BackendUserContext? userContext, bool enable)
     {
-        userSid ??= TryGetBestInteractiveUserSid();
+        var userSid = userContext?.Sid;
+        if (string.IsNullOrWhiteSpace(userSid))
+        {
+            // 不应该发生，但作为安全措施
+            userSid = TryGetBestInteractiveUserSid();
+        }
+
         if (!IsSupported || string.IsNullOrWhiteSpace(userSid) || string.IsNullOrWhiteSpace(handlerClsid))
         {
             return false;
@@ -116,7 +129,7 @@ internal sealed class Windows11ContextMenuCatalog
     /// <summary>
     /// Gets is Enabled.
     /// </summary>
-    public bool GetIsEnabled(string handlerClsid, string? userSid)
+    public bool GetIsEnabled(string handlerClsid, BackendUserContext? userContext)
     {
         if (string.IsNullOrWhiteSpace(handlerClsid))
         {
@@ -129,7 +142,13 @@ internal sealed class Windows11ContextMenuCatalog
             return false;
         }
 
-        userSid ??= TryGetBestInteractiveUserSid();
+        var userSid = userContext?.Sid;
+        if (string.IsNullOrWhiteSpace(userSid))
+        {
+            // 不应该发生，但作为安全措施
+            userSid = TryGetBestInteractiveUserSid();
+        }
+
         if (string.IsNullOrWhiteSpace(userSid))
         {
             return true;

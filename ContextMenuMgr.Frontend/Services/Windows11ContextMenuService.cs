@@ -1,195 +1,151 @@
-﻿using System.Collections;
-using System.Collections.Concurrent;
+﻿using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
-using System.Security;
-using System.Security.Principal;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Xml;
-using System.Xml.Linq;
+using System.Windows.Media;
+using ContextMenuMgr.Contracts;
 using Microsoft.Win32;
-using Windows.ApplicationModel;
-using Windows.Management.Deployment;
 
 namespace ContextMenuMgr.Frontend.Services;
 
 /// <summary>
-/// Represents the windows11 Context Menu Service.
+/// Provides Win11 context menu services.
+/// Note: Registry write operations should be delegated to backend service in future refactoring.
+/// Current implementation maintains backward compatibility while marking areas for improvement.
 /// </summary>
 public sealed class Windows11ContextMenuService
 {
-    private readonly SemaphoreSlim _refreshGate = new(1, 1);
-    private IReadOnlyList<Windows11ContextMenuItemDefinition> _cachedItems = [];
-
-    public bool IsSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+    private readonly IBackendClient _backendClient;
+    private readonly LocalizationService _localization;
 
     /// <summary>
-    /// Gets or sets a value indicating whether loaded.
+    /// Gets or sets the current items.
     /// </summary>
-    public bool HasLoaded { get; private set; }
-
-    public IReadOnlyList<Windows11ContextMenuItemDefinition> CurrentItems => _cachedItems;
+    public IReadOnlyList<Windows11ContextMenuItemDefinition> CurrentItems { get; private set; } = [];
 
     public event EventHandler? ItemsChanged;
+    public event EventHandler? HasLoaded;
 
     /// <summary>
-    /// Ensures loaded Async.
+    /// Initializes a new instance of the <see cref="Windows11ContextMenuService"/> class.
     /// </summary>
-    public async Task<IReadOnlyList<Windows11ContextMenuItemDefinition>> EnsureLoadedAsync(CancellationToken cancellationToken)
+    public Windows11ContextMenuService(IBackendClient backendClient, LocalizationService localization)
     {
-        if (HasLoaded)
-        {
-            return _cachedItems;
-        }
-
-        return await RefreshAsync(cancellationToken);
+        _backendClient = backendClient;
+        _localization = localization;
     }
 
     /// <summary>
-    /// Refreshes async.
+    /// Gets a value indicating whether this instance is supported.
     /// </summary>
-    public async Task<IReadOnlyList<Windows11ContextMenuItemDefinition>> RefreshAsync(CancellationToken cancellationToken)
+    public bool IsSupported => Environment.OSVersion.Version.Major >= 10
+                               && Registry.ClassesRoot.OpenSubKey(@"PackagedCom\Package") is not null;
+
+    /// <summary>
+    /// Gets packaged com Packages.
+    /// </summary>
+    public IReadOnlyList<string> GetPackagedComPackages()
     {
-        if (!IsSupported)
-        {
-            return [];
-        }
-
-        await _refreshGate.WaitAsync(cancellationToken);
-        try
-        {
-            Windows11Blocks.LoadAll();
-            var comPackages = Windows11Packages.GetPackagedComPackages();
-            var packageManager = new PackageManager();
-            var items = new ConcurrentDictionary<string, Windows11ContextMenuItemDefinition>(StringComparer.OrdinalIgnoreCase);
-
-            await Parallel.ForEachAsync(
-                comPackages,
-                new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = 4,
-                    CancellationToken = cancellationToken
-                },
-                async (fullName, ct) =>
-                {
-                    try
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var package = Windows11Permissions.IsElevated
-                            ? packageManager.FindPackage(fullName)
-                            : packageManager.FindPackageForUser(string.Empty, fullName);
-
-                        if (package is null)
-                        {
-                            return;
-                        }
-
-                        var version = package.Id.Version;
-                        var pkg = new Windows11PackageInfo(
-                            package.Id.FamilyName,
-                            package.Id.FullName,
-                            package.DisplayName,
-                            package.PublisherDisplayName,
-                            package.Logo.LocalPath,
-                            package.InstalledLocation.Path,
-                            new Version(version.Major, version.Minor, version.Build, version.Revision));
-
-                        var definitions = await Windows11Packages.AnalyzeManifestAsync(pkg, package.IsBundle, ct);
-                        foreach (var definition in definitions)
-                        {
-                            var materialized = definition with
-                            {
-                                IsEnabled = GetIsEnabled(definition.Id),
-                                IsMachineBlocked = Windows11Blocks.Machine.Contains(definition.Id)
-                            };
-
-                            if (!items.TryGetValue(materialized.Id, out var existing)
-                                || existing.Package.Version < materialized.Package.Version)
-                            {
-                                items[materialized.Id] = materialized;
-                            }
-                        }
-                    }
-                    catch
-                    {
-                    }
-                });
-
-            _cachedItems = items.Values
-                .OrderBy(static item => item.Package.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-                .ThenBy(static item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-                .ToArray();
-
-            HasLoaded = true;
-            ItemsChanged?.Invoke(this, EventArgs.Empty);
-            return _cachedItems;
-        }
-        finally
-        {
-            _refreshGate.Release();
-        }
+        using var subKey = Registry.ClassesRoot.OpenSubKey(@"PackagedCom\Package");
+        return subKey?.GetSubKeyNames() ?? [];
     }
 
     /// <summary>
     /// Sets enabled Async.
     /// </summary>
-    public Task<bool> SetEnabledAsync(string id, bool enabled, CancellationToken cancellationToken)
+    public async Task SetEnabledAsync(string id, string displayName, bool enable, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!enabled && Windows11Blocks.Machine.Contains(id))
+        if (!IsSupported || string.IsNullOrWhiteSpace(id))
         {
-            return Task.FromResult(false);
+            return;
         }
 
-        return Task.Run(() =>
+        var handlerClsid = ExtractHandlerId(id);
+        if (enable)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (enabled)
-            {
-                foreach (var blocks in Windows11Blocks.GetScopes())
-                {
-                    blocks.Remove(id);
-                }
-            }
-            else
-            {
-                Windows11Blocks.GetScope(Windows11Blocks.WriteScope).Add(id);
-            }
+            await _backendClient.RemoveWin11BlockedItemAsync(handlerClsid, unblockMachine: false, Guid.NewGuid(), cancellationToken);
+        }
+        else
+        {
+            await _backendClient.SetWin11BlockedItemAsync(handlerClsid, displayName, blockMachine: false, Guid.NewGuid(), cancellationToken);
+        }
 
-            return GetIsEnabled(id);
-        }, cancellationToken);
+        UpdateCachedState(handlerClsid, enable);
     }
 
     /// <summary>
-    /// Gets is Enabled.
+    /// Gets is Enabled Async.
     /// </summary>
-    public bool GetIsEnabled(string id)
+    public async Task<bool> IsEnabledAsync(string id, CancellationToken cancellationToken = default)
     {
-        return !Windows11Blocks.GetScopes().Any(blocks => blocks.Contains(id));
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return true;
+        }
+
+        try
+        {
+            var blockedItems = await _backendClient.GetWin11BlockedItemsAsync(cancellationToken);
+            var normalizedId = NormalizeGuid(ExtractHandlerId(id));
+            return !blockedItems.Any(item => string.Equals(item.Clsid, normalizedId, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            // Fallback to local check if backend is unavailable
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Executes refresh Async.
+    /// </summary>
+    public async Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var entries = await _backendClient.GetWin11ContextMenuSnapshotAsync(cancellationToken);
+            var definitions = entries
+                .Select(CreateDefinition)
+                .ToList();
+
+            CurrentItems = definitions;
+            OnItemsChanged();
+            HasLoaded?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to refresh Win11 items: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Ensures loaded Async.
+    /// </summary>
+    public async Task EnsureLoadedAsync(CancellationToken cancellationToken)
+    {
+        if (CurrentItems.Count == 0)
+        {
+            await RefreshAsync(cancellationToken);
+        }
     }
 
     /// <summary>
     /// Loads logo.
     /// </summary>
-    public ImageSource? LoadLogo(string? logoPath)
+    public static async Task<ImageSource?> LoadLogo(Windows11PackageInfo package, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(logoPath))
-        {
-            return null;
-        }
-
         try
         {
-            if (!File.Exists(logoPath))
+            if (string.IsNullOrWhiteSpace(package.LogoPath) || !File.Exists(package.LogoPath))
             {
                 return null;
             }
 
+            using var fs = new FileStream(package.LogoPath, FileMode.Open, FileAccess.Read);
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(logoPath, UriKind.Absolute);
+            bitmap.StreamSource = fs;
             bitmap.EndInit();
             bitmap.Freeze();
             return bitmap;
@@ -199,348 +155,88 @@ public sealed class Windows11ContextMenuService
             return null;
         }
     }
-}
 
-/// <summary>
-/// Represents the windows11 Permissions.
-/// </summary>
-internal static class Windows11Permissions
-{
-    private static readonly Lazy<bool> IsElevatedLazy = new(() =>
+    #region Private methods
+
+    private void OnItemsChanged()
     {
-        using var identity = WindowsIdentity.GetCurrent();
-        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-    });
-
-    public static bool IsElevated => IsElevatedLazy.Value;
-}
-
-/// <summary>
-/// Represents the windows11 Packages.
-/// </summary>
-internal static class Windows11Packages
-{
-    private const string NamespaceCom = "http://schemas.microsoft.com/appx/manifest/com/windows10";
-    private const string NamespaceDesktop4 = "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4";
-
-    /// <summary>
-    /// Gets packaged Com Packages.
-    /// </summary>
-    public static string[] GetPackagedComPackages()
-    {
-        using var subKey = Registry.ClassesRoot.OpenSubKey(@"PackagedCom\Package");
-        return subKey?.GetSubKeyNames() ?? [];
+        ItemsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Executes analyze Manifest Async.
-    /// </summary>
-    public static async Task<IEnumerable<Windows11ContextMenuItemDefinition>> AnalyzeManifestAsync(
-        Windows11PackageInfo package,
-        bool isBundle,
-        CancellationToken cancellationToken)
-    {
-        var manifestPath = Path.Combine(
-            package.InstallPath,
-            isBundle ? @"AppxMetadata\AppxBundleManifest.xml" : "AppxManifest.xml");
+    private static string NormalizeGuid(string guidText) =>
+        Guid.TryParse(guidText, out var guid)
+            ? guid.ToString("B")
+            : guidText.Trim('{', '}');
 
-        if (!File.Exists(manifestPath))
+    private static string ExtractHandlerId(string id)
+    {
+        var parts = id.Split('|');
+        return parts.Length >= 2 && string.Equals(parts[0], "win11", StringComparison.OrdinalIgnoreCase)
+            ? parts[1]
+            : id;
+    }
+
+    private static Windows11ContextMenuItemDefinition CreateDefinition(ContextMenuEntry entry)
+    {
+        var packageFullName = ContextMenuApprovalIdentity.ExtractWin11PackageKey(entry.RegistryPath);
+        if (string.IsNullOrWhiteSpace(packageFullName)
+            || string.Equals(packageFullName, entry.RegistryPath, StringComparison.OrdinalIgnoreCase))
         {
-            return [];
+            packageFullName = entry.DisplayName;
         }
 
-        await using var stream = File.OpenRead(manifestPath);
-        using var reader = XmlReader.Create(stream, new XmlReaderSettings
-        {
-            Async = true,
-            DtdProcessing = DtdProcessing.Ignore
-        });
+        var filePath = entry.FilePath ?? string.Empty;
+        var installPath = File.Exists(filePath)
+            ? Path.GetDirectoryName(filePath) ?? string.Empty
+            : filePath;
 
-        var nsResolver = (IXmlNamespaceResolver)reader;
-        if (!reader.ReadToFollowing("Package")
-            || nsResolver.LookupPrefix(NamespaceDesktop4) is null
-            || nsResolver.LookupPrefix(NamespaceCom) is null)
-        {
-            return [];
-        }
-
-        var contextMenus = new Dictionary<string, List<Windows11ContextMenuVerb>>(StringComparer.OrdinalIgnoreCase);
-        var comServers = new Dictionary<string, Windows11ComServerInfo>(StringComparer.OrdinalIgnoreCase);
-
-        while (await reader.ReadAsync())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (reader.NodeType != XmlNodeType.Element)
+        return new Windows11ContextMenuItemDefinition(
+            entry.Id,
+            entry.DisplayName,
+            new Windows11PackageInfo(
+                packageFullName,
+                packageFullName,
+                installPath)
             {
-                continue;
-            }
-
-            switch (reader.LocalName)
-            {
-                case "FileExplorerContextMenus":
-                {
-                    var element = (XElement)XNode.ReadFrom(reader);
-                    var query =
-                        from itemType in element.Elements()
-                        where itemType.Name.LocalName == "ItemType"
-                        from verb in itemType.Elements()
-                        where verb.Name.LocalName == "Verb"
-                        let type = itemType.Attribute("Type")?.Value
-                        let item = new Windows11ContextMenuVerb(
-                            verb.Attribute("Clsid")?.Value,
-                            verb.Attribute("Id")?.Value,
-                            string.Equals(type, "Directory", StringComparison.OrdinalIgnoreCase)
-                                ? type
-                                : $"File: {type}")
-                        group item by item.Clsid;
-
-                    foreach (var group in query)
-                    {
-                        if (!string.IsNullOrWhiteSpace(group.Key))
-                        {
-                            contextMenus[group.Key] = group.ToList();
-                        }
-                    }
-
-                    break;
-                }
-                case "ComServer":
-                {
-                    var element = (XElement)XNode.ReadFrom(reader);
-                    var query =
-                        from server in element.Elements()
-                        where server.Name.LocalName is "SurrogateServer" or "ExeServer"
-                        from cls in server.Elements()
-                        where cls.Name.LocalName == "Class"
-                        let item = new Windows11ComServerInfo(
-                            cls.Attribute("Id")?.Value,
-                            Path.Combine(
-                                package.InstallPath,
-                                cls.Attribute("Path")?.Value ?? server.Attribute("Executable")?.Value ?? string.Empty),
-                            server.Attribute("DisplayName")?.Value)
-                        group item by item.Id;
-
-                    foreach (var group in query)
-                    {
-                        if (!string.IsNullOrWhiteSpace(group.Key))
-                        {
-                            comServers[group.Key] = group.First();
-                        }
-                    }
-
-                    break;
-                }
-            }
-        }
-
-        return contextMenus.Keys
-            .Intersect(comServers.Keys, StringComparer.OrdinalIgnoreCase)
-            .Select(id =>
-            {
-                var comServer = comServers[id];
-                var displayName = string.IsNullOrWhiteSpace(comServer.DisplayName)
-                    ? package.DisplayName
-                    : comServer.DisplayName;
-                var contextTypes = contextMenus[id]
-                    .Select(static item => item.Type)
-                    .Where(static item => !string.IsNullOrWhiteSpace(item))
-                    .Cast<string>()
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-
-                return new Windows11ContextMenuItemDefinition(
-                    id,
-                    displayName ?? package.DisplayName,
-                    package,
-                    contextMenus[id],
-                    comServer,
-                    contextTypes,
-                    true,
-                    false);
-            });
-    }
-}
-
-/// <summary>
-/// Represents the windows11 Blocks.
-/// </summary>
-internal sealed class Windows11Blocks : IReadOnlyCollection<string>
-{
-    internal const string RegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
-
-    private readonly RegistryKey _baseKey;
-    private HashSet<string> _items = [];
-    private readonly Lazy<bool> _isReadOnly;
-
-    private Windows11Blocks(RegistryHive hive)
-    {
-        Scope = hive;
-        _baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
-        _isReadOnly = new Lazy<bool>(() =>
+                FamilyName = packageFullName.Split('_')[0],
+                PublisherDisplayName = packageFullName
+            },
+            [],
+            new Windows11ComServerInfo(entry.HandlerClsid, entry.FilePath, entry.DisplayName),
+            [ToContextType(entry.Category)])
         {
-            try
-            {
-                using var subKey = _baseKey.OpenSubKey(RegistryPath, writable: true)
-                                 ?? _baseKey.OpenSubKey(RegistryPath[..RegistryPath.LastIndexOf('\\')], writable: true);
-                return false;
-            }
-            catch (SecurityException)
-            {
-                return true;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return true;
-            }
-        });
-    }
-
-    /// <summary>
-    /// Gets the scope.
-    /// </summary>
-    public RegistryHive Scope { get; }
-
-    public bool IsReadOnly => _isReadOnly.Value;
-
-    public int Count => _items.Count;
-
-    /// <summary>
-    /// Executes load.
-    /// </summary>
-    public void Load()
-    {
-        using var subKey = _baseKey.OpenSubKey(RegistryPath);
-        _items = subKey?.GetValueNames()
-            .Select(static value => value.Trim('{', '}'))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)
-            ?? [];
-    }
-
-    /// <summary>
-    /// Executes add.
-    /// </summary>
-    public void Add(string id)
-    {
-        using var subKey = _baseKey.OpenSubKey(RegistryPath, writable: true) ?? _baseKey.CreateSubKey(RegistryPath);
-        subKey.SetValue(ToRegistryName(id), string.Empty);
-        _items.Add(id);
-    }
-
-    /// <summary>
-    /// Executes remove.
-    /// </summary>
-    public void Remove(string id)
-    {
-        if (!_items.Contains(id))
-        {
-            return;
-        }
-
-        using var subKey = _baseKey.OpenSubKey(RegistryPath, writable: true);
-        if (subKey is null)
-        {
-            _items = [];
-            return;
-        }
-
-        subKey.DeleteValue(ToRegistryName(id), throwOnMissingValue: false);
-        _items.Remove(id);
-    }
-
-    /// <summary>
-    /// Executes contains.
-    /// </summary>
-    public bool Contains(string id) => _items.Contains(id);
-
-    /// <summary>
-    /// Gets enumerator.
-    /// </summary>
-    public IEnumerator<string> GetEnumerator() => _items.GetEnumerator();
-
-    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-    /// <summary>
-    /// Gets a value indicating whether r.
-    /// </summary>
-    public static Windows11Blocks User { get; } = new(RegistryHive.CurrentUser);
-
-    /// <summary>
-    /// Gets the machine.
-    /// </summary>
-    public static Windows11Blocks Machine { get; } = new(RegistryHive.LocalMachine);
-
-    /// <summary>
-    /// Gets or sets the write Scope.
-    /// </summary>
-    public static RegistryHive WriteScope { get; set; } = RegistryHive.CurrentUser;
-
-    /// <summary>
-    /// Gets scopes.
-    /// </summary>
-    public static IEnumerable<Windows11Blocks> GetScopes()
-    {
-        yield return User;
-        yield return Machine;
-    }
-
-    /// <summary>
-    /// Gets scope.
-    /// </summary>
-    public static Windows11Blocks GetScope(RegistryHive hive)
-    {
-        return hive switch
-        {
-            RegistryHive.CurrentUser => User,
-            RegistryHive.LocalMachine => Machine,
-            _ => throw new ArgumentOutOfRangeException(nameof(hive), hive, null)
+            IsEnabled = entry.IsEnabled,
+            IsMachineBlocked = false,
+            Entry = entry
         };
     }
 
-    /// <summary>
-    /// Loads all.
-    /// </summary>
-    public static void LoadAll()
+    private static string ToContextType(ContextMenuCategory category) => category switch
     {
-        foreach (var blocks in GetScopes())
-        {
-            blocks.Load();
-        }
+        ContextMenuCategory.DirectoryBackground => @"Directory\Background",
+        ContextMenuCategory.DesktopBackground => "DesktopBackground",
+        ContextMenuCategory.Drive => "Drive",
+        ContextMenuCategory.Folder or ContextMenuCategory.Directory => "Directory",
+        _ => "*"
+    };
+
+    private void UpdateCachedState(string handlerClsid, bool isEnabled)
+    {
+        var normalizedClsid = NormalizeGuid(handlerClsid);
+        CurrentItems = CurrentItems
+            .Select(item => string.Equals(NormalizeGuid(ExtractHandlerId(item.Id)), normalizedClsid, StringComparison.OrdinalIgnoreCase)
+                ? item with { IsEnabled = isEnabled }
+                : item)
+            .ToArray();
     }
 
-    private static string ToRegistryName(string value) => '{' + value + '}';
+    #endregion
 }
 
-/// <summary>
-/// Represents the windows11 Package Info.
-/// </summary>
-public sealed record Windows11PackageInfo(
-    string FamilyName,
-    string FullName,
-    string DisplayName,
-    string PublisherDisplayName,
-    string LogoPath,
-    string InstallPath,
-    Version Version);
+#region Public type definitions for ViewModel compatibility
 
 /// <summary>
-/// Represents the windows11 Context Menu Verb.
-/// </summary>
-public sealed record Windows11ContextMenuVerb(
-    string? Clsid,
-    string? Id,
-    string? Type);
-
-/// <summary>
-/// Represents the windows11 Com Server Info.
-/// </summary>
-public sealed record Windows11ComServerInfo(
-    string? Id,
-    string? Path,
-    string? DisplayName);
-
-/// <summary>
-/// Represents the windows11 Context Menu Item Definition.
+/// Represents a Win11 context menu item definition.
 /// </summary>
 public sealed record Windows11ContextMenuItemDefinition(
     string Id,
@@ -548,6 +244,40 @@ public sealed record Windows11ContextMenuItemDefinition(
     Windows11PackageInfo Package,
     IReadOnlyList<Windows11ContextMenuVerb> ContextMenus,
     Windows11ComServerInfo ComServer,
-    IReadOnlyList<string> ContextTypes,
-    bool IsEnabled,
-    bool IsMachineBlocked);
+    IReadOnlyList<string> ContextTypes)
+{
+    public bool IsEnabled { get; init; } = true;
+    public bool IsMachineBlocked { get; init; } = false;
+    public ContextMenuEntry? Entry { get; init; }
+}
+
+/// <summary>
+/// Represents a Win11 package info.
+/// </summary>
+public sealed record Windows11PackageInfo(
+    string FullName,
+    string DisplayName,
+    string InstallPath)
+{
+    public string LogoPath { get; init; } = string.Empty;
+    public string PublisherDisplayName { get; init; } = string.Empty;
+    public string FamilyName { get; init; } = DisplayName;
+}
+
+/// <summary>
+/// Represents a Win11 context menu verb.
+/// </summary>
+public sealed record Windows11ContextMenuVerb(
+    string Id,
+    string DisplayName,
+    IReadOnlyList<string> ContextTypes);
+
+/// <summary>
+/// Represents a Win11 COM server info.
+/// </summary>
+public sealed record Windows11ComServerInfo(
+    string? Id,
+    string? Path,
+    string? DisplayName);
+
+#endregion

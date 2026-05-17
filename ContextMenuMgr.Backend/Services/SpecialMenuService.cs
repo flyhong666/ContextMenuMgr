@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
@@ -51,16 +52,41 @@ public sealed class SpecialMenuService
     {
         try
         {
-            var updated = item.Kind switch
+            SpecialMenuEntry updated;
+            try
             {
-                SpecialMenuKind.ShellNew => SetShellNewEnabled(item, enabled, RequireUserContext(userContext)),
-                SpecialMenuKind.SendTo => SetFileSystemItemEnabled(item, enabled, GetSendToPath(RequireUserContext(userContext))),
-                SpecialMenuKind.WinX => SetFileSystemItemEnabled(item, enabled, GetWinXPath(RequireUserContext(userContext))),
-                SpecialMenuKind.DragDrop => SetRenameBackedRegistryItemEnabled(item, enabled, "DragDropHandlers", "-DragDropHandlers"),
-                SpecialMenuKind.InternetExplorer => SetRenameBackedRegistryItemEnabled(item, enabled, "MenuExt", "-MenuExt", RequireUserContext(userContext)),
-                SpecialMenuKind.CommandStore => SetCommandStoreEnabled(item, enabled),
-                _ => throw new InvalidOperationException("This special menu item cannot be toggled.")
-            };
+                updated = item.Kind switch
+                {
+                    SpecialMenuKind.ShellNew => SetShellNewEnabled(item, enabled, RequireUserContext(userContext)),
+                    SpecialMenuKind.SendTo => SetFileSystemItemEnabled(item, enabled, GetSendToPath(RequireUserContext(userContext))),
+                    SpecialMenuKind.WinX => SetFileSystemItemEnabled(item, enabled, GetWinXPath(RequireUserContext(userContext))),
+                    SpecialMenuKind.DragDrop => SetDragDropEnabled(item, enabled),
+                    SpecialMenuKind.InternetExplorer => SetRenameBackedRegistryItemEnabled(item, enabled, "MenuExt", "-MenuExt", RequireUserContext(userContext)),
+                    SpecialMenuKind.CommandStore => SetCommandStoreEnabled(item, enabled),
+                    SpecialMenuKind.GuidBlock => SetGuidBlockEnabled(item, enabled),
+                    _ => throw new InvalidOperationException("This special menu item cannot be toggled.")
+                };
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                await _logger.LogAsync($"Permission denied when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
+
+                if (item.Kind == SpecialMenuKind.DragDrop)
+                {
+                    return Failure(
+                        "Permission denied: Unable to modify DragDrop handler. " +
+                        "This operation requires administrator privileges to modify HKEY_CLASSES_ROOT registry keys. " +
+                        "Please run ContextMenuMgr as administrator or check the backend service permissions.",
+                        operationId);
+                }
+
+                return Failure($"Permission denied: {ex.Message}", operationId);
+            }
+            catch (SecurityException ex)
+            {
+                await _logger.LogAsync($"Security exception when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
+                return Failure($"Security error: {ex.Message}. This operation may require elevated privileges.", operationId);
+            }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
             await _logger.LogAsync($"Set special menu item enabled. Kind={item.Kind}, Id={item.Id}, Enabled={enabled}.", cancellationToken);
@@ -251,63 +277,83 @@ public sealed class SpecialMenuService
                 await _logger.LogAsync("Unable to enable SeSecurityPrivilege. Proceeding without it.", cancellationToken);
             }
 
-            RegistryKey userRoot;
+            RegistryKey? key;
             try
             {
-                userRoot = GetUserRegistryRoot(userContextToUse, writable: true);
+                key = OpenShellNewOrderKeyForAcl(userContextToUse, createIfMissing: locked);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                await _logger.LogAsync($"Access denied when opening ShellNew ordering ACL for user {userContextToUse.Sid}", cancellationToken);
+                return Failure("Permission denied: Cannot change ShellNew ordering lock. This operation requires permission to change the registry key ACL.", operationId);
+            }
+            catch (SecurityException ex)
+            {
+                await _logger.LogAsync($"Security exception when opening ShellNew ordering ACL: {ex.Message}", cancellationToken);
+                return Failure($"Security error: {ex.Message}. This operation requires permission to change the registry key ACL.", operationId);
             }
             catch (Exception ex)
             {
-                await _logger.LogAsync($"Unable to open user registry root for writing: {ex.Message}", cancellationToken);
-                throw new InvalidOperationException($"Unable to access user registry: {ex.Message}", ex);
+                await _logger.LogAsync($"Unable to open ShellNew ordering key ACL: {ex.Message}", cancellationToken);
+                return Failure($"Unable to open ShellNew ordering key: {ex.Message}", operationId);
             }
 
-            using (userRoot)
+            if (key is null)
             {
-                RegistryKey key;
+                await _logger.LogAsync($"ShellNew order unlock requested but key does not exist for user {userContextToUse.Sid}.", cancellationToken);
+                return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
+            }
+
+            using (key)
+            {
                 try
                 {
-                    key = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
+                    SetShellNewLockState(key, locked);
+                    await _logger.LogAsync($"ShellNew order lock set to {locked} for user {userContextToUse.Sid}.", cancellationToken);
+                    return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    await _logger.LogAsync("Access denied when modifying ACL on ShellNew ordering key. Attempting ownership fallback.", cancellationToken);
+                    try
+                    {
+                        EnsureShellNewOrderAclAccess(userContextToUse, createIfMissing: locked);
+                        SetShellNewOrderLock(userContextToUse, locked, createIfMissing: locked);
+                        await _logger.LogAsync($"ShellNew order lock set to {locked} for user {userContextToUse.Sid} after ownership fallback.", cancellationToken);
+                        return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
+                    }
+                    catch (Exception retryEx)
+                    {
+                        await _logger.LogAsync($"Ownership fallback failed when modifying ShellNew ordering ACL: {retryEx.Message}", cancellationToken);
+                        return Failure("Permission denied: Cannot modify access control list (ACL) on ShellNew ordering key. This operation requires permission to change the registry key ACL.", operationId);
+                    }
+                }
+                catch (SecurityException ex)
+                {
+                    await _logger.LogAsync($"Security exception when modifying ACL: {ex.Message}. Attempting ownership fallback.", cancellationToken);
+                    try
+                    {
+                        EnsureShellNewOrderAclAccess(userContextToUse, createIfMissing: locked);
+                        SetShellNewOrderLock(userContextToUse, locked, createIfMissing: locked);
+                        await _logger.LogAsync($"ShellNew order lock set to {locked} for user {userContextToUse.Sid} after ownership fallback.", cancellationToken);
+                        return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
+                    }
+                    catch (Exception retryEx)
+                    {
+                        await _logger.LogAsync($"Ownership fallback failed after security exception: {retryEx.Message}", cancellationToken);
+                        return Failure($"Security error modifying ACL: {ex.Message}. This operation requires permission to change the registry key ACL.", operationId);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    await _logger.LogAsync($"Unable to create ShellNew key: {ex.Message}", cancellationToken);
-                    throw new InvalidOperationException($"Unable to create ShellNew ordering key: {ex.Message}", ex);
-                }
-
-                if (key is null)
-                {
-                    throw new InvalidOperationException("Unable to open ShellNew ordering key.");
-                }
-
-                using (key)
-                {
-                    var security = key.GetAccessControl(AccessControlSections.Access);
-                    var rule = CreateShellNewLockRule();
-                    if (locked)
-                    {
-                        security.AddAccessRule(rule);
-                    }
-                    else
-                    {
-                        foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(NTAccount)))
-                        {
-                            if (IsShellNewLockRule(existing))
-                            {
-                                security.RemoveAccessRule(existing);
-                            }
-                        }
-                    }
-
-                    key.SetAccessControl(security);
-                    await _logger.LogAsync($"ShellNew order lock set to {locked}.", cancellationToken);
-                    return new PipeResponse { Success = true, Message = "ShellNew order lock updated.", ClientOperationId = operationId };
+                    await _logger.LogAsync($"Failed to modify ShellNew order lock: {ex.Message}", cancellationToken);
+                    return Failure(ex.Message, operationId);
                 }
             }
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to update ShellNew order lock: {ex.Message}", cancellationToken);
+            await _logger.LogAsync($"Unexpected error in SetShellNewOrderLockAsync: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -322,7 +368,7 @@ public sealed class SpecialMenuService
         {
             ordered = GetShellNewOrderedExtensions(context);
         }
-        catch (Exception ex)
+        catch
         {
             ordered = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
@@ -330,6 +376,15 @@ public sealed class SpecialMenuService
         try
         {
             EnableSecurityPrivilege();
+        }
+        catch
+        {
+        }
+
+        var orderLocked = false;
+        try
+        {
+            orderLocked = IsShellNewOrderLocked(context);
         }
         catch
         {
@@ -347,7 +402,7 @@ public sealed class SpecialMenuService
                     specs.Add(new ClassesRootSpec(machineClasses, @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes", "System"));
                 }
             }
-            catch (Exception ex)
+            catch
             {
             }
         }
@@ -373,16 +428,6 @@ public sealed class SpecialMenuService
                                 break;
                             }
 
-                            bool orderLocked;
-                            try
-                            {
-                                orderLocked = IsShellNewOrderLocked(context);
-                            }
-                            catch (Exception ex)
-                            {
-                                orderLocked = false;
-                            }
-
                             entries.Add(item with
                             {
                                 Metadata = item.Metadata.Concat(new[]
@@ -393,12 +438,12 @@ public sealed class SpecialMenuService
                             break;
                         }
                     }
-                    catch (Exception ex)
+                    catch
                     {
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
             }
         }
@@ -409,7 +454,7 @@ public sealed class SpecialMenuService
             {
                 entries.AddRange(GetDefaultShellNewEntries());
             }
-            catch (Exception ex)
+            catch
             {
             }
         }
@@ -419,7 +464,7 @@ public sealed class SpecialMenuService
             .ThenBy(item => item.KeyName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var beforeSeparator = sortableEntries.Where(static item => IsBeforeSeparatorEntry(item)).Select(static item => item with { CanMove = false }).ToArray();
-        var afterSeparator = sortableEntries.Where(static item => !IsBeforeSeparatorEntry(item)).Select(static item => item with { CanMove = true }).ToArray();
+        var afterSeparator = sortableEntries.Where(static item => !IsBeforeSeparatorEntry(item)).Select(item => item with { CanMove = orderLocked }).ToArray();
         return beforeSeparator
             .Concat(new[] { CreateShellNewSeparatorEntry() })
             .Concat(afterSeparator)
@@ -595,6 +640,11 @@ public sealed class SpecialMenuService
 
     private static SpecialMenuEntry MoveShellNew(ShellNewSortRequest request, BackendUserContext context)
     {
+        if (!IsShellNewOrderLocked(context))
+        {
+            throw new InvalidOperationException("ShellNew ordering requires the new-menu lock to be enabled first.");
+        }
+
         var registryPath = DecodeId(request.Id);
         var extension = registryPath.Split('\\').FirstOrDefault(static part => part.StartsWith('.')) ?? string.Empty;
         var items = GetShellNewItems(context).Where(static item => item.CanMove).ToList();
@@ -606,10 +656,35 @@ public sealed class SpecialMenuService
         }
 
         (items[index], items[target]) = (items[target], items[index]);
-        using var userRoot = GetUserRegistryRoot(context, writable: true);
-        using var orderKey = userRoot.CreateSubKey(ShellNewOrderPath, writable: true)
-            ?? throw new InvalidOperationException("Unable to open ShellNew order key.");
-        orderKey.SetValue("Classes", items.Select(static item => item.KeyName).ToArray(), RegistryValueKind.MultiString);
+        var relock = IsShellNewOrderLocked(context);
+        try
+        {
+            if (relock)
+            {
+                SetShellNewOrderLock(context, locked: false, createIfMissing: false);
+            }
+
+            using var userRoot = GetUserRegistryRoot(context, writable: true);
+            using var orderKey = userRoot.CreateSubKey(ShellNewOrderPath, writable: true)
+                ?? throw new InvalidOperationException("Unable to open ShellNew order key.");
+            orderKey.SetValue("Classes", items.Select(static item => item.KeyName).ToArray(), RegistryValueKind.MultiString);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new InvalidOperationException("ShellNew ordering registry key is not writable. The backend needs permission to temporarily unlock the key, save the order, and lock it again.", ex);
+        }
+        catch (SecurityException ex)
+        {
+            throw new InvalidOperationException("ShellNew ordering registry key is protected by access control. The backend needs permission to temporarily unlock the key, save the order, and lock it again.", ex);
+        }
+        finally
+        {
+            if (relock)
+            {
+                SetShellNewOrderLock(context, locked: true, createIfMissing: true);
+            }
+        }
+
         return items[target];
     }
 
@@ -1312,15 +1387,39 @@ public sealed class SpecialMenuService
         return GetGuidBlockItems().First(item => string.Equals(item.KeyName, guid.ToString("B"), StringComparison.OrdinalIgnoreCase));
     }
 
+    private static SpecialMenuEntry SetGuidBlockEnabled(SpecialMenuEntry item, bool enabled)
+    {
+        if (enabled)
+        {
+            using var key = Registry.LocalMachine.CreateSubKey(GuidBlockedPath, writable: true)
+                ?? throw new InvalidOperationException("Unable to open Blocked shell extensions key.");
+            key.SetValue(item.KeyName, item.DisplayName ?? string.Empty, RegistryValueKind.String);
+        }
+        else
+        {
+            DeleteRegistryValue(Registry.LocalMachine, GuidBlockedPath, item.KeyName);
+        }
+
+        return item with { IsEnabled = enabled };
+    }
+
     private static IReadOnlyList<SpecialMenuEntry> GetIeItems(BackendUserContext context)
     {
         var result = new List<SpecialMenuEntry>();
-        using var root = Registry.Users.OpenSubKey($@"{context.Sid}\{IeRootPath}", writable: false);
-        if (root is null)
+
+        using var userBaseKey = GetUserRegistryRoot(context, writable: false);
+        using var root = userBaseKey.OpenSubKey(IeRootPath, writable: false);
+
+        if (root is not null)
         {
-            return result;
+            PopulateIeItemsFromRoot(root, result);
         }
 
+        return result.OrderBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static void PopulateIeItemsFromRoot(RegistryKey root, List<SpecialMenuEntry> result)
+    {
         foreach (var part in new[] { "MenuExt", "-MenuExt" })
         {
             using var menuKey = root.OpenSubKey(part, writable: false);
@@ -1351,8 +1450,6 @@ public sealed class SpecialMenuService
                 });
             }
         }
-
-        return result.OrderBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static SpecialMenuEntry CreateIe(IeMenuCreateRequest request, BackendUserContext context)
@@ -1390,8 +1487,324 @@ public sealed class SpecialMenuService
         return GetIeItems(context).First(item => string.Equals(item.RegistryPath, path, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static SpecialMenuEntry SetDragDropEnabled(SpecialMenuEntry item, bool enabled)
+    {
+        try
+        {
+            EnableSecurityPrivilege();
+            EnableRestorePrivilege();
+            EnableBackupPrivilege();
+
+            return SetRenameBackedRegistryItemEnabled(item, enabled, "DragDropHandlers", "-DragDropHandlers");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            try
+            {
+                var source = item.RegistryPath ?? DecodeId(item.Id);
+                var target = source.Replace(
+                    enabled ? @"\-DragDropHandlers\" : @"\DragDropHandlers\",
+                    enabled ? @"\DragDropHandlers\" : @"\-DragDropHandlers\",
+                    StringComparison.OrdinalIgnoreCase);
+
+                MoveRegistryKeyWithElevation(source, target);
+                return item with
+                {
+                    Id = EncodeId(item.Kind, target),
+                    IsEnabled = enabled,
+                    RegistryPath = target
+                };
+            }
+            catch
+            {
+                throw;
+            }
+        }
+    }
+
+    private static void MoveRegistryKeyWithElevation(string sourcePath, string targetPath)
+    {
+        try
+        {
+            MoveRegistryKeyCore(sourcePath, targetPath, context: null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            EnableSecurityPrivilege();
+            EnableRestorePrivilege();
+
+            using var sourceKey = OpenRegistryKeyWithFallback(sourcePath, writable: false);
+            if (sourceKey is null)
+            {
+                throw new InvalidOperationException($"Unable to open source registry key: {sourcePath}");
+            }
+
+            CreateRegistryKeyCopyWithFallback(sourceKey, targetPath);
+            DeleteRegistryTreeWithFallback(sourcePath);
+        }
+    }
+
+    private static RegistryKey? OpenRegistryKeyWithFallback(string? fullPath, bool writable)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+        {
+            return null;
+        }
+
+        var (root, subPath) = SplitRegistryPath(fullPath, context: null);
+
+        try
+        {
+            return root.OpenSubKey(subPath, writable);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            if (root == Registry.ClassesRoot)
+            {
+                try
+                {
+                    var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: false);
+                    return machineRoot?.OpenSubKey(subPath, writable);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private static void CreateRegistryKeyCopyWithFallback(RegistryKey source, string targetPath)
+    {
+        var (root, subPath) = SplitRegistryPath(targetPath, context: null);
+
+        RegistryKey? target = null;
+        try
+        {
+            target = root.CreateSubKey(subPath, writable: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            if (root == Registry.ClassesRoot)
+            {
+                var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                if (machineRoot is not null)
+                {
+                    target = machineRoot.CreateSubKey(subPath, writable: true);
+                }
+            }
+        }
+
+        if (target is null)
+        {
+            throw new InvalidOperationException($"Unable to create target registry key: {targetPath}");
+        }
+
+        using (target)
+        {
+            foreach (var valueName in source.GetValueNames())
+            {
+                target.SetValue(valueName, source.GetValue(valueName)!, source.GetValueKind(valueName));
+            }
+
+            foreach (var subKeyName in source.GetSubKeyNames())
+            {
+                using var subKey = source.OpenSubKey(subKeyName, writable: false);
+                if (subKey is not null)
+                {
+                    CreateRegistryKeyCopyWithFallback(subKey, $@"{targetPath}\{subKeyName}");
+                }
+            }
+        }
+    }
+
+    private static void DeleteRegistryTreeWithFallback(string? fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+        {
+            return;
+        }
+
+        try
+        {
+            DeleteRegistryTree(fullPath, context: null);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            var (root, subPath) = SplitRegistryPath(fullPath, context: null);
+            var parentPath = subPath.Contains('\\') ? subPath[..subPath.LastIndexOf('\\')] : string.Empty;
+            var keyName = subPath.Contains('\\') ? subPath[(subPath.LastIndexOf('\\') + 1)..] : subPath;
+
+            if (root == Registry.ClassesRoot)
+            {
+                var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
+                if (machineRoot is not null)
+                {
+                    using var parent = machineRoot.OpenSubKey(parentPath, writable: true);
+                    parent?.DeleteSubKeyTree(keyName, throwOnMissingSubKey: false);
+                }
+            }
+        }
+    }
+
+    private static bool EnableRestorePrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_RESTORE_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool EnableBackupPrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_BACKUP_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool EnableTakeOwnershipPrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_TAKE_OWNERSHIP_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private const string SE_RESTORE_NAME = "SeRestorePrivilege";
+    private const string SE_BACKUP_NAME = "SeBackupPrivilege";
+    private const string SE_TAKE_OWNERSHIP_NAME = "SeTakeOwnershipPrivilege";
+
     private static SpecialMenuEntry SetRenameBackedRegistryItemEnabled(SpecialMenuEntry item, bool enabled, string enabledPart, string disabledPart)
-        => SetRenameBackedRegistryItemEnabled(item, enabled, enabledPart, disabledPart, context: null);
+    {
+        EnableSecurityPrivilege();
+        return SetRenameBackedRegistryItemEnabled(item, enabled, enabledPart, disabledPart, context: null);
+    }
 
     private static SpecialMenuEntry SetRenameBackedRegistryItemEnabled(SpecialMenuEntry item, bool enabled, string enabledPart, string disabledPart, BackendUserContext? context)
     {
@@ -1547,13 +1960,150 @@ public sealed class SpecialMenuService
     }
 
     private static RegistryAccessRule CreateShellNewLockRule() =>
-        new("Everyone", RegistryRights.Delete | RegistryRights.WriteKey, AccessControlType.Deny);
+        new(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+            RegistryRights.Delete | RegistryRights.WriteKey,
+            AccessControlType.Deny);
+
+    private static void SetShellNewOrderLock(BackendUserContext context, bool locked, bool createIfMissing)
+    {
+        using var key = OpenShellNewOrderKeyForAcl(context, createIfMissing);
+        if (key is null)
+        {
+            return;
+        }
+
+        SetShellNewLockState(key, locked);
+    }
+
+    private static void EnsureShellNewOrderAclAccess(BackendUserContext context, bool createIfMissing)
+    {
+        var fullPath = $@"{context.Sid}\{ShellNewOrderPath}";
+
+        if (createIfMissing)
+        {
+            using var userRoot = GetUserRegistryRoot(context, writable: true);
+            using var _ = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
+        }
+
+        using var identity = WindowsIdentity.GetCurrent();
+        var currentUser = identity.User ?? throw new InvalidOperationException("Unable to resolve backend process identity.");
+
+        EnableTakeOwnershipPrivilege();
+        EnableRestorePrivilege();
+
+        using (var ownerKey = Registry.Users.OpenSubKey(
+            fullPath,
+            RegistryKeyPermissionCheck.ReadWriteSubTree,
+            RegistryRights.TakeOwnership))
+        {
+            if (ownerKey is null)
+            {
+                return;
+            }
+
+            var security = ownerKey.GetAccessControl(AccessControlSections.Owner);
+            security.SetOwner(currentUser);
+            ownerKey.SetAccessControl(security);
+        }
+
+        using (var aclKey = Registry.Users.OpenSubKey(
+            fullPath,
+            RegistryKeyPermissionCheck.ReadWriteSubTree,
+            RegistryRights.ChangePermissions))
+        {
+            if (aclKey is null)
+            {
+                return;
+            }
+
+            var security = aclKey.GetAccessControl(AccessControlSections.Access);
+            security.AddAccessRule(new RegistryAccessRule(
+                currentUser,
+                RegistryRights.FullControl,
+                InheritanceFlags.ContainerInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            aclKey.SetAccessControl(security);
+        }
+    }
+
+    private static RegistryKey? OpenShellNewOrderKeyForAcl(BackendUserContext context, bool createIfMissing)
+    {
+        var fullPath = $@"{context.Sid}\{ShellNewOrderPath}";
+        var key = Registry.Users.OpenSubKey(
+            fullPath,
+            RegistryKeyPermissionCheck.ReadWriteSubTree,
+            RegistryRights.ChangePermissions);
+
+        if (key is not null || !createIfMissing)
+        {
+            return key;
+        }
+
+        using var userRoot = GetUserRegistryRoot(context, writable: true);
+        key = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
+        key?.Dispose();
+
+        return Registry.Users.OpenSubKey(
+            fullPath,
+            RegistryKeyPermissionCheck.ReadWriteSubTree,
+            RegistryRights.ChangePermissions);
+    }
+
+    private static void SetShellNewLockState(RegistryKey key, bool locked)
+    {
+        var security = key.GetAccessControl(AccessControlSections.Access);
+        RemoveShellNewLockRules(security);
+
+        if (locked)
+        {
+            security.AddAccessRule(CreateShellNewLockRule());
+        }
+
+        key.SetAccessControl(security);
+    }
+
+    private static void RemoveShellNewLockRules(RegistrySecurity security)
+    {
+        foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+        {
+            if (existing.IsInherited || !IsShellNewLockRule(existing))
+            {
+                continue;
+            }
+
+            try
+            {
+                security.RemoveAccessRuleSpecific(existing);
+            }
+            catch
+            {
+            }
+
+            security.RemoveAccessRule(existing);
+        }
+    }
 
     private static bool IsShellNewLockRule(RegistryAccessRule rule) =>
         rule.AccessControlType == AccessControlType.Deny
-        && rule.IdentityReference.Value.Equals("Everyone", StringComparison.OrdinalIgnoreCase)
+        && IsWorldSid(rule.IdentityReference)
         && rule.RegistryRights.HasFlag(RegistryRights.Delete)
         && rule.RegistryRights.HasFlag(RegistryRights.WriteKey);
+
+    private static bool IsWorldSid(IdentityReference identity)
+    {
+        try
+        {
+            var sid = identity as SecurityIdentifier
+                ?? identity.Translate(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            return sid?.IsWellKnown(WellKnownSidType.WorldSid) == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private static bool IsShellNewOrderLocked(BackendUserContext context)
     {
@@ -1567,7 +2117,7 @@ public sealed class SpecialMenuService
             }
 
             var security = key.GetAccessControl(AccessControlSections.Access);
-            foreach (RegistryAccessRule rule in security.GetAccessRules(true, true, typeof(NTAccount)))
+            foreach (RegistryAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
             {
                 if (IsShellNewLockRule(rule))
                 {
@@ -1588,6 +2138,31 @@ public sealed class SpecialMenuService
         return false;
     }
 
+    private static bool CanWriteShellNewOrder(BackendUserContext context)
+    {
+        try
+        {
+            using var userRoot = GetUserRegistryRoot(context, writable: false);
+            using var key = userRoot.OpenSubKey(ShellNewOrderPath, writable: true);
+            if (key is not null)
+            {
+                return true;
+            }
+
+            var parentPath = ShellNewOrderPath[..ShellNewOrderPath.LastIndexOf('\\')];
+            using var parent = userRoot.OpenSubKey(parentPath, writable: true);
+            return parent is not null;
+        }
+        catch (SecurityException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static IReadOnlyList<ClassesRootSpec> GetClassesRootSpecs(BackendUserContext context)
     {
         var specs = new List<ClassesRootSpec>();
@@ -1595,7 +2170,7 @@ public sealed class SpecialMenuService
         {
             specs.Add(GetUserClassesRootSpec(context));
         }
-        catch (Exception ex)
+        catch
         {
         }
 
@@ -1607,7 +2182,7 @@ public sealed class SpecialMenuService
                 specs.Add(new ClassesRootSpec(machineClasses, @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes", "System"));
             }
         }
-        catch (Exception ex)
+        catch
         {
         }
 
@@ -1621,9 +2196,11 @@ public sealed class SpecialMenuService
 
     private static ClassesRootSpec GetUserClassesRootSpec(BackendUserContext context)
     {
-        var root = Registry.Users.OpenSubKey($@"{context.Sid}\{UserClassesPath}", writable: false)
-            ?? Registry.Users.CreateSubKey($@"{context.Sid}\{UserClassesPath}", writable: true)
+        var userBaseKey = GetUserRegistryRoot(context, writable: true);
+        var root = userBaseKey.OpenSubKey(UserClassesPath, writable: false)
+            ?? userBaseKey.CreateSubKey(UserClassesPath, writable: true)
             ?? throw new InvalidOperationException("Unable to open caller user classes.");
+
         return new ClassesRootSpec(root, $@"HKEY_USERS\{context.Sid}\Software\Classes", "User");
     }
 
@@ -1643,9 +2220,16 @@ public sealed class SpecialMenuService
     private static BackendUserContext RequireUserContext(BackendUserContext? context) =>
         context ?? throw new InvalidOperationException("This operation requires an interactive user context.");
 
-    private static RegistryKey GetUserRegistryRoot(BackendUserContext context, bool writable) =>
-        Registry.Users.OpenSubKey(context.Sid, writable)
-        ?? throw new InvalidOperationException("Unable to open the caller user registry hive.");
+    private static RegistryKey GetUserRegistryRoot(BackendUserContext context, bool writable)
+    {
+        if (string.IsNullOrWhiteSpace(context.Sid))
+        {
+            throw new InvalidOperationException("The frontend user SID is not available.");
+        }
+
+        return Registry.Users.OpenSubKey(context.Sid, writable)
+            ?? throw new InvalidOperationException($"The registry hive for user {context.Sid} is not loaded.");
+    }
 
     private static string GetSendToPath(BackendUserContext context) => context.GetSendToPath();
 
@@ -1800,6 +2384,19 @@ public sealed class SpecialMenuService
             return;
         }
 
+        try
+        {
+            MoveRegistryKeyCore(sourcePath, targetPath, context);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            EnableSecurityPrivilege();
+            MoveRegistryKeyCore(sourcePath, targetPath, context);
+        }
+    }
+
+    private static void MoveRegistryKeyCore(string sourcePath, string targetPath, BackendUserContext? context = null)
+    {
         using var source = OpenRegistryKey(sourcePath, writable: false, context)
             ?? throw new InvalidOperationException($"Unable to open {sourcePath}.");
         CreateRegistryKeyCopy(source, targetPath, context);

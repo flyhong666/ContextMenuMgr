@@ -1,57 +1,78 @@
-﻿using System.IO;
-using Microsoft.Win32;
+using System.Diagnostics;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Frontend.Services;
 
 /// <summary>
 /// Represents the frontend Startup Service.
+/// All registry operations are now delegated to the backend service.
+/// Maintains backward compatibility with synchronous API while internally using async backend calls.
 /// </summary>
 public sealed class FrontendStartupService
 {
-    private const string PolicyKeyPath = @"Software\ContextMenuMgr\Frontend";
-    private const string PolicyValueName = "StartWithWindows";
-    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValueName = "ContextMenuManagerPlus.TrayHost";
+    private readonly IBackendClient _backendClient;
 
     /// <summary>
-    /// Executes is Auto Start Enabled.
+    /// Initializes a new instance of the <see cref="FrontendStartupService"/> class.
     /// </summary>
-    public bool IsAutoStartEnabled()
+    public FrontendStartupService(IBackendClient backendClient)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(PolicyKeyPath, writable: false);
-        var value = key?.GetValue(PolicyValueName);
-        if (value is int intValue)
-        {
-            return intValue != 0;
-        }
-
-        if (value is string stringValue && int.TryParse(stringValue, out var parsed))
-        {
-            return parsed != 0;
-        }
-
-        using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
-        return runKey?.GetValue(RunValueName) is string command
-               && !string.IsNullOrWhiteSpace(command);
+        _backendClient = backendClient;
     }
 
     /// <summary>
-    /// Sets auto Start Enabled.
+    /// Executes is Auto Start Enabled (synchronous wrapper for backward compatibility).
+    /// </summary>
+    public bool IsAutoStartEnabled()
+    {
+        try
+        {
+            // Run synchronously to maintain existing API contract
+            return IsAutoStartEnabledAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Fallback if backend is unavailable
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Executes is Auto Start Enabled Async.
+    /// </summary>
+    public async Task<bool> IsAutoStartEnabledAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _backendClient.GetAutoStartEnabledAsync(cancellationToken);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Sets auto Start Enabled (synchronous wrapper for backward compatibility).
     /// </summary>
     public void SetAutoStartEnabled(bool enabled)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(PolicyKeyPath);
-        if (key is null)
+        try
         {
-            throw new InvalidOperationException("Unable to open the frontend startup policy registry key.");
+            // Run synchronously to maintain existing API contract
+            SetAutoStartEnabledAsync(enabled, CancellationToken.None).GetAwaiter().GetResult();
         }
-
-        key.SetValue(PolicyValueName, enabled ? 1 : 0, RegistryValueKind.DWord);
-
-        using var runKey = Registry.CurrentUser.CreateSubKey(RunKeyPath);
-        if (runKey is not null)
+        catch (Exception ex)
         {
-            runKey.DeleteValue(RunValueName, throwOnMissingValue: false);
+            Debug.WriteLine($"Failed to set auto-start: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Sets auto Start Enabled Async.
+    /// </summary>
+    public async Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        await _backendClient.SetAutoStartEnabledAsync(enabled, cancellationToken);
     }
 }

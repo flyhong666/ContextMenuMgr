@@ -143,4 +143,24 @@ public sealed record PipeRequest
     public CreateSceneMenuItemRequest? CreateSceneMenuItem { get; init; }
 
     public DefaultDropEffect? DefaultDropEffect { get; init; }
+
+    /// <summary>
+    /// Gets or sets the display name for Win11 blocked items.
+    /// </summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether to block/unblock at machine level.
+    /// </summary>
+    public bool? BlockMachine { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether to unblock at machine level.
+    /// </summary>
+    public bool? UnblockMachine { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether auto-start is enabled.
+    /// </summary>
+    public bool? AutoStartEnabled { get; init; }
 }

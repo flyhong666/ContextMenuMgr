@@ -1,4 +1,6 @@
-﻿using Wpf.Ui.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+using Wpf.Ui.Controls;
 using MessageBox = Wpf.Ui.Controls.MessageBox;
 using MessageBoxResult = Wpf.Ui.Controls.MessageBoxResult;
 
@@ -18,16 +20,19 @@ public static class FrontendMessageBox
         string? closeButtonText = null)
     {
         var localization = ResolveLocalization();
+        var owner = System.Windows.Application.Current?.MainWindow;
+        Keyboard.ClearFocus();
         var messageBox = new MessageBox
         {
             Title = title,
             Content = message,
-            Owner = System.Windows.Application.Current?.MainWindow,
+            Owner = owner,
             CloseButtonText = closeButtonText ?? localization?.Translate("DialogClose") ?? "Close",
             CloseButtonIcon = new SymbolIcon(SymbolRegular.Dismiss24)
         };
 
         await messageBox.ShowDialogAsync();
+        await ClearDialogFocusAsync(owner);
     }
 
     /// <summary>
@@ -39,16 +44,19 @@ public static class FrontendMessageBox
         string? closeButtonText = null)
     {
         var localization = ResolveLocalization();
+        var owner = System.Windows.Application.Current?.MainWindow;
+        Keyboard.ClearFocus();
         var messageBox = new MessageBox
         {
             Title = title,
             Content = message,
-            Owner = System.Windows.Application.Current?.MainWindow,
+            Owner = owner,
             CloseButtonText = closeButtonText ?? localization?.Translate("DialogClose") ?? "Close",
             CloseButtonIcon = new SymbolIcon(SymbolRegular.Dismiss24)
         };
 
         await messageBox.ShowDialogAsync();
+        await ClearDialogFocusAsync(owner);
     }
 
     /// <summary>
@@ -61,18 +69,39 @@ public static class FrontendMessageBox
         string? closeButtonText = null)
     {
         var localization = ResolveLocalization();
+        var owner = System.Windows.Application.Current?.MainWindow;
+        Keyboard.ClearFocus();
         var messageBox = new MessageBox
         {
             Title = title,
             Content = message,
-            Owner = System.Windows.Application.Current?.MainWindow,
+            Owner = owner,
             PrimaryButtonText = primaryButtonText ?? localization?.Translate("DialogConfirm") ?? "Confirm",
             PrimaryButtonIcon = new SymbolIcon(SymbolRegular.Checkmark24),
             CloseButtonText = closeButtonText ?? localization?.Translate("DialogCancel") ?? "Cancel",
             CloseButtonIcon = new SymbolIcon(SymbolRegular.Dismiss24)
         };
 
-        return await messageBox.ShowDialogAsync() == MessageBoxResult.Primary;
+        var result = await messageBox.ShowDialogAsync() == MessageBoxResult.Primary;
+        await ClearDialogFocusAsync(owner);
+        return result;
+    }
+
+    private static async Task ClearDialogFocusAsync(System.Windows.Window? owner)
+    {
+        if (owner is null)
+        {
+            Keyboard.ClearFocus();
+            return;
+        }
+
+        await owner.Dispatcher.InvokeAsync(
+            () =>
+            {
+                Keyboard.ClearFocus();
+                owner.Focus();
+            },
+            DispatcherPriority.ApplicationIdle);
     }
 
     private static LocalizationService? ResolveLocalization()

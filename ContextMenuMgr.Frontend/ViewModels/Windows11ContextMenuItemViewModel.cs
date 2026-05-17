@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -31,7 +31,7 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
         _service = service;
         _localization = localization;
 
-        _logoSource = new Lazy<ImageSource?>(() => _service.LoadLogo(_primaryDefinition.Package.LogoPath));
+        _logoTask = Windows11ContextMenuService.LoadLogo(_primaryDefinition.Package, CancellationToken.None);
         IsEnabled = definitions.All(static definition => definition.IsEnabled);
 
         _languageChangedHandler = (_, _) =>
@@ -44,7 +44,7 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
         _localization.LanguageChanged += _languageChangedHandler;
     }
 
-    private readonly Lazy<ImageSource?> _logoSource;
+    private readonly Task<ImageSource?> _logoTask;
 
     /// <summary>
     /// Gets the grouped source definitions.
@@ -73,7 +73,7 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
 
     public bool HasPublisherName => !string.IsNullOrWhiteSpace(_primaryDefinition.Package.PublisherDisplayName);
 
-    public ImageSource? LogoSource => _logoSource.Value;
+    public ImageSource? LogoSource => _logoTask.IsCompletedSuccessfully ? _logoTask.Result : null;
 
     public bool HasLogo => LogoSource is not null;
 
@@ -99,6 +99,8 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanToggle))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFileLocation))]
+    [NotifyCanExecuteChangedFor(nameof(OpenFileLocationCommand))]
     public partial bool IsBusy { get; set; }
 
     /// <summary>
@@ -110,6 +112,10 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     public bool IsMachineBlocked => Definitions.Any(static definition => definition.IsMachineBlocked);
 
     public bool CanToggle => !IsBusy && !IsMachineBlocked;
+
+    public bool CanOpenFileLocation => !IsBusy
+        && !string.IsNullOrWhiteSpace(InstallPath)
+        && Directory.Exists(InstallPath);
 
     /// <summary>
     /// Refreshes state.
@@ -150,13 +156,12 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     {
         try
         {
-            var actualStates = new List<bool>(Definitions.Count);
-            foreach (var definition in Definitions)
+            foreach (var definition in Definitions.DistinctBy(static definition => definition.ComServer.Id ?? definition.Id))
             {
-                actualStates.Add(await _service.SetEnabledAsync(definition.Id, newValue, CancellationToken.None));
+                await _service.SetEnabledAsync(definition.Id, definition.DisplayName, newValue, CancellationToken.None);
             }
 
-            RefreshState(actualStates.All(static state => state));
+            RefreshState(newValue);
         }
         catch (Exception ex)
         {
@@ -178,7 +183,7 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOpenFileLocation))]
     private async Task OpenFileLocationAsync()
     {
         if (string.IsNullOrWhiteSpace(InstallPath) || !Directory.Exists(InstallPath))

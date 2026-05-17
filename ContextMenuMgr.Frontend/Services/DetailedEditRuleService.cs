@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -146,19 +146,19 @@ public sealed class DetailedEditRuleService
             return;
         }
 
-        WriteValue(clause, value);
+        // 非 Registry 类型（如 Ini）可以同步写入本地文件
+        WriteNonRegistryValue(clause, value);
     }
 
-    private static void WriteValue(DetailedEditRuleClauseDefinition clause, string? value)
+    private static void WriteNonRegistryValue(DetailedEditRuleClauseDefinition clause, string? value)
     {
         switch (clause.StorageKind)
         {
-            case RuleStorageKind.Registry:
-                WriteRegistryValue(clause, value);
-                break;
             case RuleStorageKind.Ini:
                 WriteIniValue(clause, value);
                 break;
+            default:
+                throw new InvalidOperationException($"Unsupported storage kind for synchronous write: {clause.StorageKind}");
         }
     }
 
@@ -173,30 +173,6 @@ public sealed class DetailedEditRuleService
             byte[] bytes => string.Join(" ", bytes.Select(static b => b.ToString("X2", CultureInfo.InvariantCulture))),
             _ => Convert.ToString(value, CultureInfo.InvariantCulture)
         };
-    }
-
-    private static void WriteRegistryValue(DetailedEditRuleClauseDefinition clause, string? value)
-    {
-        var (baseKey, subPath) = OpenRegistryBaseKey(clause.Path);
-        using var key = baseKey?.CreateSubKey(subPath, writable: true)
-            ?? throw new InvalidOperationException($"Unable to open {clause.Path} for writing.");
-
-        if (value is null)
-        {
-            key.DeleteValue(clause.KeyName, throwOnMissingValue: false);
-            return;
-        }
-
-        object boxedValue = clause.ValueKind switch
-        {
-            RegistryValueKind.DWord => int.Parse(value, CultureInfo.InvariantCulture),
-            RegistryValueKind.QWord => long.Parse(value, CultureInfo.InvariantCulture),
-            RegistryValueKind.Binary => ParseBinary(value),
-            RegistryValueKind.MultiString => value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            _ => value
-        };
-
-        key.SetValue(clause.KeyName, boxedValue, clause.ValueKind);
     }
 
     private static string? ReadIniValue(DetailedEditRuleClauseDefinition clause)

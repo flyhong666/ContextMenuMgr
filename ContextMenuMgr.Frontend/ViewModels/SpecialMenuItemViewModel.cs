@@ -66,7 +66,15 @@ public partial class SpecialMenuItemViewModel : ObservableObject
 
     public bool CanMoveUp => CanMove && _canMoveUp;
 
-    public bool CanToggle => Entry.CanEdit
+    public bool CanToggle => ShowToggle && !IsBusy;
+
+    public bool ShowDelete => Entry.CanDelete;
+
+    public bool ShowEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect";
+
+    public bool ShowMove => Entry.CanMove;
+
+    public bool ShowToggle => Entry.CanEdit
         && Entry.Metadata.GetValueOrDefault("EntryType") is not ("DefaultDropEffect" or "Separator");
 
     public bool IsSeparator => Entry.Metadata.GetValueOrDefault("EntryType") == "Separator";
@@ -78,6 +86,7 @@ public partial class SpecialMenuItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanMove))]
     [NotifyPropertyChangedFor(nameof(CanMoveDown))]
     [NotifyPropertyChangedFor(nameof(CanMoveUp))]
+    [NotifyPropertyChangedFor(nameof(CanToggle))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -110,6 +119,10 @@ public partial class SpecialMenuItemViewModel : ObservableObject
         OnPropertyChanged(nameof(CanMoveDown));
         OnPropertyChanged(nameof(CanMoveUp));
         OnPropertyChanged(nameof(CanToggle));
+        OnPropertyChanged(nameof(ShowDelete));
+        OnPropertyChanged(nameof(ShowEdit));
+        OnPropertyChanged(nameof(ShowMove));
+        OnPropertyChanged(nameof(ShowToggle));
         OnPropertyChanged(nameof(IsSeparator));
         OnPropertyChanged(nameof(IconSource));
     }

@@ -108,4 +108,25 @@ public interface IBackendClient : IAsyncDisposable
         CancellationToken cancellationToken);
 
     Task RestartExplorerAsync(CancellationToken cancellationToken);
+
+    Task SetWin11BlockedItemAsync(
+        string handlerClsid,
+        string displayName,
+        bool blockMachine,
+        Guid clientOperationId,
+        CancellationToken cancellationToken);
+
+    Task RemoveWin11BlockedItemAsync(
+        string handlerClsid,
+        bool unblockMachine,
+        Guid clientOperationId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Win11BlockedItem>> GetWin11BlockedItemsAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ContextMenuEntry>> GetWin11ContextMenuSnapshotAsync(CancellationToken cancellationToken);
+
+    Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken);
+
+    Task<bool> GetAutoStartEnabledAsync(CancellationToken cancellationToken);
 }
