@@ -374,12 +374,40 @@ public sealed class NamedPipeBackendClient : IBackendClient
         return response.SpecialItem;
     }
 
-    public async Task DeleteSpecialMenuItemAsync(SpecialMenuEntry item, Guid clientOperationId, CancellationToken cancellationToken)
+    public async Task<SpecialMenuEntry?> DeleteSpecialMenuItemAsync(SpecialMenuEntry item, Guid clientOperationId, CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.DeleteSpecialMenuItem,
+                SpecialKind = item.Kind,
+                SpecialItem = item,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+        return response?.SpecialItem;
+    }
+
+    public async Task<SpecialMenuEntry?> UndoDeleteSpecialMenuItemAsync(SpecialMenuEntry item, Guid clientOperationId, CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.UndoSpecialMenuItem,
+                SpecialKind = item.Kind,
+                SpecialItem = item,
+                ClientOperationId = clientOperationId
+            },
+            cancellationToken);
+        return response?.SpecialItem;
+    }
+
+    public async Task PurgeDeletedSpecialMenuItemAsync(SpecialMenuEntry item, Guid clientOperationId, CancellationToken cancellationToken)
     {
         await SendRequestAsync(
             new PipeRequest
             {
-                Command = PipeCommand.DeleteSpecialMenuItem,
+                Command = PipeCommand.PurgeSpecialMenuItem,
                 SpecialKind = item.Kind,
                 SpecialItem = item,
                 ClientOperationId = clientOperationId

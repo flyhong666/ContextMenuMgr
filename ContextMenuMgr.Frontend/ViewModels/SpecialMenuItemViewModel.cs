@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
 using System.Windows.Media;
@@ -31,6 +32,7 @@ public partial class SpecialMenuItemViewModel : ObservableObject
         try
         {
             IsEnabled = entry.IsEnabled;
+            IsDeleted = entry.Metadata.TryGetValue("IsDeleted", out var deleted) && bool.TryParse(deleted, out var isDeleted) && isDeleted;
         }
         finally
         {
@@ -56,33 +58,69 @@ public partial class SpecialMenuItemViewModel : ObservableObject
 
     public bool HasDetail => !string.IsNullOrWhiteSpace(Detail);
 
-    public bool CanDelete => Entry.CanDelete && !IsBusy;
+    public bool CanDelete => Entry.CanDelete && !IsBusy && !IsDeleted;
 
-    public bool CanEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect" && !IsBusy;
+    public bool CanUndoDelete => Entry.CanDelete && !IsBusy && IsDeleted;
 
-    public bool CanMove => Entry.CanMove && !IsBusy;
+    public bool CanPermanentlyDelete => Entry.CanDelete && !IsBusy && IsDeleted;
+
+    public bool CanEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect" && !IsBusy && !IsDeleted;
+
+    public bool CanMove => Entry.CanMove && !IsBusy && !IsDeleted;
 
     public bool CanMoveDown => CanMove && _canMoveDown;
 
     public bool CanMoveUp => CanMove && _canMoveUp;
 
-    public bool CanToggle => ShowToggle && !IsBusy;
+    public bool CanToggle => ShowToggle && !IsBusy && !IsDeleted;
 
-    public bool ShowDelete => Entry.CanDelete;
+    public bool ShowDelete => Entry.CanDelete && !IsDeleted;
 
-    public bool ShowEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect";
+    public bool ShowUndoDelete => Entry.CanDelete && IsDeleted;
 
-    public bool ShowMove => Entry.CanMove;
+    public bool ShowPermanentDelete => Entry.CanDelete && IsDeleted;
+
+    public bool ShowEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect" && !IsDeleted;
+
+    public bool ShowMove => Entry.CanMove && !IsDeleted;
 
     public bool ShowToggle => Entry.CanEdit
-        && Entry.Metadata.GetValueOrDefault("EntryType") is not ("DefaultDropEffect" or "Separator");
+        && Entry.Metadata.GetValueOrDefault("EntryType") is not ("DefaultDropEffect" or "Separator")
+        && !IsDeleted;
 
     public bool IsSeparator => Entry.Metadata.GetValueOrDefault("EntryType") == "Separator";
 
     public ImageSource? IconSource => _iconPreviewService.GetIcon(Entry.IconPath, Entry.IconIndex, Entry.TargetPath ?? Entry.Path);
 
+    public string DeletedAtText => _localization.Format("DeletedAt", Entry.Metadata.TryGetValue("DeletedAt", out var deletedAt) ? deletedAt : string.Empty);
+
+    public string PermanentDeleteConfirmationText => _localization.Format("PermanentDeletePrompt", DisplayName);
+
+    public double CardOpacity => IsDeleted ? 0.6 : 1.0;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanDelete))]
+    [NotifyPropertyChangedFor(nameof(CanUndoDelete))]
+    [NotifyPropertyChangedFor(nameof(CanPermanentlyDelete))]
+    [NotifyPropertyChangedFor(nameof(CanEdit))]
+    [NotifyPropertyChangedFor(nameof(CanMove))]
+    [NotifyPropertyChangedFor(nameof(CanMoveDown))]
+    [NotifyPropertyChangedFor(nameof(CanMoveUp))]
+    [NotifyPropertyChangedFor(nameof(CanToggle))]
+    [NotifyPropertyChangedFor(nameof(ShowDelete))]
+    [NotifyPropertyChangedFor(nameof(ShowUndoDelete))]
+    [NotifyPropertyChangedFor(nameof(ShowPermanentDelete))]
+    [NotifyPropertyChangedFor(nameof(ShowEdit))]
+    [NotifyPropertyChangedFor(nameof(ShowMove))]
+    [NotifyPropertyChangedFor(nameof(ShowToggle))]
+    [NotifyPropertyChangedFor(nameof(CardOpacity))]
+    public partial bool IsDeleted { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDelete))]
+    [NotifyPropertyChangedFor(nameof(CanUndoDelete))]
+    [NotifyPropertyChangedFor(nameof(CanPermanentlyDelete))]
+    [NotifyPropertyChangedFor(nameof(CanEdit))]
     [NotifyPropertyChangedFor(nameof(CanMove))]
     [NotifyPropertyChangedFor(nameof(CanMoveDown))]
     [NotifyPropertyChangedFor(nameof(CanMoveUp))]
@@ -95,6 +133,15 @@ public partial class SpecialMenuItemViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsPermanentDeleteFlyoutOpen { get; set; }
+
+    [RelayCommand]
+    private void ClosePermanentDeleteFlyout()
+    {
+        IsPermanentDeleteFlyoutOpen = false;
+    }
+
     public void Update(SpecialMenuEntry entry)
     {
         Entry = entry;
@@ -102,6 +149,11 @@ public partial class SpecialMenuItemViewModel : ObservableObject
         try
         {
             IsEnabled = entry.IsEnabled;
+            var newIsDeleted = entry.Metadata.TryGetValue("IsDeleted", out var deleted) && bool.TryParse(deleted, out var isDeleted) && isDeleted;
+            if (IsDeleted != newIsDeleted)
+            {
+                IsDeleted = newIsDeleted;
+            }
         }
         finally
         {
@@ -114,23 +166,30 @@ public partial class SpecialMenuItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Detail));
         OnPropertyChanged(nameof(HasDetail));
         OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(CanUndoDelete));
+        OnPropertyChanged(nameof(CanPermanentlyDelete));
         OnPropertyChanged(nameof(CanEdit));
         OnPropertyChanged(nameof(CanMove));
         OnPropertyChanged(nameof(CanMoveDown));
         OnPropertyChanged(nameof(CanMoveUp));
         OnPropertyChanged(nameof(CanToggle));
         OnPropertyChanged(nameof(ShowDelete));
+        OnPropertyChanged(nameof(ShowUndoDelete));
+        OnPropertyChanged(nameof(ShowPermanentDelete));
         OnPropertyChanged(nameof(ShowEdit));
         OnPropertyChanged(nameof(ShowMove));
         OnPropertyChanged(nameof(ShowToggle));
         OnPropertyChanged(nameof(IsSeparator));
         OnPropertyChanged(nameof(IconSource));
+        OnPropertyChanged(nameof(DeletedAtText));
+        OnPropertyChanged(nameof(CardOpacity));
     }
 
     public void RefreshLocalization()
     {
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(DeletedAtText));
     }
 
     public void SetMoveAvailability(bool canMoveUp, bool canMoveDown)

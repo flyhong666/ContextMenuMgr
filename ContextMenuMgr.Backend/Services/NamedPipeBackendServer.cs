@@ -393,6 +393,10 @@ public sealed class NamedPipeBackendServer
                 => await _specialMenuService.UpdateAsync(request, userContext, cancellationToken),
             PipeCommand.DeleteSpecialMenuItem when request.SpecialItem is not null
                 => await _specialMenuService.DeleteAsync(request.SpecialItem, request.ClientOperationId, userContext, cancellationToken),
+            PipeCommand.UndoSpecialMenuItem when request.SpecialItem is not null
+                => await _specialMenuService.UndoDeleteAsync(request.SpecialItem, request.ClientOperationId, userContext, cancellationToken),
+            PipeCommand.PurgeSpecialMenuItem when request.SpecialItem is not null
+                => await _specialMenuService.PurgeDeletedAsync(request.SpecialItem, request.ClientOperationId, userContext, cancellationToken),
             PipeCommand.MoveSpecialMenuItem
                 => await _specialMenuService.MoveAsync(request, userContext, cancellationToken),
             PipeCommand.RestoreSpecialMenuDefaults when request.SpecialKind is not null

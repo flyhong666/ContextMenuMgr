@@ -28,6 +28,8 @@ public enum PipeCommand
     CreateSpecialMenuItem,
     UpdateSpecialMenuItem,
     DeleteSpecialMenuItem,
+    UndoSpecialMenuItem,
+    PurgeSpecialMenuItem,
     MoveSpecialMenuItem,
     RestoreSpecialMenuDefaults,
     SetShellNewOrderLock,

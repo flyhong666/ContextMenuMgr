@@ -168,6 +168,56 @@
                                 <ui:Button
                                     Width="32"
                                     Height="32"
+                                    Margin="0,0,6,0"
+                                    Padding="0"
+                                    Command="{Binding DataContext.UndoDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
+                                    IsEnabled="{Binding CanUndoDelete}"
+                                    Visibility="{Binding ShowUndoDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Grid Visibility="{Binding ShowPermanentDelete, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ui:Button
+                                        Width="32"
+                                        Height="32"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}"
+                                        IsEnabled="{Binding CanPermanentlyDelete}" />
+                                    <ui:Flyout
+                                        IsOpen="{Binding IsPermanentDeleteFlyoutOpen, Mode=TwoWay}"
+                                        Placement="Top">
+                                        <StackPanel MinWidth="200">
+                                            <TextBlock
+                                                FontSize="14"
+                                                Text="{Binding PermanentDeleteConfirmationText}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Margin="0,8,0,0"
+                                                FontSize="12"
+                                                Opacity="0.65"
+                                                Text="{Binding DeletedAtText}" />
+                                            <StackPanel
+                                                Margin="0,16,0,0"
+                                                HorizontalAlignment="Right"
+                                                Orientation="Horizontal">
+                                                <ui:Button
+                                                    Margin="0,0,8,0"
+                                                    Command="{Binding ClosePermanentDeleteFlyoutCommand}"
+                                                    Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                <ui:Button
+                                                    Appearance="Danger"
+                                                    Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </ui:Flyout>
+                                </Grid>
+                                <ui:Button
+                                    Width="32"
+                                    Height="32"
                                     Padding="0"
                                     Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                     CommandParameter="{Binding}"
@@ -232,6 +282,56 @@
                                             IsEnabled="{Binding Group.CanEdit}"
                                             ToolTip="{Binding DataContext.EditText, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             Visibility="{Binding Group.ShowEdit, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Command="{Binding DataContext.UndoDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding Group}"
+                                            Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
+                                            IsEnabled="{Binding Group.CanUndoDelete}"
+                                            Visibility="{Binding Group.ShowUndoDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Grid Visibility="{Binding Group.ShowPermanentDelete, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <ui:Button
+                                                Width="32"
+                                                Height="32"
+                                                Margin="0,0,6,0"
+                                                Padding="0"
+                                                Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding Group}"
+                                                Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}"
+                                                IsEnabled="{Binding Group.CanPermanentlyDelete}" />
+                                            <ui:Flyout
+                                                IsOpen="{Binding Group.IsPermanentDeleteFlyoutOpen, Mode=TwoWay}"
+                                                Placement="Top">
+                                                <StackPanel MinWidth="200">
+                                                    <TextBlock
+                                                        FontSize="14"
+                                                        Text="{Binding Group.PermanentDeleteConfirmationText}"
+                                                        TextWrapping="Wrap" />
+                                                    <TextBlock
+                                                        Margin="0,8,0,0"
+                                                        FontSize="12"
+                                                        Opacity="0.65"
+                                                        Text="{Binding Group.DeletedAtText}" />
+                                                    <StackPanel
+                                                        Margin="0,16,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        Orientation="Horizontal">
+                                                        <ui:Button
+                                                            Margin="0,0,8,0"
+                                                            Command="{Binding Group.ClosePermanentDeleteFlyoutCommand}"
+                                                            Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                        <ui:Button
+                                                            Appearance="Danger"
+                                                            Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding Group}"
+                                                            Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </ui:Flyout>
+                                        </Grid>
                                         <ui:Button
                                             Width="32"
                                             Height="32"
@@ -361,6 +461,56 @@
                                             Icon="{ui:SymbolIcon Symbol=ArrowDown24}"
                                             IsEnabled="{Binding CanMoveDown}"
                                             Visibility="{Binding ShowMove, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:Button
+                                            Width="32"
+                                            Height="32"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Command="{Binding DataContext.UndoDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
+                                            IsEnabled="{Binding CanUndoDelete}"
+                                            Visibility="{Binding ShowUndoDelete, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <Grid Visibility="{Binding ShowPermanentDelete, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <ui:Button
+                                                Width="32"
+                                                Height="32"
+                                                Margin="0,0,6,0"
+                                                Padding="0"
+                                                Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}"
+                                                IsEnabled="{Binding CanPermanentlyDelete}" />
+                                            <ui:Flyout
+                                                IsOpen="{Binding IsPermanentDeleteFlyoutOpen, Mode=TwoWay}"
+                                                Placement="Top">
+                                                <StackPanel MinWidth="200">
+                                                    <TextBlock
+                                                        FontSize="14"
+                                                        Text="{Binding PermanentDeleteConfirmationText}"
+                                                        TextWrapping="Wrap" />
+                                                    <TextBlock
+                                                        Margin="0,8,0,0"
+                                                        FontSize="12"
+                                                        Opacity="0.65"
+                                                        Text="{Binding DeletedAtText}" />
+                                                    <StackPanel
+                                                        Margin="0,16,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        Orientation="Horizontal">
+                                                        <ui:Button
+                                                            Margin="0,0,8,0"
+                                                            Command="{Binding ClosePermanentDeleteFlyoutCommand}"
+                                                            Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                        <ui:Button
+                                                            Appearance="Danger"
+                                                            Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </ui:Flyout>
+                                        </Grid>
                                         <ui:Button
                                             Width="32"
                                             Height="32"

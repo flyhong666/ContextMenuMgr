@@ -462,6 +462,9 @@
   <data name="Delete" xml:space="preserve">
     <value>删除</value>
   </data>
+  <data name="DeletedAt" xml:space="preserve">
+    <value>删除于</value>
+  </data>
   <data name="UndoDelete" xml:space="preserve">
     <value>撤销</value>
   </data>

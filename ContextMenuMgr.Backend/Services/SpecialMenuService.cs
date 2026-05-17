@@ -23,6 +23,8 @@ public sealed class SpecialMenuService
     private const string MachineClassesPath = @"SOFTWARE\Classes";
     private static readonly string DefaultSendToPath = Environment.ExpandEnvironmentVariables(@"%SystemDrive%\Users\Default\AppData\Roaming\Microsoft\Windows\SendTo");
     private static readonly string DefaultWinXPath = Environment.ExpandEnvironmentVariables(@"%SystemDrive%\Users\Default\AppData\Local\Microsoft\Windows\WinX");
+    private const string DeletedSuffix = ".deleted";
+    private const string DeletedFolderName = ".deleted";
 
     private readonly FileLogger _logger;
 
@@ -157,30 +159,131 @@ public sealed class SpecialMenuService
     {
         try
         {
+            string? deletedPath = null;
+            var deletedAt = DateTime.Now.ToString("o");
+            var metadata = new Dictionary<string, string>(item.Metadata) { ["IsDeleted"] = "true", ["DeletedAt"] = deletedAt };
+
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    DeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext));
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        DeleteRegistryTree(ieDisabledPath, RequireUserContext(userContext));
+                        SoftDeleteRegistryTree(ieDisabledPath, RequireUserContext(userContext));
                     }
 
                     break;
                 case SpecialMenuKind.ShellNew:
-                    DeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext));
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath))
                     {
-                        DeleteRegistryTree(disabledPath, RequireUserContext(userContext));
+                        SoftDeleteRegistryTree(disabledPath, RequireUserContext(userContext));
                     }
 
                     break;
                 case SpecialMenuKind.DragDrop:
                 case SpecialMenuKind.CommandStore:
-                    DeleteRegistryTree(item.RegistryPath);
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath);
                     break;
                 case SpecialMenuKind.GuidBlock:
                     DeleteRegistryValue(Registry.LocalMachine, GuidBlockedPath, item.KeyName);
+                    break;
+                case SpecialMenuKind.SendTo:
+                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
+                    break;
+                case SpecialMenuKind.WinX:
+                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
+                    break;
+            }
+
+            ShellChangeNotifier.NotifyAssociationsChanged();
+            await _logger.LogAsync($"Soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}, DeletedPath={deletedPath}.", cancellationToken);
+
+            var deletedItem = item with { Metadata = metadata };
+            return Success("Special menu item deleted.", deletedItem, operationId);
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to delete special menu item {item.Id}: {ex.Message}", cancellationToken);
+            return Failure(ex.Message, operationId);
+        }
+    }
+
+    public async Task<PipeResponse> UndoDeleteAsync(SpecialMenuEntry item, Guid? operationId, BackendUserContext? userContext, CancellationToken cancellationToken)
+    {
+        try
+        {
+            switch (item.Kind)
+            {
+                case SpecialMenuKind.InternetExplorer:
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
+                    {
+                        RestoreSoftDeletedRegistryTree(ieDisabledPath, RequireUserContext(userContext));
+                    }
+
+                    break;
+                case SpecialMenuKind.ShellNew:
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    if (item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath))
+                    {
+                        RestoreSoftDeletedRegistryTree(disabledPath, RequireUserContext(userContext));
+                    }
+
+                    break;
+                case SpecialMenuKind.DragDrop:
+                case SpecialMenuKind.CommandStore:
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath);
+                    break;
+                case SpecialMenuKind.SendTo:
+                    RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
+                    break;
+                case SpecialMenuKind.WinX:
+                    RestoreSoftDeletedFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
+                    break;
+            }
+
+            ShellChangeNotifier.NotifyAssociationsChanged();
+            await _logger.LogAsync($"Restored soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
+
+            var metadata = new Dictionary<string, string>(item.Metadata);
+            metadata.Remove("IsDeleted");
+            metadata.Remove("DeletedAt");
+            var restoredItem = item with { Metadata = metadata };
+            return Success("Special menu item restored.", restoredItem, operationId);
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to restore special menu item {item.Id}: {ex.Message}", cancellationToken);
+            return Failure(ex.Message, operationId);
+        }
+    }
+
+    public async Task<PipeResponse> PurgeDeletedAsync(SpecialMenuEntry item, Guid? operationId, BackendUserContext? userContext, CancellationToken cancellationToken)
+    {
+        try
+        {
+            switch (item.Kind)
+            {
+                case SpecialMenuKind.InternetExplorer:
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, RequireUserContext(userContext));
+                    if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
+                    {
+                        DeleteRegistryTree(ieDisabledPath + DeletedSuffix, RequireUserContext(userContext));
+                    }
+
+                    break;
+                case SpecialMenuKind.ShellNew:
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, RequireUserContext(userContext));
+                    if (item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath))
+                    {
+                        DeleteRegistryTree(disabledPath + DeletedSuffix, RequireUserContext(userContext));
+                    }
+
+                    break;
+                case SpecialMenuKind.DragDrop:
+                case SpecialMenuKind.CommandStore:
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix);
                     break;
                 case SpecialMenuKind.SendTo:
                     DeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
@@ -191,13 +294,137 @@ public sealed class SpecialMenuService
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Deleted special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
-            return new PipeResponse { Success = true, Message = "Special menu item deleted.", ClientOperationId = operationId };
+            await _logger.LogAsync($"Permanently deleted special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
+            return Success("Special menu item permanently deleted.", null, operationId);
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync($"Failed to delete special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync($"Failed to permanently delete special menu item {item.Id}: {ex.Message}", cancellationToken);
             return Failure(ex.Message, operationId);
+        }
+    }
+
+    private static string? SoftDeleteRegistryTree(string? path, BackendUserContext? context = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var deletedPath = path + DeletedSuffix;
+            using var root = context is not null ? GetUserRegistryRoot(context, writable: true) : Registry.CurrentUser;
+            using var sourceKey = root.OpenSubKey(path, writable: true);
+            if (sourceKey is null)
+            {
+                return null;
+            }
+
+            using var targetKey = root.CreateSubKey(deletedPath, writable: true);
+            if (targetKey is null)
+            {
+                return null;
+            }
+
+            CopyRegistryKey(sourceKey, targetKey);
+            DeleteRegistryTree(path, context);
+            return deletedPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void RestoreSoftDeletedRegistryTree(string? path, BackendUserContext? context = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var deletedPath = path + DeletedSuffix;
+        using var root = context is not null ? GetUserRegistryRoot(context, writable: true) : Registry.CurrentUser;
+        using var sourceKey = root.OpenSubKey(deletedPath, writable: true);
+        if (sourceKey is null)
+        {
+            return;
+        }
+
+        using var targetKey = root.CreateSubKey(path, writable: true);
+        if (targetKey is null)
+        {
+            return;
+        }
+
+        CopyRegistryKey(sourceKey, targetKey);
+        DeleteRegistryTree(deletedPath, context);
+    }
+
+    private static string? SoftDeleteFileSystemItem(string? path, string basePath)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var deletedFolder = Path.Combine(basePath, DeletedFolderName);
+            Directory.CreateDirectory(deletedFolder);
+
+            var fileName = Path.GetFileName(path);
+            var deletedPath = Path.Combine(deletedFolder, fileName);
+
+            if (File.Exists(path))
+            {
+                File.Move(path, deletedPath, overwrite: false);
+            }
+            else if (Directory.Exists(path))
+            {
+                Directory.Move(path, GetUniqueDirectoryPath(deletedPath));
+            }
+
+            return deletedPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void RestoreSoftDeletedFileSystemItem(string? path, string basePath)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var deletedFolder = Path.Combine(basePath, DeletedFolderName);
+            var fileName = Path.GetFileName(path);
+            var deletedPath = Path.Combine(deletedFolder, fileName);
+
+            if (!File.Exists(deletedPath) && !Directory.Exists(deletedPath))
+            {
+                return;
+            }
+
+            if (File.Exists(deletedPath))
+            {
+                var targetPath = Path.Combine(basePath, fileName);
+                File.Move(deletedPath, targetPath, overwrite: false);
+            }
+            else if (Directory.Exists(deletedPath))
+            {
+                var targetPath = Path.Combine(basePath, fileName);
+                Directory.Move(deletedPath, GetUniqueDirectoryPath(targetPath));
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -2356,6 +2583,32 @@ public sealed class SpecialMenuService
         }
 
         CopyDirectory(source, destination);
+    }
+
+    private static void CopyRegistryKey(RegistryKey source, RegistryKey target)
+    {
+        foreach (var name in source.GetValueNames())
+        {
+            var value = source.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+            var kind = source.GetValueKind(name);
+            if (value is not null)
+            {
+                target.SetValue(name, value, kind);
+            }
+        }
+
+        foreach (var subKeyName in source.GetSubKeyNames())
+        {
+            using var sourceSubKey = source.OpenSubKey(subKeyName, writable: false);
+            if (sourceSubKey is not null)
+            {
+                using var targetSubKey = target.CreateSubKey(subKeyName, writable: true);
+                if (targetSubKey is not null)
+                {
+                    CopyRegistryKey(sourceSubKey, targetSubKey);
+                }
+            }
+        }
     }
 
     private static void CopyDirectory(string source, string destination)

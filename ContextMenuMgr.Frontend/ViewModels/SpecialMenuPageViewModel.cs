@@ -47,6 +47,10 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         RefreshText = _localization.Translate("Refresh");
         RestoreDefaultsText = _localization.Translate("RestoreDefault");
         LockNewMenuText = _localization.Translate("LockNewMenu");
+        DeleteText = _localization.Translate("Delete");
+        UndoText = _localization.Translate("Undo");
+        PermanentDeleteText = _localization.Translate("PermanentDelete");
+        CancelText = _localization.Translate("DialogCancel");
         DropEffectLabel = _localization.Translate("DefaultDropEffect");
         DropEffectOptions =
         [
@@ -92,6 +96,18 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial string LockNewMenuText { get; set; }
+
+    [ObservableProperty]
+    public partial string DeleteText { get; set; }
+
+    [ObservableProperty]
+    public partial string UndoText { get; set; }
+
+    [ObservableProperty]
+    public partial string PermanentDeleteText { get; set; }
+
+    [ObservableProperty]
+    public partial string CancelText { get; set; }
 
     [ObservableProperty]
     public partial string DropEffectLabel { get; set; }
@@ -206,12 +222,97 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         {
             item.IsBusy = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await _backendClient.DeleteSpecialMenuItemAsync(item.Entry, Guid.NewGuid(), cts.Token);
+            var updated = await _backendClient.DeleteSpecialMenuItemAsync(item.Entry, Guid.NewGuid(), cts.Token);
+            if (updated is not null)
+            {
+                item.Update(updated);
+            }
+            else
+            {
+                Items.Remove(item);
+            }
+
+            if (Kind == SpecialMenuKind.WinX)
+            {
+                _explorerRestartState.MarkRequired();
+            }
+        }
+        catch (Exception ex)
+        {
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, item.DisplayName);
+        }
+        finally
+        {
+            item.IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task UndoDeleteAsync(SpecialMenuItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        try
+        {
+            item.IsBusy = true;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var updated = await _backendClient.UndoDeleteSpecialMenuItemAsync(item.Entry, Guid.NewGuid(), cts.Token);
+            if (updated is not null)
+            {
+                item.Update(updated);
+            }
+            else
+            {
+                Items.Remove(item);
+            }
+
+            if (Kind == SpecialMenuKind.WinX)
+            {
+                _explorerRestartState.MarkRequired();
+            }
+        }
+        catch (Exception ex)
+        {
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, item.DisplayName);
+        }
+        finally
+        {
+            item.IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private Task OpenPermanentDeleteFlyoutAsync(SpecialMenuItemViewModel? item)
+    {
+        if (item is not null)
+        {
+            item.IsPermanentDeleteFlyoutOpen = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmPermanentDeleteAsync(SpecialMenuItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        item.IsPermanentDeleteFlyoutOpen = false;
+        try
+        {
+            item.IsBusy = true;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _backendClient.PurgeDeletedSpecialMenuItemAsync(item.Entry, Guid.NewGuid(), cts.Token);
             Items.Remove(item);
             if (Kind == SpecialMenuKind.WinX)
             {
                 _explorerRestartState.MarkRequired();
-                await RefreshAsync();
             }
         }
         catch (Exception ex)
@@ -681,6 +782,10 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         RefreshText = _localization.Translate("Refresh");
         RestoreDefaultsText = _localization.Translate("RestoreDefault");
         LockNewMenuText = _localization.Translate("LockNewMenu");
+        DeleteText = _localization.Translate("Delete");
+        UndoText = _localization.Translate("Undo");
+        PermanentDeleteText = _localization.Translate("PermanentDelete");
+        CancelText = _localization.Translate("DialogCancel");
         DropEffectLabel = _localization.Translate("DefaultDropEffect");
         foreach (var item in Items)
         {

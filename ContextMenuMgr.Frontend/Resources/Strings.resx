@@ -462,6 +462,9 @@
   <data name="Delete" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="DeletedAt" xml:space="preserve">
+    <value>Deleted at</value>
+  </data>
   <data name="UndoDelete" xml:space="preserve">
     <value>Undo</value>
   </data>
