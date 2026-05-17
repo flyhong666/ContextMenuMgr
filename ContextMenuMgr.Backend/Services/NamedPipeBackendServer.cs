@@ -20,6 +20,7 @@ public sealed class NamedPipeBackendServer
     private readonly ContextMenuRegistryCatalog _catalog;
     private readonly SpecialMenuService _specialMenuService;
     private readonly FileTypeSceneMenuService _fileTypeSceneMenuService;
+    private readonly ExplorerRestartService _explorerRestartService;
     private readonly FileLogger _logger;
     private readonly BackendUserContextResolver _userContextResolver;
     private readonly ConcurrentDictionary<Guid, PipeClientConnection> _clients = new();
@@ -36,12 +37,14 @@ public sealed class NamedPipeBackendServer
         ContextMenuRegistryCatalog catalog,
         SpecialMenuService specialMenuService,
         FileTypeSceneMenuService fileTypeSceneMenuService,
+        ExplorerRestartService explorerRestartService,
         FileLogger logger,
         BackendUserContextResolver userContextResolver)
     {
         _catalog = catalog;
         _specialMenuService = specialMenuService;
         _fileTypeSceneMenuService = fileTypeSceneMenuService;
+        _explorerRestartService = explorerRestartService;
         _logger = logger;
         _userContextResolver = userContextResolver;
     }
@@ -410,6 +413,8 @@ public sealed class NamedPipeBackendServer
                     request.CreateSceneMenuItem,
                     request.ClientOperationId,
                     cancellationToken),
+            PipeCommand.RestartExplorer
+                => HandleRestartExplorerRequest(userContext),
             _ => new PipeResponse
             {
                 Success = false,
@@ -473,6 +478,36 @@ public sealed class NamedPipeBackendServer
             Success = true,
             Message = "Tray host startup requested."
         };
+    }
+
+    private PipeResponse HandleRestartExplorerRequest(BackendUserContext? userContext)
+    {
+        if (userContext is null)
+        {
+            return new PipeResponse
+            {
+                Success = false,
+                Message = "Cannot restart explorer: user context is not available."
+            };
+        }
+
+        try
+        {
+            _explorerRestartService.RestartExplorer(userContext.SessionId);
+            return new PipeResponse
+            {
+                Success = true,
+                Message = "Explorer restarted successfully."
+            };
+        }
+        catch (Exception ex)
+        {
+            return new PipeResponse
+            {
+                Success = false,
+                Message = $"Failed to restart explorer: {ex.Message}"
+            };
+        }
     }
 
     private sealed class PipeClientConnection : IDisposable

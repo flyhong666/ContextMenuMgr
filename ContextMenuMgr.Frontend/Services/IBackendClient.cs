@@ -106,4 +106,6 @@ public interface IBackendClient : IAsyncDisposable
         CreateSceneMenuItemRequest request,
         Guid clientOperationId,
         CancellationToken cancellationToken);
+
+    Task RestartExplorerAsync(CancellationToken cancellationToken);
 }

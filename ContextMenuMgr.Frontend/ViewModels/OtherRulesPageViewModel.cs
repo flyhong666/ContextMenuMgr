@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
 using System.Collections.Specialized;
@@ -17,6 +17,7 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
     private readonly DetailedEditRuleService _detailedEditRuleService;
     private readonly EnhanceMenuRuleService _enhanceMenuRuleService;
     private readonly IconPreviewService _iconPreviewService;
+    private readonly ExplorerRestartStateService _explorerRestartState;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OtherRulesPageViewModel"/> class.
@@ -30,7 +31,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         RuleDictionaryCatalogService ruleCatalogService,
         EnhanceMenuRuleService enhanceMenuRuleService,
         FrontendSettingsService settingsService,
-        DetailedEditRuleService detailedEditRuleService)
+        DetailedEditRuleService detailedEditRuleService,
+        ExplorerRestartStateService explorerRestartState)
     {
         _workspace = workspace;
         _localization = localization;
@@ -38,6 +40,7 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         _detailedEditRuleService = detailedEditRuleService;
         _enhanceMenuRuleService = enhanceMenuRuleService;
         _iconPreviewService = iconPreviewService;
+        _explorerRestartState = explorerRestartState;
 
         CustomRegistryPathTab = new SceneContextMenuTabViewModel(
             "DatabaseSearch24",
@@ -61,28 +64,32 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
             "DragDropPageDescription",
             backendClient,
             iconPreviewService,
-            localization);
+            localization,
+            explorerRestartState);
         CommandStoreTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.CommandStore,
             "CommandStorePageTitle",
             "CommandStorePageDescription",
             backendClient,
             iconPreviewService,
-            localization);
+            localization,
+            explorerRestartState);
         GuidBlockTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.GuidBlock,
             "GuidBlockPageTitle",
             "GuidBlockPageDescription",
             backendClient,
             iconPreviewService,
-            localization);
+            localization,
+            explorerRestartState);
         IeMenuTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.InternetExplorer,
             "IeMenuPageTitle",
             "IeMenuPageDescription",
             backendClient,
             iconPreviewService,
-            localization);
+            localization,
+            explorerRestartState);
 
         _workspace.Items.CollectionChanged += OnWorkspaceItemsCollectionChanged;
         foreach (var item in _workspace.Items)

@@ -29,6 +29,7 @@ public partial class App
         services.AddSingleton<IBackendClient, NamedPipeBackendClient>();
         services.AddSingleton<IBackendServiceManager, BackendServiceManager>();
         services.AddSingleton<ContextMenuWorkspaceService>();
+        services.AddSingleton<ExplorerRestartStateService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<MainWindow>();

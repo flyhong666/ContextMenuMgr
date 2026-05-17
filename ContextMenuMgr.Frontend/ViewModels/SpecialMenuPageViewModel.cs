@@ -16,6 +16,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     private readonly IBackendClient _backendClient;
     private readonly IconPreviewService _iconPreviewService;
     private readonly LocalizationService _localization;
+    private readonly ExplorerRestartStateService _explorerRestartState;
     private readonly string _titleKey;
     private readonly string _descriptionKey;
     private readonly Dictionary<string, bool> _winXExpandedStates = new(StringComparer.OrdinalIgnoreCase);
@@ -28,7 +29,8 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         string descriptionKey,
         IBackendClient backendClient,
         IconPreviewService iconPreviewService,
-        LocalizationService localization)
+        LocalizationService localization,
+        ExplorerRestartStateService explorerRestartState)
     {
         Kind = kind;
         _titleKey = titleKey;
@@ -36,6 +38,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         _backendClient = backendClient;
         _iconPreviewService = iconPreviewService;
         _localization = localization;
+        _explorerRestartState = explorerRestartState;
         ItemsView = new ListCollectionView(Items);
         ItemsView.Filter = FilterItem;
         SearchLabel = _localization.Translate("SearchLabel");
@@ -176,6 +179,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             {
                 if (Kind == SpecialMenuKind.WinX)
                 {
+                    _explorerRestartState.MarkRequired();
                     await RefreshAsync();
                 }
                 else
@@ -206,6 +210,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             Items.Remove(item);
             if (Kind == SpecialMenuKind.WinX)
             {
+                _explorerRestartState.MarkRequired();
                 await RefreshAsync();
             }
         }
@@ -243,6 +248,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             {
                 if (Kind == SpecialMenuKind.WinX)
                 {
+                    _explorerRestartState.MarkRequired();
                     await RefreshAsync();
                 }
                 else
@@ -279,6 +285,10 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             await _backendClient.RestoreSpecialMenuDefaultsAsync(Kind, null, Guid.NewGuid(), cts.Token);
+            if (Kind == SpecialMenuKind.WinX)
+            {
+                _explorerRestartState.MarkRequired();
+            }
             await RefreshAsync();
         }
         catch (Exception ex)
@@ -315,6 +325,10 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             var updated = await _backendClient.MoveSpecialMenuItemAsync(request, cts.Token);
             if (updated is not null)
             {
+                if (Kind == SpecialMenuKind.WinX)
+                {
+                    _explorerRestartState.MarkRequired();
+                }
                 await RefreshAsync();
             }
         }
@@ -337,6 +351,10 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             if (updated is not null)
             {
                 item.Update(updated);
+                if (Kind == SpecialMenuKind.WinX)
+                {
+                    _explorerRestartState.MarkRequired();
+                }
             }
 
             return true;
@@ -815,24 +833,24 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
 public sealed class ShellNewPageViewModel : SpecialMenuPageViewModel
 {
-    public ShellNewPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization)
-        : base(SpecialMenuKind.ShellNew, "ShellNewPageTitle", "ShellNewPageDescription", backendClient, iconPreviewService, localization)
+    public ShellNewPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState)
+        : base(SpecialMenuKind.ShellNew, "ShellNewPageTitle", "ShellNewPageDescription", backendClient, iconPreviewService, localization, explorerRestartState)
     {
     }
 }
 
 public sealed class SendToPageViewModel : SpecialMenuPageViewModel
 {
-    public SendToPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization)
-        : base(SpecialMenuKind.SendTo, "SendToPageTitle", "SendToPageDescription", backendClient, iconPreviewService, localization)
+    public SendToPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState)
+        : base(SpecialMenuKind.SendTo, "SendToPageTitle", "SendToPageDescription", backendClient, iconPreviewService, localization, explorerRestartState)
     {
     }
 }
 
 public sealed class WinXPageViewModel : SpecialMenuPageViewModel
 {
-    public WinXPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization)
-        : base(SpecialMenuKind.WinX, "WinXPageTitle", "WinXPageDescription", backendClient, iconPreviewService, localization)
+    public WinXPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState)
+        : base(SpecialMenuKind.WinX, "WinXPageTitle", "WinXPageDescription", backendClient, iconPreviewService, localization, explorerRestartState)
     {
     }
 }

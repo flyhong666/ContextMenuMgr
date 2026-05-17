@@ -12,6 +12,7 @@
     Height="480"
     MinWidth="1220"
     MinHeight="760"
+    d:DataContext="{d:DesignInstance Type=viewModels:MainViewModel}"
     ui:Design.Background="{DynamicResource ApplicationBackgroundBrush}"
     ui:Design.Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     ExtendsContentIntoTitleBar="True"
@@ -46,15 +47,27 @@
                 Text="{Binding ServiceAttentionText}"
                 Visibility="{Binding ServiceAttentionText, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
 
-            <ui:Button
-                Grid.Column="1"
-                MinWidth="108"
-                Padding="14,8"
-                HorizontalAlignment="Right"
-                Appearance="Secondary"
-                Command="{Binding RefreshCommand}"
-                Content="{Binding RefreshText}"
-                Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <ui:Button
+                    MinWidth="108"
+                    Margin="0,0,8,0"
+                    Padding="14,8"
+                    HorizontalAlignment="Right"
+                    ui:Foreground="White"
+                    Appearance="Primary"
+                    Command="{Binding RestartExplorerCommand}"
+                    Content="{Binding RestartExplorerText}"
+                    Icon="{ui:SymbolIcon Symbol=ArrowCounterclockwise24}"
+                    Visibility="{Binding NeedsExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <ui:Button
+                    MinWidth="108"
+                    Padding="14,8"
+                    HorizontalAlignment="Right"
+                    Appearance="Secondary"
+                    Command="{Binding RefreshCommand}"
+                    Content="{Binding RefreshText}"
+                    Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" />
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Row="2" Margin="5,0,5,5">
@@ -65,127 +78,73 @@
                 IsPaneToggleVisible="True"
                 OpenPaneLength="224"
                 PaneDisplayMode="Left">
-                <ui:NavigationView.ItemTemplate>
-                    <ControlTemplate TargetType="{x:Type ui:NavigationViewItem}">
-                        <Border
-                            x:Name="MainBorder"
-                            Height="40"
-                            Background="Transparent"
-                            BorderThickness="{DynamicResource NavigationViewItemThickness}"
-                            CornerRadius="8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <Rectangle
-                                    x:Name="SelectionIndicator"
-                                    Grid.Column="0"
-                                    Width="3"
-                                    Height="16"
-                                    VerticalAlignment="Center"
-                                    Fill="{DynamicResource NavigationViewSelectionIndicatorForeground}"
-                                    Opacity="0"
-                                    RadiusX="2"
-                                    RadiusY="2" />
-
-                                <ContentPresenter
-                                    Grid.Column="1"
-                                    Margin="10,0,6,0"
-                                    VerticalAlignment="Center"
-                                    Content="{TemplateBinding Icon}" />
-
-                                <ContentPresenter
-                                    Grid.Column="2"
-                                    Margin="6,0,0,0"
-                                    VerticalAlignment="Center"
-                                    Content="{TemplateBinding Content}"
-                                    TextElement.FontSize="13"
-                                    TextElement.Foreground="{TemplateBinding Foreground}" />
-
-                                <ContentPresenter
-                                    Grid.Column="3"
-                                    Margin="8,0,10,0"
-                                    VerticalAlignment="Center"
-                                    Content="{TemplateBinding InfoBadge}" />
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsActive" Value="True">
-                                <Setter TargetName="SelectionIndicator" Property="Opacity" Value="1" />
-                                <Setter TargetName="MainBorder" Property="Background" Value="{DynamicResource NavigationViewItemBackgroundSelected}" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="MainBorder" Property="Background" Value="{DynamicResource NavigationViewItemBackgroundPointerOver}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="MainBorder" Property="Background" Value="{DynamicResource NavigationViewItemBackgroundPressed}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </ui:NavigationView.ItemTemplate>
-
                 <ui:NavigationView.MenuItems>
                     <ui:NavigationViewItem
-                        x:Name="FileNavigationItem"
-                        Content="{Binding FileCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=Document24}"
-                        TargetPageType="{x:Type pages:FileContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding AllObjectsCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=SquareMultiple24}"
-                        TargetPageType="{x:Type pages:AllObjectsContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding FolderCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=Folder24}"
-                        TargetPageType="{x:Type pages:FolderContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding DirectoryCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=TextNumberListLtr24}"
-                        TargetPageType="{x:Type pages:DirectoryContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding BackgroundCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=WindowConsole20}"
-                        TargetPageType="{x:Type pages:BackgroundContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding DesktopCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=Desktop24}"
-                        TargetPageType="{x:Type pages:DesktopContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding DriveCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=AppsAddIn24}"
-                        TargetPageType="{x:Type pages:DriveContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding LibraryCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=TextNumberListLtr24}"
-                        TargetPageType="{x:Type pages:LibraryContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding ComputerCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=Desktop24}"
-                        TargetPageType="{x:Type pages:ComputerContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding RecycleBinCategoryName}"
-                        Icon="{ui:SymbolIcon Symbol=Delete24}"
-                        TargetPageType="{x:Type pages:RecycleBinContextMenuPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding FileTypesPageTitle}"
-                        Icon="{ui:SymbolIcon Symbol=DocumentText24}"
-                        TargetPageType="{x:Type pages:FileTypesPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding ShellNewPageTitle}"
-                        Icon="{ui:SymbolIcon Symbol=DocumentAdd24}"
-                        TargetPageType="{x:Type pages:ShellNewPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding SendToPageTitle}"
-                        Icon="{ui:SymbolIcon Symbol=Send24}"
-                        TargetPageType="{x:Type pages:SendToPage}" />
-                    <ui:NavigationViewItem
-                        Content="{Binding WinXPageTitle}"
-                        Icon="{ui:SymbolIcon Symbol=WindowDevTools24}"
-                        TargetPageType="{x:Type pages:WinXPage}" />
+                        x:Name="LegacyContextMenuItems"
+                        Content="{Binding LegacyContextMenuItemsName}"
+                        Icon="{ui:SymbolIcon Symbol=Window24}"
+                        IsExpanded="True"
+                        TargetPageType="{x:Type pages:FileContextMenuPage}">
+                        <ui:NavigationViewItem.MenuItems>
+                            <ui:NavigationViewItem
+                                x:Name="FileNavigationItem"
+                                Content="{Binding FileCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=Document24}"
+                                TargetPageType="{x:Type pages:FileContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding AllObjectsCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=SquareMultiple24}"
+                                TargetPageType="{x:Type pages:AllObjectsContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding FolderCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=Folder24}"
+                                TargetPageType="{x:Type pages:FolderContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding DirectoryCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=TextNumberListLtr24}"
+                                TargetPageType="{x:Type pages:DirectoryContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding BackgroundCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=WindowConsole20}"
+                                TargetPageType="{x:Type pages:BackgroundContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding DesktopCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=Desktop24}"
+                                TargetPageType="{x:Type pages:DesktopContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding DriveCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=AppsAddIn24}"
+                                TargetPageType="{x:Type pages:DriveContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding LibraryCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=TextNumberListLtr24}"
+                                TargetPageType="{x:Type pages:LibraryContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding ComputerCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=Desktop24}"
+                                TargetPageType="{x:Type pages:ComputerContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding RecycleBinCategoryName}"
+                                Icon="{ui:SymbolIcon Symbol=Delete24}"
+                                TargetPageType="{x:Type pages:RecycleBinContextMenuPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding FileTypesPageTitle}"
+                                Icon="{ui:SymbolIcon Symbol=DocumentText24}"
+                                TargetPageType="{x:Type pages:FileTypesPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding ShellNewPageTitle}"
+                                Icon="{ui:SymbolIcon Symbol=DocumentAdd24}"
+                                TargetPageType="{x:Type pages:ShellNewPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding SendToPageTitle}"
+                                Icon="{ui:SymbolIcon Symbol=Send24}"
+                                TargetPageType="{x:Type pages:SendToPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding WinXPageTitle}"
+                                Icon="{ui:SymbolIcon Symbol=WindowDevTools24}"
+                                TargetPageType="{x:Type pages:WinXPage}" />
+                        </ui:NavigationViewItem.MenuItems>
+                    </ui:NavigationViewItem>
                     <ui:NavigationViewItem
                         Content="{Binding Windows11PageTitle}"
                         Icon="{ui:SymbolIcon Symbol=AppsList24}"

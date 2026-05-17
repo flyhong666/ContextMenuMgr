@@ -14,14 +14,16 @@ public sealed class ContextMenuItemActionsService
 {
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
+    private readonly IBackendClient _backendClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ContextMenuItemActionsService"/> class.
     /// </summary>
-    public ContextMenuItemActionsService(LocalizationService localization, FrontendSettingsService settingsService)
+    public ContextMenuItemActionsService(LocalizationService localization, FrontendSettingsService settingsService, IBackendClient backendClient)
     {
         _localization = localization;
         _settingsService = settingsService;
+        _backendClient = backendClient;
     }
 
     /// <summary>
@@ -211,29 +213,13 @@ public sealed class ContextMenuItemActionsService
     /// <summary>
     /// Executes restart Explorer Async.
     /// </summary>
-    public Task RestartExplorerAsync()
+    public async Task RestartExplorerAsync()
     {
-        return RunActionAsync(
+        await RunActionAsync(
             async () =>
             {
-                var process = Process.Start(new ProcessStartInfo(
-                    "cmd.exe",
-                    "/d /c \"taskkill /f /im explorer.exe & start \"\" explorer.exe\"")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                });
-
-                if (process is null)
-                {
-                    throw new InvalidOperationException("Failed to start cmd.exe.");
-                }
-
-                await process.WaitForExitAsync();
-                if (process.ExitCode != 0)
-                {
-                    throw new InvalidOperationException(_localization.Translate("RestartExplorerFailed"));
-                }
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await _backendClient.RestartExplorerAsync(cts.Token);
             },
             "RestartExplorer");
     }

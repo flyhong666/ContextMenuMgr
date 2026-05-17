@@ -453,6 +453,16 @@ public sealed class NamedPipeBackendClient : IBackendClient
     }
 
     /// <summary>
+    /// Restarts explorer Async.
+    /// </summary>
+    public async Task RestartExplorerAsync(CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest { Command = PipeCommand.RestartExplorer },
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Releases resources used by the current instance.
     /// </summary>
     public ValueTask DisposeAsync()

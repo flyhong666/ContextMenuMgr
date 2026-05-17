@@ -18,6 +18,8 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly LocalizationService _localization;
     private readonly Windows11ContextMenuService _windows11Service;
+    private readonly ExplorerRestartStateService _explorerRestartState;
+    private readonly IBackendClient _backendClient;
     private readonly InfoBadge _approvalsBadge = new() { Visibility = Visibility.Collapsed };
 
     /// <summary>
@@ -26,11 +28,15 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     public ShellViewModel(
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
-        Windows11ContextMenuService windows11Service)
+        Windows11ContextMenuService windows11Service,
+        ExplorerRestartStateService explorerRestartState,
+        IBackendClient backendClient)
     {
         _workspace = workspace;
         _localization = localization;
         _windows11Service = windows11Service;
+        _explorerRestartState = explorerRestartState;
+        _backendClient = backendClient;
 
         _localization.LanguageChanged += OnLanguageChanged;
         _workspace.PendingApprovalDetected += OnPendingApprovalDetected;
@@ -40,6 +46,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             item.PropertyChanged += OnWorkspaceItemPropertyChanged;
         }
+        _explorerRestartState.PropertyChanged += OnExplorerRestartStatePropertyChanged;
 
         UpdateApprovalBadge();
     }
@@ -96,7 +103,13 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public string SettingsTitle => _localization.Translate("SettingsTitle");
 
+    public string LegacyContextMenuItemsName => _localization.Translate("LegacyContextMenuItems");
+
     public InfoBadge ApprovalsBadge => _approvalsBadge;
+
+    public bool NeedsExplorerRestart => _explorerRestartState.NeedsRestart;
+
+    public string RestartExplorerText => _localization.Translate("RestartExplorer");
 
     public event EventHandler<ContextMenuEntry>? PendingApprovalDetected;
 
@@ -130,6 +143,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             item.PropertyChanged -= OnWorkspaceItemPropertyChanged;
         }
+        _explorerRestartState.PropertyChanged -= OnExplorerRestartStatePropertyChanged;
     }
 
     [RelayCommand]
@@ -152,6 +166,23 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     private Task DenyNotificationAsync(ToastNotificationViewModel? notification)
     {
         return ResolveNotificationAsync(notification, ContextMenuDecision.Deny);
+    }
+
+    [RelayCommand]
+    private async Task RestartExplorerAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _backendClient.RestartExplorerAsync(cts.Token);
+            _explorerRestartState.Clear();
+        }
+        catch (Exception ex)
+        {
+            await FrontendMessageBox.ShowErrorAsync(
+                ex.Message,
+                _localization.Translate("RestartExplorerFailed"));
+        }
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
@@ -180,6 +211,8 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(OtherRulesPageTitle));
         OnPropertyChanged(nameof(ApprovalsTitle));
         OnPropertyChanged(nameof(SettingsTitle));
+        OnPropertyChanged(nameof(RestartExplorerText));
+        OnPropertyChanged(nameof(LegacyContextMenuItemsName));
         UpdateApprovalBadge();
     }
 
@@ -194,6 +227,14 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             OnPropertyChanged(nameof(ServiceAttentionText));
             OnPropertyChanged(nameof(HasServiceAttention));
+        }
+    }
+
+    private void OnExplorerRestartStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ExplorerRestartStateService.NeedsRestart))
+        {
+            OnPropertyChanged(nameof(NeedsExplorerRestart));
         }
     }
 
