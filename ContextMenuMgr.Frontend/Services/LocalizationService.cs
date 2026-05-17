@@ -88,9 +88,9 @@ public sealed class LocalizationService
         CultureInfo.DefaultThreadCurrentUICulture = culture;
         CultureInfo.DefaultThreadCurrentCulture = culture;
 
-        if (Application.Current is not null)
+        if (System.Windows.Application.Current is not null)
         {
-            Application.Current.Resources["CurrentLanguage"] = XmlLanguage.GetLanguage(culture.IetfLanguageTag);
+            System.Windows.Application.Current.Resources["CurrentLanguage"] = XmlLanguage.GetLanguage(culture.IetfLanguageTag);
         }
     }
 

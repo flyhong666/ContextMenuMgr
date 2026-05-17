@@ -72,12 +72,12 @@ public sealed class ThemeService : IDisposable
             return;
         }
 
-        if (Application.Current is null)
+        if (System.Windows.Application.Current is null)
         {
             return;
         }
 
-        _ = Application.Current.Dispatcher.BeginInvoke(() =>
+        _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
         {
             if (_settingsService.Current.Theme == AppThemeOption.System)
             {

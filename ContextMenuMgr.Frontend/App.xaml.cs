@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
@@ -472,11 +472,11 @@ public partial class App : System.Windows.Application
 
         WriteLog(builder.ToString());
 
-        MessageBox.Show(
-            $"搴旂敤鍙戠敓鏈鐞嗗紓甯革紝璇︾粏淇℃伅宸插啓鍏ワ細\n{LogFilePath}\n\n{exception.Message}",
+        System.Windows.MessageBox.Show(
+            $"应用发生未处理异常，详细信息已写入：\n{LogFilePath}\n\n{exception.Message}",
             "Context Menu Manager Plus",
-            MessageBoxButton.OK,
-            MessageBoxImage.Error);
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Error);
     }
 
     private static void HandleFatalMessage(string source, string message)

@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
@@ -179,6 +179,11 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
 
     public string AnalyzeFolderText => _localization.Translate("AnalyzeFolder");
 
+    public string JumpText => _localization.Translate("JumpToScene");
+
+    [ObservableProperty]
+    private int _selectedTabIndex = 7;
+
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
         ShortcutTab.Title = _localization.Translate("SceneLnkFileTitle");
@@ -210,6 +215,7 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MenuAnalysisDescription));
         OnPropertyChanged(nameof(AnalyzeFileText));
         OnPropertyChanged(nameof(AnalyzeFolderText));
+        OnPropertyChanged(nameof(JumpText));
     }
 
     [RelayCommand]
@@ -235,29 +241,25 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ApplyAnalysisResultAsync(FileTypeAnalysisResult? result)
     {
-        var tab = result?.SceneKind switch
+        (SceneContextMenuTabViewModel targetTab, int tabIndex) = result?.SceneKind switch
         {
-            ContextMenuSceneKind.LnkFile => ShortcutTab,
-            ContextMenuSceneKind.UwpShortcut => UwpShortcutTab,
-            ContextMenuSceneKind.ExeFile => ExecutableTab,
-            ContextMenuSceneKind.CustomExtension => CustomExtensionTab,
-            ContextMenuSceneKind.PerceivedType => PerceivedTypeTab,
-            ContextMenuSceneKind.DirectoryType => DirectoryTypeTab,
-            ContextMenuSceneKind.UnknownType => UnknownTypeTab,
-            _ => null
+            ContextMenuSceneKind.LnkFile => (ShortcutTab, 0),
+            ContextMenuSceneKind.UwpShortcut => (UwpShortcutTab, 1),
+            ContextMenuSceneKind.ExeFile => (ExecutableTab, 2),
+            ContextMenuSceneKind.CustomExtension => (CustomExtensionTab, 3),
+            ContextMenuSceneKind.PerceivedType => (PerceivedTypeTab, 4),
+            ContextMenuSceneKind.DirectoryType => (DirectoryTypeTab, 5),
+            ContextMenuSceneKind.UnknownType => (UnknownTypeTab, 6),
+            _ => throw new NotSupportedException($"Unsupported scene kind: {result?.SceneKind}")
         };
-
-        if (tab is null)
-        {
-            return;
-        }
 
         if (!string.IsNullOrWhiteSpace(result?.ScopeValue))
         {
-            tab.ScopeValue = result.ScopeValue;
+            targetTab.ScopeValue = result.ScopeValue;
         }
 
-        await tab.RefreshAsync();
+        SelectedTabIndex = tabIndex;
+        await targetTab.RefreshAsync();
     }
 
     private async Task AnalyzePathAsync(string path)
@@ -269,13 +271,85 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             AnalysisResults.Clear();
             foreach (var result in results)
             {
-                AnalysisResults.Add(result);
+                var localizedResult = LocalizeAnalysisResult(result);
+                AnalysisResults.Add(localizedResult);
             }
         }
         catch (Exception ex)
         {
             await FrontendMessageBox.ShowErrorAsync(ex.Message, MenuAnalysisTitle);
         }
+    }
+
+    private FileTypeAnalysisResult LocalizeAnalysisResult(FileTypeAnalysisResult result)
+    {
+        string localizedDisplayName;
+        string localizedReason;
+
+        if (result.ScopeValue == @"HKCR\*\shell")
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultAllFiles");
+            localizedReason = _localization.Translate("AnalysisResultAllFilesReason");
+        }
+        else if (result.ScopeValue == @"HKCR\AllFilesystemObjects\shell")
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultAllFilesystemObjects");
+            localizedReason = _localization.Translate("AnalysisResultAllFilesystemObjectsReason");
+        }
+        else if (result.SceneKind == ContextMenuSceneKind.ExeFile)
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultExecutable");
+            localizedReason = _localization.Translate("AnalysisResultExecutableReason");
+        }
+        else if (result.SceneKind == ContextMenuSceneKind.CustomExtension)
+        {
+            var extension = result.ScopeValue ?? string.Empty;
+            localizedDisplayName = _localization.Format("AnalysisResultExtension", extension);
+            localizedReason = _localization.Translate("AnalysisResultExtensionReason");
+        }
+        else if (result.SceneKind == ContextMenuSceneKind.LnkFile)
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultShortcut");
+            localizedReason = _localization.Translate("AnalysisResultShortcutReason");
+        }
+        else if (result.SceneKind == ContextMenuSceneKind.UnknownType)
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultUnknownType");
+            localizedReason = _localization.Translate("AnalysisResultUnknownTypeReason");
+        }
+        else if (result.SceneKind == ContextMenuSceneKind.PerceivedType)
+        {
+            var perceivedType = result.ScopeValue ?? string.Empty;
+            localizedDisplayName = _localization.Format("AnalysisResultPerceivedType", perceivedType);
+            localizedReason = _localization.Translate("AnalysisResultPerceivedTypeReason");
+        }
+        else if (result.ScopeValue == @"HKCR\Folder\shell")
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultFolder");
+            localizedReason = _localization.Translate("AnalysisResultFolderReason");
+        }
+        else if (result.ScopeValue == @"HKCR\Drive\shell")
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultDrive");
+            localizedReason = _localization.Translate("AnalysisResultDriveReason");
+        }
+        else if (result.ScopeValue == @"HKCR\Directory\shell")
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultDirectory");
+            localizedReason = _localization.Translate("AnalysisResultDirectoryReason");
+        }
+        else if (result.SceneKind == ContextMenuSceneKind.DirectoryType)
+        {
+            localizedDisplayName = _localization.Translate("AnalysisResultDirectoryType");
+            localizedReason = _localization.Translate("AnalysisResultDirectoryTypeReason");
+        }
+        else
+        {
+            localizedDisplayName = result.DisplayName;
+            localizedReason = result.Reason;
+        }
+
+        return result with { DisplayName = localizedDisplayName, Reason = localizedReason };
     }
 
     private static IReadOnlyList<SceneOptionViewModel> CreatePerceivedTypeOptions(LocalizationService localization)

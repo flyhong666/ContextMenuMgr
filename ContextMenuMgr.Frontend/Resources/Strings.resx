@@ -927,6 +927,75 @@
   <data name="AnalyzeFolder" xml:space="preserve">
     <value>Analyze Folder</value>
   </data>
+  <data name="JumpToScene" xml:space="preserve">
+    <value>Jump</value>
+  </data>
+  <data name="AnalysisResultAllFiles" xml:space="preserve">
+    <value>All files (*)</value>
+  </data>
+  <data name="AnalysisResultAllFilesReason" xml:space="preserve">
+    <value>Applies to every file.</value>
+  </data>
+  <data name="AnalysisResultAllFilesystemObjects" xml:space="preserve">
+    <value>All filesystem objects</value>
+  </data>
+  <data name="AnalysisResultAllFilesystemObjectsReason" xml:space="preserve">
+    <value>Applies to files and folders.</value>
+  </data>
+  <data name="AnalysisResultExecutable" xml:space="preserve">
+    <value>Executable files</value>
+  </data>
+  <data name="AnalysisResultExecutableReason" xml:space="preserve">
+    <value>The target file is an executable.</value>
+  </data>
+  <data name="AnalysisResultExtension" xml:space="preserve">
+    <value>Extension {0}</value>
+  </data>
+  <data name="AnalysisResultExtensionReason" xml:space="preserve">
+    <value>Applies to this extension.</value>
+  </data>
+  <data name="AnalysisResultShortcut" xml:space="preserve">
+    <value>Shortcut (.lnk)</value>
+  </data>
+  <data name="AnalysisResultShortcutReason" xml:space="preserve">
+    <value>The selected item is a shortcut.</value>
+  </data>
+  <data name="AnalysisResultUnknownType" xml:space="preserve">
+    <value>Unknown file type</value>
+  </data>
+  <data name="AnalysisResultUnknownTypeReason" xml:space="preserve">
+    <value>The extension has no ProgId/open mode.</value>
+  </data>
+  <data name="AnalysisResultPerceivedType" xml:space="preserve">
+    <value>Perceived type {0}</value>
+  </data>
+  <data name="AnalysisResultPerceivedTypeReason" xml:space="preserve">
+    <value>Applies to files with this perceived type.</value>
+  </data>
+  <data name="AnalysisResultFolder" xml:space="preserve">
+    <value>Folders</value>
+  </data>
+  <data name="AnalysisResultFolderReason" xml:space="preserve">
+    <value>Applies to shell folders.</value>
+  </data>
+  <data name="AnalysisResultDrive" xml:space="preserve">
+    <value>Drives</value>
+  </data>
+  <data name="AnalysisResultDriveReason" xml:space="preserve">
+    <value>The selected folder is a drive root.</value>
+  </data>
+  <data name="AnalysisResultDirectory" xml:space="preserve">
+    <value>Directories</value>
+  </data>
+  <data name="AnalysisResultDirectoryReason" xml:space="preserve">
+    <value>Applies to file-system directories.</value>
+  </data>
+  <data name="AnalysisResultDirectoryType" xml:space="preserve">
+    <value>Directory type</value>
+  </data>
+  <data name="AnalysisResultDirectoryTypeReason" xml:space="preserve">
+    <value>Use a specific directory type if one matches this folder.</value>
+  </data>
   <data name="AddMenuItem" xml:space="preserve">
     <value>Add Menu Item</value>
   </data>
@@ -959,5 +1028,74 @@
   </data>
   <data name="LegacyContextMenuItems" xml:space="preserve">
     <value>Legacy Context Menu Items</value>
+  </data>
+  <data name="MenuFormName" xml:space="preserve">
+    <value>Menu Item Name</value>
+  </data>
+  <data name="MenuFormNameDescription" xml:space="preserve">
+    <value>Display name shown in context menu</value>
+  </data>
+  <data name="MenuFormTarget" xml:space="preserve">
+    <value>Target Application</value>
+  </data>
+  <data name="MenuFormTargetDescription" xml:space="preserve">
+    <value>Full path to executable file</value>
+  </data>
+  <data name="MenuFormArguments" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="MenuFormArgumentsDescription" xml:space="preserve">
+    <value>Command-line arguments (optional)</value>
+  </data>
+  <data name="MenuFormWorkingDir" xml:space="preserve">
+    <value>Working Directory</value>
+  </data>
+  <data name="MenuFormWorkingDirDescription" xml:space="preserve">
+    <value>Working folder for the application (optional)</value>
+  </data>
+  <data name="MenuFormIcon" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="MenuFormIconDescription" xml:space="preserve">
+    <value>Path to icon file or executable (optional)</value>
+  </data>
+  <data name="MenuFormRunAsAdmin" xml:space="preserve">
+    <value>Run as administrator</value>
+  </data>
+  <data name="MenuFormGroup" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="MenuFormBrowse" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="MenuFormSelectTarget" xml:space="preserve">
+    <value>Select Target Application</value>
+  </data>
+  <data name="MenuFormSelectFolder" xml:space="preserve">
+    <value>Select Working Directory</value>
+  </data>
+  <data name="MenuFormSelectIcon" xml:space="preserve">
+    <value>Select Icon</value>
+  </data>
+  <data name="MenuFormShellNewExtension" xml:space="preserve">
+    <value>File Extension</value>
+  </data>
+  <data name="MenuFormShellNewExtensionDescription" xml:space="preserve">
+    <value>File extension including the dot (e.g., .txt, .docx)</value>
+  </data>
+  <data name="MenuFormShellNewDisplayName" xml:space="preserve">
+    <value>Display Name</value>
+  </data>
+  <data name="MenuFormShellNewDisplayNameDescription" xml:space="preserve">
+    <value>Name shown in the New context menu</value>
+  </data>
+  <data name="MenuFormShellNewCommand" xml:space="preserve">
+    <value>Command</value>
+  </data>
+  <data name="MenuFormShellNewCommandDescription" xml:space="preserve">
+    <value>Command template with %1 for file path (optional)</value>
+  </data>
+  <data name="MenuFormShellNewBeforeSeparator" xml:space="preserve">
+    <value>Show before separator</value>
   </data>
 </root>

@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
@@ -242,33 +244,66 @@ public sealed class SpecialMenuService
     {
         try
         {
-            using var userRoot = GetUserRegistryRoot(RequireUserContext(userContext), writable: true);
-            using var key = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
-            if (key is null)
+            var userContextToUse = RequireUserContext(userContext);
+
+            if (!EnableSecurityPrivilege())
             {
-                throw new InvalidOperationException("Unable to open ShellNew ordering key.");
+                await _logger.LogAsync("Unable to enable SeSecurityPrivilege. Proceeding without it.", cancellationToken);
             }
 
-            var security = key.GetAccessControl();
-            var rule = CreateShellNewLockRule();
-            if (locked)
+            RegistryKey userRoot;
+            try
             {
-                security.AddAccessRule(rule);
+                userRoot = GetUserRegistryRoot(userContextToUse, writable: true);
             }
-            else
+            catch (Exception ex)
             {
-                foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(NTAccount)))
+                await _logger.LogAsync($"Unable to open user registry root for writing: {ex.Message}", cancellationToken);
+                throw new InvalidOperationException($"Unable to access user registry: {ex.Message}", ex);
+            }
+
+            using (userRoot)
+            {
+                RegistryKey key;
+                try
                 {
-                    if (IsShellNewLockRule(existing))
+                    key = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
+                }
+                catch (Exception ex)
+                {
+                    await _logger.LogAsync($"Unable to create ShellNew key: {ex.Message}", cancellationToken);
+                    throw new InvalidOperationException($"Unable to create ShellNew ordering key: {ex.Message}", ex);
+                }
+
+                if (key is null)
+                {
+                    throw new InvalidOperationException("Unable to open ShellNew ordering key.");
+                }
+
+                using (key)
+                {
+                    var security = key.GetAccessControl(AccessControlSections.Access);
+                    var rule = CreateShellNewLockRule();
+                    if (locked)
                     {
-                        security.RemoveAccessRule(existing);
+                        security.AddAccessRule(rule);
                     }
+                    else
+                    {
+                        foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(NTAccount)))
+                        {
+                            if (IsShellNewLockRule(existing))
+                            {
+                                security.RemoveAccessRule(existing);
+                            }
+                        }
+                    }
+
+                    key.SetAccessControl(security);
+                    await _logger.LogAsync($"ShellNew order lock set to {locked}.", cancellationToken);
+                    return new PipeResponse { Success = true, Message = "ShellNew order lock updated.", ClientOperationId = operationId };
                 }
             }
-
-            key.SetAccessControl(security);
-            await _logger.LogAsync($"ShellNew order lock set to {locked}.", cancellationToken);
-            return new PipeResponse { Success = true, Message = "ShellNew order lock updated.", ClientOperationId = operationId };
         }
         catch (Exception ex)
         {
@@ -281,34 +316,101 @@ public sealed class SpecialMenuService
     {
         var entries = new List<SpecialMenuEntry>();
         var seenExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var ordered = GetShellNewOrderedExtensions(context);
 
-        foreach (var spec in GetClassesRootSpecs(context))
+        Dictionary<string, int> ordered;
+        try
         {
-            var candidates = spec.Root.GetSubKeyNames()
-                .Where(static name => name.StartsWith(".", StringComparison.Ordinal) || string.Equals(name, "Folder", StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(name => ordered.TryGetValue(name, out var index) ? index : int.MaxValue)
-                .ThenBy(static name => name, StringComparer.OrdinalIgnoreCase);
+            ordered = GetShellNewOrderedExtensions(context);
+        }
+        catch (Exception ex)
+        {
+            ordered = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
 
-            foreach (var extension in candidates)
+        try
+        {
+            EnableSecurityPrivilege();
+        }
+        catch
+        {
+        }
+
+        var specs = new List<ClassesRootSpec>(GetClassesRootSpecsSafe(context));
+
+        if (specs.Count == 0)
+        {
+            try
             {
-                foreach (var item in EnumerateShellNewForExtension(spec, extension))
+                var machineClasses = Registry.LocalMachine.OpenSubKey(MachineClassesPath, writable: false);
+                if (machineClasses is not null)
                 {
-                    if (!seenExtensions.Add(item.KeyName))
-                    {
-                        break;
-                    }
-
-                    entries.Add(item with
-                    {
-                        Metadata = item.Metadata.Concat(new[]
-                        {
-                            new KeyValuePair<string, string>("OrderLocked", IsShellNewOrderLocked(context).ToString())
-                        }).ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.OrdinalIgnoreCase)
-                    });
-                    break;
+                    specs.Add(new ClassesRootSpec(machineClasses, @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes", "System"));
                 }
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        foreach (var spec in specs)
+        {
+            try
+            {
+                var candidates = spec.Root.GetSubKeyNames()
+                    .Where(static name => name.StartsWith(".", StringComparison.Ordinal) || string.Equals(name, "Folder", StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(name => ordered.TryGetValue(name, out var index) ? index : int.MaxValue)
+                    .ThenBy(static name => name, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var extension in candidates)
+                {
+                    try
+                    {
+                        foreach (var item in EnumerateShellNewForExtension(spec, extension))
+                        {
+                            if (!seenExtensions.Add(item.KeyName))
+                            {
+                                break;
+                            }
+
+                            bool orderLocked;
+                            try
+                            {
+                                orderLocked = IsShellNewOrderLocked(context);
+                            }
+                            catch (Exception ex)
+                            {
+                                orderLocked = false;
+                            }
+
+                            entries.Add(item with
+                            {
+                                Metadata = item.Metadata.Concat(new[]
+                                {
+                                    new KeyValuePair<string, string>("OrderLocked", orderLocked.ToString())
+                                }).ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                            });
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        if (entries.Count == 0)
+        {
+            try
+            {
+                entries.AddRange(GetDefaultShellNewEntries());
+            }
+            catch (Exception ex)
+            {
             }
         }
 
@@ -1464,7 +1566,7 @@ public sealed class SpecialMenuService
                 return false;
             }
 
-            var security = key.GetAccessControl();
+            var security = key.GetAccessControl(AccessControlSections.Access);
             foreach (RegistryAccessRule rule in security.GetAccessRules(true, true, typeof(NTAccount)))
             {
                 if (IsShellNewLockRule(rule))
@@ -1472,6 +1574,12 @@ public sealed class SpecialMenuService
                     return true;
                 }
             }
+        }
+        catch (System.Security.SecurityException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
         catch
         {
@@ -1487,17 +1595,28 @@ public sealed class SpecialMenuService
         {
             specs.Add(GetUserClassesRootSpec(context));
         }
-        catch
+        catch (Exception ex)
         {
         }
 
-        var machineClasses = Registry.LocalMachine.OpenSubKey(MachineClassesPath, writable: false);
-        if (machineClasses is not null)
+        try
         {
-            specs.Add(new ClassesRootSpec(machineClasses, @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes", "System"));
+            var machineClasses = Registry.LocalMachine.OpenSubKey(MachineClassesPath, writable: false);
+            if (machineClasses is not null)
+            {
+                specs.Add(new ClassesRootSpec(machineClasses, @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes", "System"));
+            }
+        }
+        catch (Exception ex)
+        {
         }
 
         return specs;
+    }
+
+    private static IReadOnlyList<ClassesRootSpec> GetClassesRootSpecsSafe(BackendUserContext context)
+    {
+        return GetClassesRootSpecs(context);
     }
 
     private static ClassesRootSpec GetUserClassesRootSpec(BackendUserContext context)
@@ -1951,4 +2070,133 @@ public sealed class SpecialMenuService
     };
 
     private sealed record ClassesRootSpec(RegistryKey Root, string RegistryPrefix, string SourceScope);
+
+    private static IReadOnlyList<SpecialMenuEntry> GetDefaultShellNewEntries()
+    {
+        var entries = new List<SpecialMenuEntry>();
+        var defaultExtensions = new[]
+        {
+            ".txt", ".docx", ".xlsx", ".pptx", ".zip", ".rar",
+            ".bmp", ".jpg", ".png", ".gif", ".pdf",
+            "Folder", ".lnk"
+        };
+
+        foreach (var extension in defaultExtensions)
+        {
+            var displayName = extension.Equals("Folder", StringComparison.OrdinalIgnoreCase) ? "文件夹" :
+                           extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ? "快捷方式" :
+                           extension.TrimStart('.').ToUpperInvariant();
+
+            entries.Add(new SpecialMenuEntry
+            {
+                Id = $"{SpecialMenuKind.ShellNew}:{Convert.ToBase64String(Encoding.UTF8.GetBytes(extension))}",
+                Kind = SpecialMenuKind.ShellNew,
+                DisplayName = displayName,
+                KeyName = extension,
+                IsEnabled = true,
+                CanEdit = false,
+                CanDelete = false,
+                CanMove = false,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["Extension"] = extension,
+                    ["SourceScope"] = "Default",
+                    ["OrderLocked"] = "false",
+                    ["Warning"] = "User registry not accessible - showing defaults"
+                }
+            });
+        }
+
+        return entries;
+    }
+
+    private static bool EnableSecurityPrivilege()
+    {
+        try
+        {
+            IntPtr tokenHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
+            {
+                return false;
+            }
+
+            try
+            {
+                var privilege = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = new LUID(),
+                    Attributes = SE_PRIVILEGE_ENABLED
+                };
+
+                if (!LookupPrivilegeValue(null, SE_SECURITY_NAME, out privilege.Luid))
+                {
+                    return false;
+                }
+
+                var privileges = new TOKEN_PRIVILEGES
+                {
+                    PrivilegeCount = 1,
+                    Privileges = [privilege]
+                };
+
+                var length = 0u;
+                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
+                {
+                    return false;
+                }
+
+                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
+            }
+            finally
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private const uint SE_PRIVILEGE_ENABLED = 0x00000002;
+    private const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
+    private const uint TOKEN_READ = 0x0008;
+    private const uint ERROR_NOT_ALL_ASSIGNED = 1300;
+
+    private const string SE_SECURITY_NAME = "SeSecurityPrivilege";
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID
+    {
+        public uint LowPart;
+        public int HighPart;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID_AND_ATTRIBUTES
+    {
+        public LUID Luid;
+        public uint Attributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TOKEN_PRIVILEGES
+    {
+        public uint PrivilegeCount;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+        public LUID_AND_ATTRIBUTES[] Privileges;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool LookupPrivilegeValue(string? systemName, string privilegeName, out LUID lpLuid);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool AdjustTokenPrivileges(IntPtr tokenHandle, bool disableAllPrivileges, ref TOKEN_PRIVILEGES newState, uint bufferLength, IntPtr previousState, ref uint returnLength);
 }

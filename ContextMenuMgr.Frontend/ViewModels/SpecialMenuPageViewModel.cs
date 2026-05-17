@@ -371,32 +371,43 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         switch (Kind)
         {
             case SpecialMenuKind.ShellNew:
-                var extension = await TextInputDialog.ShowAsync(Title, "Extension", ".txt");
-                return string.IsNullOrWhiteSpace(extension)
+                var shellNewAddData = await MenuItemFormDialog.ShowAddShellNewAsync(Title, _localization);
+                return shellNewAddData is null
                     ? null
-                    : new PipeRequest { SpecialKind = Kind, ShellNewCreate = new ShellNewCreateRequest(extension), ClientOperationId = operationId };
+                    : new PipeRequest { SpecialKind = Kind, ShellNewCreate = new ShellNewCreateRequest(shellNewAddData.Extension), ClientOperationId = operationId };
             case SpecialMenuKind.SendTo:
-                var sendTo = await TextInputDialog.ShowAsync(Title, "Name|Target|Arguments", "Notepad|notepad.exe|");
-                var sendToParts = SplitParts(sendTo, 3);
-                return sendToParts is null
-                    ? null
-                    : new PipeRequest { SpecialKind = Kind, SendToCreate = new SendToCreateRequest(sendToParts[0], sendToParts[1], sendToParts[2]), ClientOperationId = operationId };
-            case SpecialMenuKind.WinX:
-                var winx = await TextInputDialog.ShowAsync(Title, "Name|Target|Group|Arguments OR Group:name", "Terminal|wt.exe|Group3|");
-                if (string.IsNullOrWhiteSpace(winx))
+                var sendToData = await MenuItemFormDialog.ShowAddSendToAsync(Title, _localization);
+                if (sendToData is null)
                 {
                     return null;
                 }
 
-                if (winx.StartsWith("Group:", StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(sendToData.Name))
                 {
-                    return new PipeRequest { SpecialKind = Kind, WinXCreateGroup = new WinXCreateGroupRequest(winx[6..].Trim()), ClientOperationId = operationId };
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
                 }
 
-                var winxParts = SplitParts(winx, 4);
-                return winxParts is null
-                    ? null
-                    : new PipeRequest { SpecialKind = Kind, WinXCreateEntry = new WinXCreateEntryRequest(winxParts[0], winxParts[1], winxParts[2], winxParts[3]), ClientOperationId = operationId };
+                return new PipeRequest { SpecialKind = Kind, SendToCreate = new SendToCreateRequest(sendToData.Name, sendToData.TargetPath, sendToData.Arguments), ClientOperationId = operationId };
+            case SpecialMenuKind.WinX:
+                var winxData = await MenuItemFormDialog.ShowAddWinXAsync(Title, _localization);
+                if (winxData is null)
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(winxData.Name))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
+                if (string.Equals(winxData.GroupName, "Group:", StringComparison.OrdinalIgnoreCase) || winxData.GroupName.StartsWith("Group:", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new PipeRequest { SpecialKind = Kind, WinXCreateGroup = new WinXCreateGroupRequest(winxData.GroupName.Length > 6 ? winxData.GroupName[6..].Trim() : string.Empty), ClientOperationId = operationId };
+                }
+
+                return new PipeRequest { SpecialKind = Kind, WinXCreateEntry = new WinXCreateEntryRequest(winxData.Name, winxData.TargetPath, winxData.GroupName, winxData.Arguments), ClientOperationId = operationId };
             case SpecialMenuKind.DragDrop:
                 var dragDrop = await TextInputDialog.ShowAsync(Title, "GUID|Group(Folder/Directory/Drive/AllFilesystemObjects)", "{00000000-0000-0000-0000-000000000000}|Folder");
                 var dragDropParts = SplitParts(dragDrop, 2);
@@ -435,58 +446,98 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         switch (Kind)
         {
             case SpecialMenuKind.ShellNew:
-                var shellNew = await TextInputDialog.ShowAsync(Title, "Name|Icon|Command|Data|BeforeSeparator(true/false)", $"{item.DisplayName}|{item.Entry.IconPath}|{item.Entry.CommandText}||");
-                var shellNewParts = SplitParts(shellNew, 5, allowEmptyMiddleParts: true);
-                return shellNewParts is null
+                var shellNewInitialData = new ShellNewFormData
+                {
+                    Extension = item.Id,
+                    DisplayName = item.DisplayName,
+                    IconPath = item.Entry.IconPath ?? string.Empty,
+                    Command = item.Entry.CommandText ?? string.Empty,
+                    BeforeSeparator = false
+                };
+                var shellNewEditData = await MenuItemFormDialog.ShowEditShellNewAsync(Title, shellNewInitialData, _localization);
+                return shellNewEditData is null
                     ? null
                     : new PipeRequest
                     {
                         SpecialKind = Kind,
                         ShellNewUpdate = new ShellNewUpdateRequest(
-                            item.Id,
-                            EmptyToNull(shellNewParts[0]),
-                            EmptyToNull(shellNewParts[1]),
-                            EmptyToNull(shellNewParts[2]),
-                            EmptyToNull(shellNewParts[3]),
-                            bool.TryParse(shellNewParts[4], out var beforeSeparator) ? beforeSeparator : (bool?)null),
+                            shellNewEditData.Extension,
+                            string.IsNullOrWhiteSpace(shellNewEditData.DisplayName) ? null : shellNewEditData.DisplayName,
+                            string.IsNullOrWhiteSpace(shellNewEditData.IconPath) ? null : shellNewEditData.IconPath,
+                            string.IsNullOrWhiteSpace(shellNewEditData.Command) ? null : shellNewEditData.Command,
+                            null,
+                            shellNewEditData.BeforeSeparator),
                         ClientOperationId = operationId
                     };
             case SpecialMenuKind.SendTo:
-                var sendTo = await TextInputDialog.ShowAsync(Title, "Name|Target|Arguments|WorkingDirectory|Icon|RunAsAdmin(true/false)", $"{item.DisplayName}|{item.Entry.TargetPath}|{item.Entry.Arguments}|{item.Entry.WorkingDirectory}|{item.Entry.IconPath}|");
-                var sendToParts = SplitParts(sendTo, 6, allowEmptyMiddleParts: true);
-                return sendToParts is null
-                    ? null
-                    : new PipeRequest
-                    {
-                        SpecialKind = Kind,
-                        SendToUpdate = new SendToUpdateRequest(
-                            item.Id,
-                            EmptyToNull(sendToParts[0]),
-                            EmptyToNull(sendToParts[1]),
-                            EmptyToNull(sendToParts[2]),
-                            EmptyToNull(sendToParts[3]),
-                            EmptyToNull(sendToParts[4]),
-                            bool.TryParse(sendToParts[5], out var sendToAdmin) ? sendToAdmin : (bool?)null),
-                        ClientOperationId = operationId
-                    };
+                var sendToInitialData = new MenuItemFormData
+                {
+                    Name = item.DisplayName,
+                    TargetPath = item.Entry.TargetPath ?? string.Empty,
+                    Arguments = item.Entry.Arguments ?? string.Empty,
+                    WorkingDirectory = item.Entry.WorkingDirectory ?? string.Empty,
+                    IconPath = item.Entry.IconPath ?? string.Empty
+                };
+                var sendToData = await MenuItemFormDialog.ShowEditSendToAsync(Title, sendToInitialData, _localization);
+                if (sendToData is null)
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(sendToData.Name))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
+                return new PipeRequest
+                {
+                    SpecialKind = Kind,
+                    SendToUpdate = new SendToUpdateRequest(
+                        item.Id,
+                        sendToData.Name,
+                        sendToData.TargetPath,
+                        sendToData.Arguments,
+                        sendToData.WorkingDirectory,
+                        sendToData.IconPath,
+                        sendToData.RunAsAdmin),
+                    ClientOperationId = operationId
+                };
             case SpecialMenuKind.WinX:
-                var winx = await TextInputDialog.ShowAsync(Title, "Name|Target|Group|Arguments|WorkingDirectory|RunAsAdmin(true/false)", $"{item.DisplayName}|{item.Entry.TargetPath}|{item.Entry.GroupName}|{item.Entry.Arguments}|{item.Entry.WorkingDirectory}|");
-                var winxParts = SplitParts(winx, 6, allowEmptyMiddleParts: true);
-                return winxParts is null
-                    ? null
-                    : new PipeRequest
-                    {
-                        SpecialKind = Kind,
-                        WinXUpdateEntry = new WinXUpdateEntryRequest(
-                            item.Id,
-                            EmptyToNull(winxParts[0]),
-                            EmptyToNull(winxParts[1]),
-                            EmptyToNull(winxParts[3]),
-                            EmptyToNull(winxParts[4]),
-                            EmptyToNull(winxParts[2]),
-                            bool.TryParse(winxParts[5], out var winxAdmin) ? winxAdmin : (bool?)null),
-                        ClientOperationId = operationId
-                    };
+                var winxInitialData = new MenuItemFormData
+                {
+                    Name = item.DisplayName,
+                    TargetPath = item.Entry.TargetPath ?? string.Empty,
+                    Arguments = item.Entry.Arguments ?? string.Empty,
+                    WorkingDirectory = item.Entry.WorkingDirectory ?? string.Empty,
+                    IconPath = item.Entry.IconPath ?? string.Empty,
+                    GroupName = item.Entry.GroupName ?? string.Empty
+                };
+                var winxData = await MenuItemFormDialog.ShowEditWinXAsync(Title, winxInitialData, _localization);
+                if (winxData is null)
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(winxData.Name))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
+                return new PipeRequest
+                {
+                    SpecialKind = Kind,
+                    WinXUpdateEntry = new WinXUpdateEntryRequest(
+                        item.Id,
+                        winxData.Name,
+                        winxData.TargetPath,
+                        winxData.Arguments,
+                        winxData.WorkingDirectory,
+                        winxData.GroupName,
+                        winxData.RunAsAdmin),
+                    ClientOperationId = operationId
+                };
             case SpecialMenuKind.CommandStore:
                 var commandStore = await TextInputDialog.ShowAsync(Title, "Name|Command|Icon", $"{item.DisplayName}|{item.Entry.CommandText}|{item.Entry.IconPath}");
                 var commandStoreParts = SplitParts(commandStore, 3, allowEmptyMiddleParts: true);

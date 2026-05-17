@@ -927,6 +927,75 @@
   <data name="AnalyzeFolder" xml:space="preserve">
     <value>分析文件夹</value>
   </data>
+  <data name="JumpToScene" xml:space="preserve">
+    <value>跳转</value>
+  </data>
+  <data name="AnalysisResultAllFiles" xml:space="preserve">
+    <value>所有文件 (*)</value>
+  </data>
+  <data name="AnalysisResultAllFilesReason" xml:space="preserve">
+    <value>适用于所有文件。</value>
+  </data>
+  <data name="AnalysisResultAllFilesystemObjects" xml:space="preserve">
+    <value>所有文件系统对象</value>
+  </data>
+  <data name="AnalysisResultAllFilesystemObjectsReason" xml:space="preserve">
+    <value>适用于文件和文件夹。</value>
+  </data>
+  <data name="AnalysisResultExecutable" xml:space="preserve">
+    <value>可执行文件</value>
+  </data>
+  <data name="AnalysisResultExecutableReason" xml:space="preserve">
+    <value>目标文件是可执行程序。</value>
+  </data>
+  <data name="AnalysisResultExtension" xml:space="preserve">
+    <value>扩展名 {0}</value>
+  </data>
+  <data name="AnalysisResultExtensionReason" xml:space="preserve">
+    <value>适用于此扩展名。</value>
+  </data>
+  <data name="AnalysisResultShortcut" xml:space="preserve">
+    <value>快捷方式 (.lnk)</value>
+  </data>
+  <data name="AnalysisResultShortcutReason" xml:space="preserve">
+    <value>选择的项目是快捷方式。</value>
+  </data>
+  <data name="AnalysisResultUnknownType" xml:space="preserve">
+    <value>未知文件类型</value>
+  </data>
+  <data name="AnalysisResultUnknownTypeReason" xml:space="preserve">
+    <value>该扩展名没有关联的程序标识(ProgId)或打开方式。</value>
+  </data>
+  <data name="AnalysisResultPerceivedType" xml:space="preserve">
+    <value>感知类型 {0}</value>
+  </data>
+  <data name="AnalysisResultPerceivedTypeReason" xml:space="preserve">
+    <value>适用于具有此感知类型的文件。</value>
+  </data>
+  <data name="AnalysisResultFolder" xml:space="preserve">
+    <value>文件夹</value>
+  </data>
+  <data name="AnalysisResultFolderReason" xml:space="preserve">
+    <value>适用于系统文件夹。</value>
+  </data>
+  <data name="AnalysisResultDrive" xml:space="preserve">
+    <value>磁盘驱动器</value>
+  </data>
+  <data name="AnalysisResultDriveReason" xml:space="preserve">
+    <value>选择的文件夹是磁盘根目录。</value>
+  </data>
+  <data name="AnalysisResultDirectory" xml:space="preserve">
+    <value>目录</value>
+  </data>
+  <data name="AnalysisResultDirectoryReason" xml:space="preserve">
+    <value>适用于文件系统目录。</value>
+  </data>
+  <data name="AnalysisResultDirectoryType" xml:space="preserve">
+    <value>目录类型</value>
+  </data>
+  <data name="AnalysisResultDirectoryTypeReason" xml:space="preserve">
+    <value>如果此文件夹匹配特定目录类型，则使用该类型。</value>
+  </data>
   <data name="AddMenuItem" xml:space="preserve">
     <value>新增菜单项</value>
   </data>
@@ -959,5 +1028,74 @@
   </data>
   <data name="LegacyContextMenuItems" xml:space="preserve">
     <value>传统菜单项</value>
+  </data>
+  <data name="MenuFormName" xml:space="preserve">
+    <value>菜单项名称</value>
+  </data>
+  <data name="MenuFormNameDescription" xml:space="preserve">
+    <value>在右键菜单中显示的名称</value>
+  </data>
+  <data name="MenuFormTarget" xml:space="preserve">
+    <value>目标程序</value>
+  </data>
+  <data name="MenuFormTargetDescription" xml:space="preserve">
+    <value>可执行文件的完整路径</value>
+  </data>
+  <data name="MenuFormArguments" xml:space="preserve">
+    <value>参数</value>
+  </data>
+  <data name="MenuFormArgumentsDescription" xml:space="preserve">
+    <value>命令行参数（可选）</value>
+  </data>
+  <data name="MenuFormWorkingDir" xml:space="preserve">
+    <value>工作目录</value>
+  </data>
+  <data name="MenuFormWorkingDirDescription" xml:space="preserve">
+    <value>应用程序的工作文件夹（可选）</value>
+  </data>
+  <data name="MenuFormIcon" xml:space="preserve">
+    <value>图标</value>
+  </data>
+  <data name="MenuFormIconDescription" xml:space="preserve">
+    <value>图标文件或可执行文件的路径（可选）</value>
+  </data>
+  <data name="MenuFormRunAsAdmin" xml:space="preserve">
+    <value>以管理员身份运行</value>
+  </data>
+  <data name="MenuFormGroup" xml:space="preserve">
+    <value>分组</value>
+  </data>
+  <data name="MenuFormBrowse" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="MenuFormSelectTarget" xml:space="preserve">
+    <value>选择目标程序</value>
+  </data>
+  <data name="MenuFormSelectFolder" xml:space="preserve">
+    <value>选择工作目录</value>
+  </data>
+  <data name="MenuFormSelectIcon" xml:space="preserve">
+    <value>选择图标</value>
+  </data>
+  <data name="MenuFormShellNewExtension" xml:space="preserve">
+    <value>文件扩展名</value>
+  </data>
+  <data name="MenuFormShellNewExtensionDescription" xml:space="preserve">
+    <value>包括点号的文件扩展名（例如 .txt、.docx）</value>
+  </data>
+  <data name="MenuFormShellNewDisplayName" xml:space="preserve">
+    <value>显示名称</value>
+  </data>
+  <data name="MenuFormShellNewDisplayNameDescription" xml:space="preserve">
+    <value>在"新建"菜单中显示的名称</value>
+  </data>
+  <data name="MenuFormShellNewCommand" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="MenuFormShellNewCommandDescription" xml:space="preserve">
+    <value>命令模板，使用 %1 表示文件路径（可选）</value>
+  </data>
+  <data name="MenuFormShellNewBeforeSeparator" xml:space="preserve">
+    <value>在分隔符前显示</value>
   </data>
 </root>

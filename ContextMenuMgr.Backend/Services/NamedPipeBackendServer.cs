@@ -209,7 +209,36 @@ public sealed class NamedPipeBackendServer
                 {
                     // Request handlers are allowed to fail independently; the pipe
                     // stays alive and the caller receives a structured error response.
-                    response = await HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
+                    
+                    PipeResponse impersonatedResponse = null;
+                    Exception? impersonationException = null;
+                    
+                    try
+                    {
+                        stream.RunAsClient(() =>
+                        {
+                            var task = HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
+                            task.Wait(cancellationToken);
+                            impersonatedResponse = task.Result;
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        impersonationException = ex;
+                    }
+                    
+                    if (impersonatedResponse is not null)
+                    {
+                        response = impersonatedResponse;
+                    }
+                    else if (impersonationException is not null)
+                    {
+                        throw impersonationException;
+                    }
+                    else
+                    {
+                        response = await HandleRequestAsync(envelope.Request, clientUserContext, cancellationToken);
+                    }
                 }
                 catch (Exception ex)
                 {

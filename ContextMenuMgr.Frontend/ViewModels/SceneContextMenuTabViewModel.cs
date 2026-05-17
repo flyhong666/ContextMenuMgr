@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Collections.Specialized;
 using System.Windows.Data;
@@ -285,18 +285,35 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        var text = await TextInputDialog.ShowAsync(
-            AddMenuItemText,
-            "verb:Key|Name|Command|Icon or shellex:Key|GUID",
-            "verb:open-with-notepad|Open with Notepad|notepad.exe \"%1\"|notepad.exe");
-        if (string.IsNullOrWhiteSpace(text))
+        var formData = await MenuItemFormDialog.ShowAddSceneMenuItemAsync(AddMenuItemText, _localization);
+        if (formData is null)
         {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(formData.Name))
+        {
+            await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), AddMenuItemText);
             return;
         }
 
         try
         {
-            var request = ParseCreateSceneMenuItemRequest(text, scopeValue);
+            var commandText = string.IsNullOrWhiteSpace(formData.Arguments)
+                ? formData.TargetPath
+                : $"{formData.TargetPath} {formData.Arguments}";
+
+            var request = new CreateSceneMenuItemRequest
+            {
+                SceneKind = _sceneKind,
+                ScopeValue = scopeValue,
+                ItemKind = SceneMenuItemKind.ShellVerb,
+                KeyName = formData.Name.ToLowerInvariant().Replace(" ", "-"),
+                DisplayName = formData.Name,
+                Command = commandText,
+                Icon = string.IsNullOrWhiteSpace(formData.IconPath) ? null : formData.IconPath
+            };
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var updated = await _backendClient.CreateSceneMenuItemAsync(request, Guid.NewGuid(), cts.Token);
             if (updated is not null)
@@ -447,49 +464,6 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     {
         return !string.IsNullOrWhiteSpace(value)
                && value.Contains(search, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private CreateSceneMenuItemRequest ParseCreateSceneMenuItemRequest(string text, string? scopeValue)
-    {
-        if (text.StartsWith("shellex:", StringComparison.OrdinalIgnoreCase))
-        {
-            var parts = text[8..].Split('|');
-            if (parts.Length < 2)
-            {
-                throw new InvalidOperationException("ShellEx format is shellex:Key|GUID.");
-            }
-
-            return new CreateSceneMenuItemRequest
-            {
-                SceneKind = _sceneKind,
-                ScopeValue = scopeValue,
-                ItemKind = SceneMenuItemKind.ShellExtension,
-                KeyName = parts[0].Trim(),
-                GuidText = parts[1].Trim()
-            };
-        }
-
-        if (text.StartsWith("verb:", StringComparison.OrdinalIgnoreCase))
-        {
-            text = text[5..];
-        }
-
-        var verbParts = text.Split('|');
-        if (verbParts.Length < 3)
-        {
-            throw new InvalidOperationException("Verb format is verb:Key|Name|Command|Icon.");
-        }
-
-        return new CreateSceneMenuItemRequest
-        {
-            SceneKind = _sceneKind,
-            ScopeValue = scopeValue,
-            ItemKind = SceneMenuItemKind.ShellVerb,
-            KeyName = verbParts[0].Trim(),
-            DisplayName = verbParts[1].Trim(),
-            Command = verbParts[2].Trim(),
-            Icon = verbParts.Length > 3 ? verbParts[3].Trim() : null
-        };
     }
 
     private void OnSettingsChanged(object? sender, EventArgs e)
