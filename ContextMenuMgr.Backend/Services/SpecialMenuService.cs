@@ -43,7 +43,7 @@ public sealed class SpecialMenuService
             SpecialMenuKind.DragDrop => GetDragDropItems(),
             SpecialMenuKind.CommandStore => GetCommandStoreItems(),
             SpecialMenuKind.GuidBlock => GetGuidBlockItems(),
-            SpecialMenuKind.InternetExplorer => GetIeItems(RequireUserContext(userContext)),
+            SpecialMenuKind.InternetExplorer => GetIeItems(),
             _ => []
         };
 
@@ -63,7 +63,7 @@ public sealed class SpecialMenuService
                     SpecialMenuKind.SendTo => SetFileSystemItemEnabled(item, enabled, GetSendToPath(RequireUserContext(userContext))),
                     SpecialMenuKind.WinX => SetFileSystemItemEnabled(item, enabled, GetWinXPath(RequireUserContext(userContext))),
                     SpecialMenuKind.DragDrop => SetDragDropEnabled(item, enabled),
-                    SpecialMenuKind.InternetExplorer => SetRenameBackedRegistryItemEnabled(item, enabled, "MenuExt", "-MenuExt", RequireUserContext(userContext)),
+                    SpecialMenuKind.InternetExplorer => SetRenameBackedRegistryItemEnabled(item, enabled, "MenuExt", "-MenuExt"),
                     SpecialMenuKind.CommandStore => SetCommandStoreEnabled(item, enabled),
                     SpecialMenuKind.GuidBlock => SetGuidBlockEnabled(item, enabled),
                     _ => throw new InvalidOperationException("This special menu item cannot be toggled.")
@@ -114,7 +114,7 @@ public sealed class SpecialMenuService
                 SpecialMenuKind.DragDrop when request.DragDropCreate is not null => CreateDragDrop(request.DragDropCreate),
                 SpecialMenuKind.CommandStore when request.SpecialItem is not null => CreateCommandStore(request.SpecialItem),
                 SpecialMenuKind.GuidBlock when request.GuidBlockCreate is not null => CreateGuidBlock(request.GuidBlockCreate),
-                SpecialMenuKind.InternetExplorer when request.IeMenuCreate is not null => CreateIe(request.IeMenuCreate, RequireUserContext(userContext)),
+                SpecialMenuKind.InternetExplorer when request.IeMenuCreate is not null => CreateIe(request.IeMenuCreate),
                 _ => throw new InvalidOperationException("The create request was missing required data.")
             };
 
@@ -139,7 +139,7 @@ public sealed class SpecialMenuService
                 SpecialMenuKind.SendTo when request.SendToUpdate is not null => UpdateSendTo(request.SendToUpdate, RequireUserContext(userContext)),
                 SpecialMenuKind.WinX when request.WinXUpdateEntry is not null => UpdateWinXEntry(request.WinXUpdateEntry, RequireUserContext(userContext)),
                 SpecialMenuKind.DragDrop when request.DefaultDropEffect is not null => UpdateDefaultDropEffect(request.DefaultDropEffect.Value),
-                SpecialMenuKind.InternetExplorer when request.IeMenuUpdate is not null => UpdateIe(request.IeMenuUpdate, RequireUserContext(userContext)),
+                SpecialMenuKind.InternetExplorer when request.IeMenuUpdate is not null => UpdateIe(request.IeMenuUpdate),
                 SpecialMenuKind.CommandStore when request.SpecialItem is not null => UpdateCommandStore(request.SpecialItem),
                 _ => throw new InvalidOperationException("The update request was missing required data.")
             };
@@ -166,10 +166,10 @@ public sealed class SpecialMenuService
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        SoftDeleteRegistryTree(ieDisabledPath, RequireUserContext(userContext));
+                        SoftDeleteRegistryTree(ieDisabledPath);
                     }
 
                     break;
@@ -216,10 +216,10 @@ public sealed class SpecialMenuService
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    RestoreSoftDeletedRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        RestoreSoftDeletedRegistryTree(ieDisabledPath, RequireUserContext(userContext));
+                        RestoreSoftDeletedRegistryTree(ieDisabledPath);
                     }
 
                     break;
@@ -266,10 +266,10 @@ public sealed class SpecialMenuService
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, RequireUserContext(userContext));
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        DeleteRegistryTree(ieDisabledPath + DeletedSuffix, RequireUserContext(userContext));
+                        DeleteRegistryTree(ieDisabledPath + DeletedSuffix);
                     }
 
                     break;
@@ -314,14 +314,13 @@ public sealed class SpecialMenuService
         try
         {
             var deletedPath = path + DeletedSuffix;
-            using var root = context is not null ? GetUserRegistryRoot(context, writable: true) : Registry.CurrentUser;
-            using var sourceKey = root.OpenSubKey(path, writable: true);
+            using var sourceKey = OpenRegistryKey(path, writable: true, context);
             if (sourceKey is null)
             {
                 return null;
             }
 
-            using var targetKey = root.CreateSubKey(deletedPath, writable: true);
+            using var targetKey = CreateRegistryKey(deletedPath, context);
             if (targetKey is null)
             {
                 return null;
@@ -345,14 +344,13 @@ public sealed class SpecialMenuService
         }
 
         var deletedPath = path + DeletedSuffix;
-        using var root = context is not null ? GetUserRegistryRoot(context, writable: true) : Registry.CurrentUser;
-        using var sourceKey = root.OpenSubKey(deletedPath, writable: true);
+        using var sourceKey = OpenRegistryKey(deletedPath, writable: true, context);
         if (sourceKey is null)
         {
             return;
         }
 
-        using var targetKey = root.CreateSubKey(path, writable: true);
+        using var targetKey = CreateRegistryKey(path, context);
         if (targetKey is null)
         {
             return;
@@ -1589,12 +1587,11 @@ public sealed class SpecialMenuService
         return item with { IsEnabled = enabled };
     }
 
-    private static IReadOnlyList<SpecialMenuEntry> GetIeItems(BackendUserContext context)
+    private static IReadOnlyList<SpecialMenuEntry> GetIeItems()
     {
         var result = new List<SpecialMenuEntry>();
 
-        using var userBaseKey = GetUserRegistryRoot(context, writable: false);
-        using var root = userBaseKey.OpenSubKey(IeRootPath, writable: false);
+        using var root = Registry.CurrentUser.OpenSubKey(IeRootPath, writable: false);
 
         if (root is not null)
         {
@@ -1638,7 +1635,7 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static SpecialMenuEntry CreateIe(IeMenuCreateRequest request, BackendUserContext context)
+    private static SpecialMenuEntry CreateIe(IeMenuCreateRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.DisplayName) || string.IsNullOrWhiteSpace(request.Command))
         {
@@ -1646,31 +1643,31 @@ public sealed class SpecialMenuService
         }
 
         var path = $@"HKEY_CURRENT_USER\{IeRootPath}\MenuExt\{request.DisplayName.Replace("\\", string.Empty, StringComparison.Ordinal)}";
-        using var key = CreateRegistryKey(path, context)
+        using var key = CreateRegistryKey(path)
             ?? throw new InvalidOperationException($"Unable to create {path}.");
         key.SetValue(string.Empty, request.Command, RegistryValueKind.String);
-        return GetIeItems(context).First(item => string.Equals(item.RegistryPath, path, StringComparison.OrdinalIgnoreCase));
+        return GetIeItems().First(item => string.Equals(item.RegistryPath, path, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static SpecialMenuEntry UpdateIe(IeMenuUpdateRequest request, BackendUserContext context)
+    private static SpecialMenuEntry UpdateIe(IeMenuUpdateRequest request)
     {
         var path = DecodeId(request.Id);
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
         {
             var parent = path[..path.LastIndexOf('\\')];
             var newPath = $@"{parent}\{request.DisplayName.Replace("\\", string.Empty, StringComparison.Ordinal)}";
-            MoveRegistryKey(path, newPath, context);
+            MoveRegistryKey(path, newPath);
             path = newPath;
         }
 
         if (!string.IsNullOrWhiteSpace(request.Command))
         {
-            using var key = OpenRegistryKey(path, writable: true, context)
+            using var key = OpenRegistryKey(path, writable: true)
                 ?? throw new InvalidOperationException($"Unable to open {path}.");
             key.SetValue(string.Empty, request.Command, RegistryValueKind.String);
         }
 
-        return GetIeItems(context).First(item => string.Equals(item.RegistryPath, path, StringComparison.OrdinalIgnoreCase));
+        return GetIeItems().First(item => string.Equals(item.RegistryPath, path, StringComparison.OrdinalIgnoreCase));
     }
 
     private static SpecialMenuEntry SetDragDropEnabled(SpecialMenuEntry item, bool enabled)
@@ -2913,12 +2910,9 @@ public sealed class SpecialMenuService
         var subPath = separator >= 0 ? normalized[(separator + 1)..] : string.Empty;
         if (rootName.Equals("HKEY_CURRENT_USER", StringComparison.OrdinalIgnoreCase) || rootName.Equals("HKCU", StringComparison.OrdinalIgnoreCase))
         {
-            if (context is null)
-            {
-                throw new InvalidOperationException("HKEY_CURRENT_USER operations require a caller user context.");
-            }
-
-            return (Registry.Users, $@"{context.Sid}\{subPath}");
+            return context is null
+                ? (Registry.CurrentUser, subPath)
+                : (Registry.Users, $@"{context.Sid}\{subPath}");
         }
 
         if ((rootName.Equals("HKEY_USERS", StringComparison.OrdinalIgnoreCase) || rootName.Equals("HKU", StringComparison.OrdinalIgnoreCase))

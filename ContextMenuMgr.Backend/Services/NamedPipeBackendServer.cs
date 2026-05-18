@@ -358,9 +358,7 @@ public sealed class NamedPipeBackendServer
                     Message = "Special menu snapshot loaded.",
                     SpecialItems = await _specialMenuService.GetSnapshotAsync(
                         request.SpecialKind.Value,
-                        request.SpecialKind.Value == SpecialMenuKind.ShellNew
-                            ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                            : null,
+                        await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                         cancellationToken)
                 },
             PipeCommand.SetSpecialMenuItemEnabled when request.SpecialItem is not null && request.Enable is not null
@@ -368,72 +366,58 @@ public sealed class NamedPipeBackendServer
                     request.SpecialItem,
                     request.Enable.Value,
                     request.ClientOperationId,
-                    request.SpecialItem.Kind == SpecialMenuKind.ShellNew
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.CreateSpecialMenuItem
                 => await _specialMenuService.CreateAsync(
                     request,
-                    request.SpecialKind == SpecialMenuKind.ShellNew
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.UpdateSpecialMenuItem
                 => await _specialMenuService.UpdateAsync(
                     request,
-                    request.SpecialKind == SpecialMenuKind.ShellNew
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.DeleteSpecialMenuItem when request.SpecialItem is not null
                 => await _specialMenuService.DeleteAsync(
                     request.SpecialItem,
                     request.ClientOperationId,
-                    request.SpecialItem.Kind == SpecialMenuKind.ShellNew
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.UndoSpecialMenuItem when request.SpecialItem is not null
                 => await _specialMenuService.UndoDeleteAsync(
                     request.SpecialItem,
                     request.ClientOperationId,
-                    request.SpecialItem.Kind == SpecialMenuKind.ShellNew
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.PurgeSpecialMenuItem when request.SpecialItem is not null
                 => await _specialMenuService.PurgeDeletedAsync(
                     request.SpecialItem,
                     request.ClientOperationId,
-                    request.SpecialItem.Kind == SpecialMenuKind.ShellNew
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.MoveSpecialMenuItem
                 => await _specialMenuService.MoveAsync(
                     request,
-                    request.ShellNewSort is not null
-                        ? await ResolveShellNewUserContextAsync(stream, cancellationToken)
-                        : null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.RestoreSpecialMenuDefaults when request.SpecialKind is not null
                 => await _specialMenuService.RestoreDefaultsAsync(
                     request.SpecialKind.Value,
                     request.ScopeValue,
                     request.ClientOperationId,
-                    null,
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.SetShellNewOrderLock when request.ShellNewLock is not null
                 => await _specialMenuService.SetShellNewOrderLockAsync(
                     request.ShellNewLock.Lock,
                     request.ClientOperationId,
-                    await ResolveShellNewUserContextAsync(stream, cancellationToken),
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.RepairShellNewOrderAcl
                 => await _specialMenuService.RepairShellNewOrderAclAsync(
                     request.ClientOperationId,
-                    await ResolveShellNewUserContextAsync(stream, cancellationToken),
+                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
             PipeCommand.AnalyzeFileTypeContext when request.FileTypeAnalysis is not null
                 => new PipeResponse
@@ -496,14 +480,76 @@ public sealed class NamedPipeBackendServer
         };
     }
 
-    private async Task<BackendUserContext?> ResolveShellNewUserContextAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
+    private async Task<BackendUserContext?> ResolveSpecialMenuUserContextIfNeededAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var kind = TryGetSpecialMenuKindForUserContext(request);
+        if (kind is null || !RequiresSpecialMenuUserContext(kind.Value))
+        {
+            return null;
+        }
+
+        return await ResolveSpecialMenuUserContextAsync(stream, cancellationToken);
+    }
+
+    private static bool RequiresSpecialMenuUserContext(SpecialMenuKind kind)
+    {
+        return kind is SpecialMenuKind.ShellNew
+            or SpecialMenuKind.SendTo
+            or SpecialMenuKind.WinX;
+    }
+
+    private static SpecialMenuKind? TryGetSpecialMenuKindForUserContext(PipeRequest request)
+    {
+        if (request.SpecialItem is not null)
+        {
+            return request.SpecialItem.Kind;
+        }
+
+        if (request.SpecialKind is not null)
+        {
+            return request.SpecialKind.Value;
+        }
+
+        if (request.ShellNewCreate is not null
+            || request.ShellNewUpdate is not null
+            || request.ShellNewSort is not null
+            || request.ShellNewLock is not null
+            || request.Command == PipeCommand.RepairShellNewOrderAcl)
+        {
+            return SpecialMenuKind.ShellNew;
+        }
+
+        if (request.SendToCreate is not null
+            || request.SendToUpdate is not null)
+        {
+            return SpecialMenuKind.SendTo;
+        }
+
+        if (request.WinXCreateGroup is not null
+            || request.WinXCreateEntry is not null
+            || request.WinXUpdateEntry is not null
+            || request.WinXMove is not null)
+        {
+            return SpecialMenuKind.WinX;
+        }
+
+        return null;
+    }
+
+    // Resolve only for context-aware special menus (ShellNew / SendTo / WinX).
+    // Do not call this from ordinary catalog, Win11, registry protection,
+    // auto-start, file-type scene, or restart routes.
+    private async Task<BackendUserContext?> ResolveSpecialMenuUserContextAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
     {
         var resolver = new BackendUserContextResolver(_logger);
         var userContext = resolver.TryResolveFromPipeClient(stream)
             ?? resolver.TryResolveInteractiveUserFallback();
         if (userContext is null)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Warning, "ShellNew request could not resolve frontend user context.", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, "Context-aware special menu request could not resolve frontend user context.", cancellationToken);
         }
 
         return userContext;
