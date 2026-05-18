@@ -158,8 +158,9 @@ public sealed class Windows11BlocksService
         using var key = Registry.LocalMachine.CreateSubKey(MachineBlockedPath, writable: true);
         if (key is not null)
         {
-            key.SetValue(clsid, displayName, RegistryValueKind.String);
-            await _logger.LogAsync($"Added {clsid} to machine blocked list.", cancellationToken);
+            var regName = NormalizeGuid(clsid);
+            key.SetValue(regName, displayName, RegistryValueKind.String);
+            await _logger.LogAsync($"Added {regName} to machine blocked list.", cancellationToken);
         }
     }
 
@@ -168,8 +169,9 @@ public sealed class Windows11BlocksService
         using var key = Registry.LocalMachine.OpenSubKey(MachineBlockedPath, writable: true);
         if (key is not null)
         {
-            key.DeleteValue(clsid, throwOnMissingValue: false);
-            await _logger.LogAsync($"Removed {clsid} from machine blocked list.", cancellationToken);
+            var regName = NormalizeGuid(clsid);
+            DeleteGuidValue(key, regName);
+            await _logger.LogAsync($"Removed {regName} from machine blocked list.", cancellationToken);
         }
     }
 
@@ -241,7 +243,7 @@ public sealed class Windows11BlocksService
             if (key is not null)
             {
                 var regName = NormalizeGuid(clsid);
-                key.DeleteValue(regName, throwOnMissingValue: false);
+                DeleteGuidValue(key, regName);
                 await _logger.LogAsync($"Removed {regName} from user blocked list for {userContext.Sid}.", cancellationToken);
             }
         }
@@ -298,6 +300,20 @@ public sealed class Windows11BlocksService
         return Guid.TryParse(guidText, out var guid)
             ? guid.ToString("B")
             : guidText.Trim('{', '}');
+    }
+
+    private static void DeleteGuidValue(RegistryKey key, string normalizedClsid)
+    {
+        key.DeleteValue(normalizedClsid, throwOnMissingValue: false);
+
+        // ContextMenuMgr writes {GUID} values; remove matching manual entries without braces too.
+        foreach (var valueName in key.GetValueNames())
+        {
+            if (string.Equals(NormalizeGuid(valueName), normalizedClsid, StringComparison.OrdinalIgnoreCase))
+            {
+                key.DeleteValue(valueName, throwOnMissingValue: false);
+            }
+        }
     }
 
     private static RegistryKey? OpenUserBlockedKey(BackendUserContext userContext, bool writable, bool create)

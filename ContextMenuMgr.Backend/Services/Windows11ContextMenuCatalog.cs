@@ -96,6 +96,7 @@ internal sealed class Windows11ContextMenuCatalog
     /// </summary>
     public bool SetEnabled(string handlerClsid, string displayName, BackendUserContext? userContext, bool enable)
     {
+        var normalizedClsid = NormalizeGuid(handlerClsid);
         var userSid = userContext?.Sid;
         if (string.IsNullOrWhiteSpace(userSid))
         {
@@ -103,7 +104,7 @@ internal sealed class Windows11ContextMenuCatalog
             userSid = TryGetBestInteractiveUserSid();
         }
 
-        if (!IsSupported || string.IsNullOrWhiteSpace(userSid) || string.IsNullOrWhiteSpace(handlerClsid))
+        if (!IsSupported || string.IsNullOrWhiteSpace(userSid) || string.IsNullOrWhiteSpace(normalizedClsid))
         {
             return false;
         }
@@ -116,11 +117,11 @@ internal sealed class Windows11ContextMenuCatalog
 
         if (enable)
         {
-            userRoot.DeleteValue(handlerClsid, throwOnMissingValue: false);
+            DeleteGuidValue(userRoot, normalizedClsid);
         }
         else
         {
-            userRoot.SetValue(handlerClsid, displayName, RegistryValueKind.String);
+            userRoot.SetValue(normalizedClsid, displayName, RegistryValueKind.String);
         }
 
         return true;
@@ -131,13 +132,14 @@ internal sealed class Windows11ContextMenuCatalog
     /// </summary>
     public bool GetIsEnabled(string handlerClsid, BackendUserContext? userContext)
     {
-        if (string.IsNullOrWhiteSpace(handlerClsid))
+        var normalizedClsid = NormalizeGuid(handlerClsid);
+        if (string.IsNullOrWhiteSpace(normalizedClsid))
         {
             return true;
         }
 
         using var machineBlocked = Registry.LocalMachine.OpenSubKey(MachineBlockedPath, writable: false);
-        if (machineBlocked?.GetValue(handlerClsid) is not null)
+        if (HasGuidValue(machineBlocked, normalizedClsid))
         {
             return false;
         }
@@ -155,7 +157,7 @@ internal sealed class Windows11ContextMenuCatalog
         }
 
         using var userBlocked = Registry.Users.OpenSubKey($@"{userSid}\{UserBlockedPathSuffix}", writable: false);
-        return userBlocked?.GetValue(handlerClsid) is null;
+        return !HasGuidValue(userBlocked, normalizedClsid);
     }
 
     private static string[] GetPackagedComPackages()
@@ -424,6 +426,36 @@ internal sealed class Windows11ContextMenuCatalog
         return Guid.TryParse(guidText, out var guid)
             ? guid.ToString("B")
             : guidText.Trim();
+    }
+
+    private static bool HasGuidValue(RegistryKey? key, string normalizedClsid)
+    {
+        if (key is null)
+        {
+            return false;
+        }
+
+        if (key.GetValue(normalizedClsid) is not null)
+        {
+            return true;
+        }
+
+        // ContextMenuMgr writes {GUID} values; manual registry edits may omit braces.
+        return key.GetValueNames()
+            .Any(valueName => string.Equals(NormalizeGuid(valueName), normalizedClsid, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void DeleteGuidValue(RegistryKey key, string normalizedClsid)
+    {
+        key.DeleteValue(normalizedClsid, throwOnMissingValue: false);
+
+        foreach (var valueName in key.GetValueNames())
+        {
+            if (string.Equals(NormalizeGuid(valueName), normalizedClsid, StringComparison.OrdinalIgnoreCase))
+            {
+                key.DeleteValue(valueName, throwOnMissingValue: false);
+            }
+        }
     }
 
     private static string? TryGetBestInteractiveUserSid()

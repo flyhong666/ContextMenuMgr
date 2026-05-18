@@ -46,7 +46,6 @@ public sealed class FileTypeSceneMenuService
     public async Task<PipeResponse> CreateSceneMenuItemAsync(
         CreateSceneMenuItemRequest request,
         Guid? operationId,
-        BackendUserContext? userContext,
         CancellationToken cancellationToken)
     {
         try

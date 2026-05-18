@@ -87,7 +87,8 @@ public sealed class Windows11ContextMenuService
         {
             var blockedItems = await _backendClient.GetWin11BlockedItemsAsync(cancellationToken);
             var normalizedId = NormalizeGuid(ExtractHandlerId(id));
-            return !blockedItems.Any(item => string.Equals(item.Clsid, normalizedId, StringComparison.OrdinalIgnoreCase));
+            return !blockedItems.Any(item =>
+                string.Equals(NormalizeGuid(item.Clsid), normalizedId, StringComparison.OrdinalIgnoreCase));
         }
         catch
         {

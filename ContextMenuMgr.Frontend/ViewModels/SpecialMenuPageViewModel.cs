@@ -47,6 +47,9 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         RefreshText = _localization.Translate("Refresh");
         RestoreDefaultsText = _localization.Translate("RestoreDefault");
         LockNewMenuText = _localization.Translate("LockNewMenu");
+        LockNewMenuDescription = _localization.Translate("LockNewMenuDescription");
+        RepairShellNewAclText = _localization.Translate("RepairShellNewAcl");
+        RepairShellNewAclConfirmationText = _localization.Translate("RepairShellNewAclConfirmation");
         DeleteText = _localization.Translate("Delete");
         UndoText = _localization.Translate("Undo");
         PermanentDeleteText = _localization.Translate("PermanentDelete");
@@ -98,6 +101,15 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     public partial string LockNewMenuText { get; set; }
 
     [ObservableProperty]
+    public partial string LockNewMenuDescription { get; set; }
+
+    [ObservableProperty]
+    public partial string RepairShellNewAclText { get; set; }
+
+    [ObservableProperty]
+    public partial string RepairShellNewAclConfirmationText { get; set; }
+
+    [ObservableProperty]
     public partial string DeleteText { get; set; }
 
     [ObservableProperty]
@@ -122,12 +134,17 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     public partial bool IsShellNewOrderLocked { get; set; }
 
     [ObservableProperty]
+    public partial bool IsRepairShellNewAclFlyoutOpen { get; set; }
+
+    [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
     public bool ShowShellNewOrderLock => Kind == SpecialMenuKind.ShellNew;
+
+    public bool ShowShellNewAclRepair => Kind == SpecialMenuKind.ShellNew;
 
     public bool ShowRestoreDefaults => Kind is SpecialMenuKind.SendTo or SpecialMenuKind.WinX;
 
@@ -394,6 +411,43 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, Title);
+        }
+    }
+
+    [RelayCommand]
+    private void OpenRepairShellNewAclFlyout()
+    {
+        if (Kind == SpecialMenuKind.ShellNew)
+        {
+            IsRepairShellNewAclFlyoutOpen = true;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseRepairShellNewAclFlyout()
+    {
+        IsRepairShellNewAclFlyoutOpen = false;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmRepairShellNewOrderAclAsync()
+    {
+        if (Kind != SpecialMenuKind.ShellNew)
+        {
+            return;
+        }
+
+        IsRepairShellNewAclFlyoutOpen = false;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _backendClient.RepairShellNewOrderAclAsync(Guid.NewGuid(), cts.Token);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusText = ex.Message;
             await FrontendMessageBox.ShowErrorAsync(ex.Message, Title);
         }
     }
@@ -782,6 +836,9 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         RefreshText = _localization.Translate("Refresh");
         RestoreDefaultsText = _localization.Translate("RestoreDefault");
         LockNewMenuText = _localization.Translate("LockNewMenu");
+        LockNewMenuDescription = _localization.Translate("LockNewMenuDescription");
+        RepairShellNewAclText = _localization.Translate("RepairShellNewAcl");
+        RepairShellNewAclConfirmationText = _localization.Translate("RepairShellNewAclConfirmation");
         DeleteText = _localization.Translate("Delete");
         UndoText = _localization.Translate("Undo");
         PermanentDeleteText = _localization.Translate("PermanentDelete");

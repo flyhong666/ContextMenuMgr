@@ -435,7 +435,7 @@ public sealed class SpecialMenuService
             SpecialMenuEntry item;
             if (request.ShellNewSort is not null)
             {
-                item = MoveShellNew(request.ShellNewSort, RequireUserContext(userContext));
+                item = await MoveShellNewAsync(request.ShellNewSort, RequireUserContext(userContext), cancellationToken);
             }
             else if (request.WinXMove is not null)
             {
@@ -497,90 +497,46 @@ public sealed class SpecialMenuService
     {
         try
         {
-            var userContextToUse = RequireUserContext(userContext);
-
-            if (!EnableSecurityPrivilege())
+            await _logger.LogAsync("ShellNewAclFixVersion=NoCreateSubKeyBeforeUnlock-v1", cancellationToken);
+            var context = RequireUserContext(userContext);
+            if (locked)
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, "Unable to enable SeSecurityPrivilege. Proceeding without it.", cancellationToken);
+                var currentRealItems = GetShellNewItems(context).Where(IsRealShellNewEntry).ToList();
+                var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
+                await _logger.LogAsync($"ShellNew order pre-lock ACL reset: {reset.Message}", cancellationToken);
+                WriteShellNewOrderClasses(context, currentRealItems);
+                var applied = ApplyShellNewOrderLock(context);
+                await _logger.LogAsync($"ShellNew order lock applied. KeyCreated={applied.KeyCreated}. Reset={applied.Reset.Message}. Verification={applied.VerificationMessage}", cancellationToken);
+            }
+            else
+            {
+                var reset = RemoveShellNewOrderLock(context);
+                await _logger.LogAsync($"ShellNew order lock removed. {reset.Message}", cancellationToken);
             }
 
-            RegistryKey? key;
-            try
-            {
-                key = OpenShellNewOrderKeyForAcl(createIfMissing: locked);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Access denied when opening ShellNew ordering ACL for user {userContextToUse.Sid}", cancellationToken);
-                return Failure("Permission denied: Cannot change ShellNew ordering lock. This operation requires permission to change the registry key ACL.", operationId);
-            }
-            catch (SecurityException ex)
-            {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when opening ShellNew ordering ACL: {ex.Message}", cancellationToken);
-                return Failure($"Security error: {ex.Message}. This operation requires permission to change the registry key ACL.", operationId);
-            }
-            catch (Exception ex)
-            {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Unable to open ShellNew ordering key ACL: {ex.Message}", cancellationToken);
-                return Failure($"Unable to open ShellNew ordering key: {ex.Message}", operationId);
-            }
-
-            if (key is null)
-            {
-                await _logger.LogAsync($"ShellNew order unlock requested but key does not exist for user {userContextToUse.Sid}.", cancellationToken);
-                return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
-            }
-
-            using (key)
-            {
-                try
-                {
-                    SetShellNewLockState(key, locked);
-                    await _logger.LogAsync($"ShellNew order lock set to {locked} for user {userContextToUse.Sid}.", cancellationToken);
-                    return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    await _logger.LogAsync(RuntimeLogLevel.Warning, "Access denied when modifying ACL on ShellNew ordering key. Attempting ownership fallback.", cancellationToken);
-                    try
-                    {
-                        EnsureShellNewOrderAclAccess(createIfMissing: locked);
-                        SetShellNewOrderLock(locked, createIfMissing: locked);
-                        await _logger.LogAsync($"ShellNew order lock set to {locked} for user {userContextToUse.Sid} after ownership fallback.", cancellationToken);
-                        return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
-                    }
-                    catch (Exception retryEx)
-                    {
-                        await _logger.LogAsync(RuntimeLogLevel.Error, $"Ownership fallback failed when modifying ShellNew ordering ACL: {retryEx.Message}", cancellationToken);
-                        return Failure("Permission denied: Cannot modify access control list (ACL) on ShellNew ordering key. This operation requires permission to change the registry key ACL.", operationId);
-                    }
-                }
-                catch (SecurityException ex)
-                {
-                    await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when modifying ACL: {ex.Message}. Attempting ownership fallback.", cancellationToken);
-                    try
-                    {
-                        EnsureShellNewOrderAclAccess(createIfMissing: locked);
-                        SetShellNewOrderLock(locked, createIfMissing: locked);
-                        await _logger.LogAsync($"ShellNew order lock set to {locked} for user {userContextToUse.Sid} after ownership fallback.", cancellationToken);
-                        return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
-                    }
-                    catch (Exception retryEx)
-                    {
-                        await _logger.LogAsync(RuntimeLogLevel.Error, $"Ownership fallback failed after security exception: {retryEx.Message}", cancellationToken);
-                        return Failure($"Security error modifying ACL: {ex.Message}. This operation requires permission to change the registry key ACL.", operationId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to modify ShellNew order lock: {ex.Message}", cancellationToken);
-                    return Failure(ex.Message, operationId);
-                }
-            }
+            await _logger.LogAsync($"ShellNew order lock set to {locked} for user {context.Sid}.", cancellationToken);
+            return new PipeResponse { Success = true, Message = "ShellNew order lock updated successfully.", ClientOperationId = operationId };
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Unexpected error in SetShellNewOrderLockAsync: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"SetShellNewOrderLockAsync failed: {ex}", cancellationToken);
+            return Failure(ex.Message, operationId);
+        }
+    }
+
+    public async Task<PipeResponse> RepairShellNewOrderAclAsync(Guid? operationId, BackendUserContext? userContext, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _logger.LogAsync("ShellNewAclFixVersion=NoCreateSubKeyBeforeUnlock-v1", cancellationToken);
+            var context = RequireUserContext(userContext);
+            var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
+            await _logger.LogAsync($"ShellNew order ACL repaired for user {context.Sid}. KeyMissing={reset.KeyMissing}. {reset.Message}", cancellationToken);
+            return new PipeResponse { Success = true, Message = "ShellNew order ACL repaired successfully.", ClientOperationId = operationId };
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"RepairShellNewOrderAclAsync failed: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -611,7 +567,7 @@ public sealed class SpecialMenuService
         var orderLocked = false;
         try
         {
-            orderLocked = IsShellNewOrderLocked();
+            orderLocked = IsShellNewOrderLocked(context);
         }
         catch
         {
@@ -865,54 +821,57 @@ public sealed class SpecialMenuService
         };
     }
 
-    private static SpecialMenuEntry MoveShellNew(ShellNewSortRequest request, BackendUserContext context)
+    private async Task<SpecialMenuEntry> MoveShellNewAsync(ShellNewSortRequest request, BackendUserContext context, CancellationToken cancellationToken)
     {
-        if (!IsShellNewOrderLocked())
+        if (!IsShellNewOrderLocked(context))
         {
             throw new InvalidOperationException("ShellNew ordering requires the new-menu lock to be enabled first.");
         }
 
         var registryPath = DecodeId(request.Id);
         var extension = registryPath.Split('\\').FirstOrDefault(static part => part.StartsWith('.')) ?? string.Empty;
-        var items = GetShellNewItems(context).Where(static item => item.CanMove).ToList();
-        var index = items.FindIndex(item => string.Equals(item.KeyName, extension, StringComparison.OrdinalIgnoreCase));
+        var allRealItems = GetShellNewItems(context).Where(IsRealShellNewEntry).ToList();
+        var movableItems = allRealItems.Where(static item => item.CanMove).ToList();
+        var index = movableItems.FindIndex(item => string.Equals(item.KeyName, extension, StringComparison.OrdinalIgnoreCase));
         var target = request.MoveUp ? index - 1 : index + 1;
-        if (index < 0 || target < 0 || target >= items.Count)
+        if (index < 0 || target < 0 || target >= movableItems.Count)
         {
-            return items.ElementAtOrDefault(index) ?? throw new InvalidOperationException("ShellNew item was not found.");
+            return movableItems.ElementAtOrDefault(index) ?? throw new InvalidOperationException("ShellNew item was not found.");
         }
 
-        (items[index], items[target]) = (items[target], items[index]);
-        var relock = IsShellNewOrderLocked();
+        var sourceAllIndex = allRealItems.FindIndex(item => string.Equals(item.Id, movableItems[index].Id, StringComparison.OrdinalIgnoreCase));
+        var targetAllIndex = allRealItems.FindIndex(item => string.Equals(item.Id, movableItems[target].Id, StringComparison.OrdinalIgnoreCase));
+        if (sourceAllIndex < 0 || targetAllIndex < 0)
+        {
+            throw new InvalidOperationException("ShellNew item was not found.");
+        }
+
+        (allRealItems[sourceAllIndex], allRealItems[targetAllIndex]) = (allRealItems[targetAllIndex], allRealItems[sourceAllIndex]);
+        var movedItem = allRealItems[targetAllIndex];
+
         try
         {
-            if (relock)
+            var unlock = RemoveShellNewOrderLock(context);
+            await _logger.LogAsync($"ShellNew move unlocked order key. {unlock.Message}", cancellationToken);
+            try
             {
-                SetShellNewOrderLock(locked: false, createIfMissing: false);
+                WriteShellNewOrderClasses(context, allRealItems);
             }
-
-            using var userRoot = GetUserRegistryRoot(context, writable: true);
-            using var orderKey = userRoot.CreateSubKey(ShellNewOrderPath, writable: true)
-                ?? throw new InvalidOperationException("Unable to open ShellNew order key.");
-            orderKey.SetValue("Classes", items.Select(static item => item.KeyName).ToArray(), RegistryValueKind.MultiString);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            throw new InvalidOperationException("ShellNew ordering registry key is not writable. The backend needs permission to temporarily unlock the key, save the order, and lock it again.", ex);
-        }
-        catch (SecurityException ex)
-        {
-            throw new InvalidOperationException("ShellNew ordering registry key is protected by access control. The backend needs permission to temporarily unlock the key, save the order, and lock it again.", ex);
+            catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or InvalidOperationException)
+            {
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"ShellNew order write failed after unlock; retrying after ACL reset. Error={ex.Message}", cancellationToken);
+                var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
+                await _logger.LogAsync($"ShellNew move retry ACL reset. {reset.Message}", cancellationToken);
+                WriteShellNewOrderClasses(context, allRealItems);
+            }
         }
         finally
         {
-            if (relock)
-            {
-                SetShellNewOrderLock(locked: true, createIfMissing: true);
-            }
+            var relock = ApplyShellNewOrderLock(context);
+            await _logger.LogAsync($"ShellNew move relocked order key. KeyCreated={relock.KeyCreated}. Reset={relock.Reset.Message}. Verification={relock.VerificationMessage}", cancellationToken);
         }
 
-        return items[target];
+        return movedItem;
     }
 
     private static IReadOnlyList<SpecialMenuEntry> GetSendToItems(BackendUserContext context)
@@ -2186,144 +2145,299 @@ public sealed class SpecialMenuService
         return classes.Select((value, index) => (value, index)).ToDictionary(static item => item.value, static item => item.index, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static RegistryAccessRule CreateShellNewLockRule() =>
-        new(
-            new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-            RegistryRights.Delete | RegistryRights.WriteKey,
-            AccessControlType.Deny);
+    private static bool IsRealShellNewEntry(SpecialMenuEntry item) =>
+        !string.Equals(item.Metadata.GetValueOrDefault("EntryType"), "Separator", StringComparison.OrdinalIgnoreCase);
 
-    private static void SetShellNewOrderLock(bool locked, bool createIfMissing)
+    private static void WriteShellNewOrderClasses(BackendUserContext context, IReadOnlyList<SpecialMenuEntry> allRealItems)
     {
-        using var key = OpenShellNewOrderKeyForAcl(createIfMissing);
-        if (key is null)
-        {
-            return;
-        }
+        using var userRoot = GetUserRegistryRoot(context, writable: true);
+        using var orderKey = userRoot.CreateSubKey(ShellNewOrderPath, writable: true)
+            ?? throw new InvalidOperationException("Unable to open ShellNew order key.");
 
-        SetShellNewLockState(key, locked);
+        orderKey.SetValue(
+            "Classes",
+            allRealItems.Select(static item => item.KeyName).ToArray(),
+            RegistryValueKind.MultiString);
     }
 
-    private static void EnsureShellNewOrderAclAccess(bool createIfMissing)
+    private static bool ShellNewOrderKeyExists(BackendUserContext context)
     {
-        if (createIfMissing)
+        try
         {
-            using var key = Registry.CurrentUser.CreateSubKey(ShellNewOrderPath, writable: true);
+            using var userRoot = GetUserRegistryRoot(context, writable: false);
+            using var key = userRoot.OpenSubKey(
+                ShellNewOrderPath,
+                RegistryKeyPermissionCheck.ReadSubTree,
+                RegistryRights.ReadPermissions);
+            return key is not null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
+        catch (SecurityException)
+        {
+            return true;
+        }
+    }
+
+    private static bool CreateShellNewOrderKeyIfMissing(BackendUserContext context)
+    {
+        if (ShellNewOrderKeyExists(context))
+        {
+            return false;
         }
 
-        using var identity = WindowsIdentity.GetCurrent();
-        var currentUser = identity.User ?? throw new InvalidOperationException("Unable to resolve backend process identity.");
+        using var userRoot = GetUserRegistryRoot(context, writable: true);
+        using var key = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
+        return key is not null;
+    }
 
+    private static RegistryKey? OpenShellNewOrderKeyForAclWrite(BackendUserContext context)
+    {
+        using var userRoot = GetUserRegistryRoot(context, writable: false);
+        return userRoot.OpenSubKey(
+            ShellNewOrderPath,
+            RegistryKeyPermissionCheck.ReadWriteSubTree,
+            RegistryRights.ChangePermissions);
+    }
+
+    private static RegistryKey? OpenShellNewOrderKeyForAclRead(BackendUserContext context)
+    {
+        using var userRoot = GetUserRegistryRoot(context, writable: false);
+        return userRoot.OpenSubKey(
+            ShellNewOrderPath,
+            RegistryKeyPermissionCheck.ReadSubTree,
+            RegistryRights.ReadPermissions);
+    }
+
+    private static RegistryKey? OpenShellNewOrderKeyForTakeOwnership(BackendUserContext context)
+    {
+        using var userRoot = GetUserRegistryRoot(context, writable: false);
+        return userRoot.OpenSubKey(
+            ShellNewOrderPath,
+            RegistryKeyPermissionCheck.ReadWriteSubTree,
+            RegistryRights.TakeOwnership);
+    }
+
+    private static ShellNewAclResetResult ResetShellNewOrderAcl(BackendUserContext context, bool createIfMissing)
+    {
+        EnableSecurityPrivilege();
         EnableTakeOwnershipPrivilege();
         EnableRestorePrivilege();
 
-        using (var ownerKey = Registry.CurrentUser.OpenSubKey(
-            ShellNewOrderPath,
-            RegistryKeyPermissionCheck.ReadWriteSubTree,
-            RegistryRights.TakeOwnership))
+        if (createIfMissing)
         {
-            if (ownerKey is null)
-            {
-                return;
-            }
-
-            var security = ownerKey.GetAccessControl(AccessControlSections.Owner);
-            security.SetOwner(currentUser);
-            ownerKey.SetAccessControl(security);
+            CreateShellNewOrderKeyIfMissing(context);
         }
 
-        using (var aclKey = Registry.CurrentUser.OpenSubKey(
-            ShellNewOrderPath,
-            RegistryKeyPermissionCheck.ReadWriteSubTree,
-            RegistryRights.ChangePermissions))
+        Exception? normalFailure = null;
+        try
         {
-            if (aclKey is null)
+            using var key = OpenShellNewOrderKeyForAclWrite(context);
+            if (key is null)
             {
-                return;
+                return new ShellNewAclResetResult(KeyMissing: true, UsedOwnershipFallback: false, Message: "ShellNew order key is missing.");
             }
 
-            var security = aclKey.GetAccessControl(AccessControlSections.Access);
-            security.AddAccessRule(new RegistryAccessRule(
-                currentUser,
-                RegistryRights.FullControl,
-                InheritanceFlags.ContainerInherit,
-                PropagationFlags.None,
-                AccessControlType.Allow));
-            aclKey.SetAccessControl(security);
+            return ResetShellNewOrderAclCore(context, key, usedOwnershipFallback: false);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or InvalidOperationException)
+        {
+            normalFailure = ex;
+        }
+
+        try
+        {
+            using (var ownerKey = OpenShellNewOrderKeyForTakeOwnership(context))
+            {
+                if (ownerKey is null)
+                {
+                    return new ShellNewAclResetResult(KeyMissing: true, UsedOwnershipFallback: true, Message: "ShellNew order key is missing.");
+                }
+
+                var ownerSecurity = new RegistrySecurity();
+                ownerSecurity.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+                ownerKey.SetAccessControl(ownerSecurity);
+            }
+
+            using var aclKey = OpenShellNewOrderKeyForAclWrite(context)
+                ?? throw new InvalidOperationException("Unable to reopen ShellNew order key for ACL write after taking ownership.");
+            return ResetShellNewOrderAclCore(context, aclKey, usedOwnershipFallback: true);
+        }
+        catch (Exception fallbackEx) when (fallbackEx is UnauthorizedAccessException or SecurityException or InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                $"Failed to reset ShellNew order ACL. Normal={normalFailure?.Message}; Fallback={fallbackEx.Message}",
+                fallbackEx);
         }
     }
 
-    private static RegistryKey? OpenShellNewOrderKeyForAcl(bool createIfMissing)
+    private static ShellNewAclResetResult ResetShellNewOrderAclCore(BackendUserContext context, RegistryKey key, bool usedOwnershipFallback)
     {
-        var key = Registry.CurrentUser.OpenSubKey(
-            ShellNewOrderPath,
-            RegistryKeyPermissionCheck.ReadWriteSubTree,
-            RegistryRights.ChangePermissions);
-
-        if (key is not null || !createIfMissing)
+        RegistrySecurity security;
+        var oldDaclRead = true;
+        try
         {
-            return key;
+            security = key.GetAccessControl(AccessControlSections.Access);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
+        {
+            oldDaclRead = false;
+            security = CreateUnlockedShellNewOrderSecurity(context);
         }
 
-        using var newKey = Registry.CurrentUser.CreateSubKey(ShellNewOrderPath, writable: true);
-        newKey?.Dispose();
-
-        return Registry.CurrentUser.OpenSubKey(
-            ShellNewOrderPath,
-            RegistryKeyPermissionCheck.ReadWriteSubTree,
-            RegistryRights.ChangePermissions);
-    }
-
-    private static void SetShellNewLockState(RegistryKey key, bool locked)
-    {
-        var security = key.GetAccessControl(AccessControlSections.Access);
-        RemoveShellNewLockRules(security);
-
-        if (locked)
+        if (oldDaclRead)
         {
-            security.AddAccessRule(CreateShellNewLockRule());
+            foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().ToArray())
+            {
+                if (!ShouldRemoveShellNewDenyRule(existing, context))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    security.RemoveAccessRuleSpecific(existing);
+                }
+                catch
+                {
+                }
+
+                security.RemoveAccessRule(existing);
+            }
+
+            security.SetAccessRuleProtection(isProtected: false, preserveInheritance: true);
         }
 
         key.SetAccessControl(security);
 
-        if (locked)
+        try
         {
             var verifySecurity = key.GetAccessControl(AccessControlSections.Access);
-            var lockRuleExists = verifySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            var hasBadDeny = verifySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
                 .Cast<RegistryAccessRule>()
-                .Any(IsShellNewLockRule);
-            if (!lockRuleExists)
+                .Any(rule => ShouldRemoveShellNewDenyRule(rule, context));
+            if (verifySecurity.AreAccessRulesProtected || hasBadDeny)
             {
-                throw new InvalidOperationException("Failed to verify ShellNew lock rule after setting ACL.");
+                throw new InvalidOperationException("Failed to verify ShellNew order ACL reset.");
             }
-        }
-    }
 
-    private static void RemoveShellNewLockRules(RegistrySecurity security)
-    {
-        foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+            return new ShellNewAclResetResult(
+                KeyMissing: false,
+                UsedOwnershipFallback: usedOwnershipFallback,
+                Message: $"ShellNew order ACL reset. OpenRights=ChangePermissions only. OldDaclRead={oldDaclRead}. ReplacementDaclFallback={!oldDaclRead}. SetAccessControl=True. FinalState=ReadableUnlocked.");
+        }
+        catch (Exception ex) when (!oldDaclRead && (ex is UnauthorizedAccessException or SecurityException))
         {
-            if (existing.IsInherited || !IsShellNewLockRule(existing))
-            {
-                continue;
-            }
-
-            try
-            {
-                security.RemoveAccessRuleSpecific(existing);
-            }
-            catch
-            {
-            }
-
-            security.RemoveAccessRule(existing);
+            return new ShellNewAclResetResult(
+                KeyMissing: false,
+                UsedOwnershipFallback: usedOwnershipFallback,
+                Message: $"ShellNew order ACL reset. OpenRights=ChangePermissions only. OldDaclRead=False. ReplacementDaclFallback=True. SetAccessControl=True. FinalState=UnreadableAfterReplacement ({ex.Message}).");
         }
     }
 
-    private static bool IsShellNewLockRule(RegistryAccessRule rule) =>
-        rule.AccessControlType == AccessControlType.Deny
-        && IsWorldSid(rule.IdentityReference)
-        && rule.RegistryRights.HasFlag(RegistryRights.Delete)
-        && rule.RegistryRights.HasFlag(RegistryRights.WriteKey);
+    private static RegistrySecurity CreateUnlockedShellNewOrderSecurity(BackendUserContext context)
+    {
+        var security = new RegistrySecurity();
+        security.SetAccessRuleProtection(isProtected: false, preserveInheritance: false);
+        security.AddAccessRule(new RegistryAccessRule(
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            RegistryRights.FullControl,
+            InheritanceFlags.None,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        security.AddAccessRule(new RegistryAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            RegistryRights.FullControl,
+            InheritanceFlags.None,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+
+        if (!string.IsNullOrWhiteSpace(context.Sid))
+        {
+            security.AddAccessRule(new RegistryAccessRule(
+                new SecurityIdentifier(context.Sid),
+                RegistryRights.FullControl,
+                InheritanceFlags.None,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+        }
+
+        return security;
+    }
+
+    private static ShellNewLockChangeResult ApplyShellNewOrderLock(BackendUserContext context)
+    {
+        var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
+        var keyCreated = CreateShellNewOrderKeyIfMissing(context);
+
+        RegistrySecurity security;
+        try
+        {
+            using var readKey = OpenShellNewOrderKeyForAclRead(context);
+            security = readKey?.GetAccessControl(AccessControlSections.Access)
+                ?? CreateUnlockedShellNewOrderSecurity(context);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
+        {
+            security = CreateUnlockedShellNewOrderSecurity(context);
+        }
+
+        using var key = OpenShellNewOrderKeyForAclWrite(context)
+            ?? throw new InvalidOperationException("Unable to open ShellNew order key for ACL write.");
+
+        security.AddAccessRule(new RegistryAccessRule(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+            RegistryRights.Delete | RegistryRights.WriteKey,
+            InheritanceFlags.None,
+            PropagationFlags.None,
+            AccessControlType.Deny));
+
+        key.SetAccessControl(security);
+
+        if (!TryVerifyShellNewOrderLocked(context, out var verificationMessage))
+        {
+            throw new InvalidOperationException($"ShellNew order lock ACL did not contain expected Everyone deny rule after SetAccessControl. {verificationMessage}");
+        }
+
+        return new ShellNewLockChangeResult(keyCreated, reset, $"OpenRights=ChangePermissions only. Applied Everyone Deny Delete|WriteKey. SetAccessControl=True. {verificationMessage}");
+    }
+
+    private static ShellNewAclResetResult RemoveShellNewOrderLock(BackendUserContext context)
+    {
+        var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
+        var verificationMessage = "KeyMissing.";
+
+        if (!reset.KeyMissing && !TryVerifyShellNewOrderUnlocked(context, out verificationMessage))
+        {
+            throw new InvalidOperationException($"Failed to verify ShellNew order unlock after ACL reset. {verificationMessage}");
+        }
+
+        return reset with { Message = $"{reset.Message} FinalState={verificationMessage}" };
+    }
+
+    private static bool ShouldRemoveShellNewDenyRule(RegistryAccessRule rule, BackendUserContext context)
+    {
+        if (rule.IsInherited || rule.AccessControlType != AccessControlType.Deny)
+        {
+            return false;
+        }
+
+        return IsWorldSid(rule.IdentityReference)
+            || IsFrontendUserSid(rule.IdentityReference, context)
+            || HasAnyRegistryRight(
+                rule.RegistryRights,
+                RegistryRights.Delete,
+                RegistryRights.WriteKey,
+                RegistryRights.SetValue,
+                RegistryRights.CreateSubKey,
+                RegistryRights.ChangePermissions,
+                RegistryRights.TakeOwnership);
+    }
+
+    private static bool HasAnyRegistryRight(RegistryRights actual, params RegistryRights[] requiredRights) =>
+        requiredRights.Any(right => (actual & right) == right);
 
     private static bool IsWorldSid(IdentityReference identity)
     {
@@ -2339,44 +2453,107 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static bool IsShellNewOrderLocked()
+    private static bool IsFrontendUserSid(IdentityReference identity, BackendUserContext context)
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(ShellNewOrderPath, writable: false);
-            if (key is null)
-            {
-                return false;
-            }
-
-            var security = key.GetAccessControl();
-            foreach (RegistryAccessRule rule in security.GetAccessRules(true, true, typeof(NTAccount)))
-            {
-                if (rule.AccessControlType == AccessControlType.Deny)
-                {
-                    var identity = rule.IdentityReference.ToString();
-                    if (identity.Equals("Everyone", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
-                }
-            }
-
+            var sid = identity as SecurityIdentifier
+                ?? identity.Translate(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            return sid is not null && string.Equals(sid.Value, context.Sid, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
             return false;
         }
-        catch (System.Security.SecurityException ex)
+    }
+
+    private static bool IsShellNewOrderLocked(BackendUserContext context)
+    {
+        if (TryReadShellNewOrderLockState(context, out var locked, out _))
         {
-            System.Diagnostics.Debug.WriteLine($"[IsShellNewOrderLocked] SecurityException when reading ACL: {ex.Message}");
+            return locked;
+        }
+
+        return locked;
+    }
+
+    private static bool TryVerifyShellNewOrderLocked(BackendUserContext context, out string message)
+    {
+        if (TryReadShellNewOrderLockState(context, out var locked, out message))
+        {
+            if (locked)
+            {
+                message = "Verification=ReadableFoundEveryoneDeny.";
+                return true;
+            }
+
+            message = "Verification=ReadableNoEveryoneDeny.";
+            return false;
+        }
+
+        message = "Verification=UnreadableAfterLockTreatingAsLocked.";
+        return locked;
+    }
+
+    private static bool TryVerifyShellNewOrderUnlocked(BackendUserContext context, out string message)
+    {
+        if (TryReadShellNewOrderLockState(context, out var locked, out message))
+        {
+            if (!locked)
+            {
+                message = "ReadableUnlocked.";
+                return true;
+            }
+
+            message = "ReadableStillLocked.";
+            return false;
+        }
+
+        message = "UnreadableAfterReset.";
+        return false;
+    }
+
+    private static bool TryReadShellNewOrderLockState(BackendUserContext context, out bool locked, out string message)
+    {
+        try
+        {
+            using var key = OpenShellNewOrderKeyForAclRead(context);
+            if (key is null)
+            {
+                locked = false;
+                message = "ShellNew order key is missing.";
+                return true;
+            }
+
+            var security = key.GetAccessControl(AccessControlSections.Access);
+            locked = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<RegistryAccessRule>()
+                .Any(rule => rule.AccessControlType == AccessControlType.Deny
+                    && IsWorldSid(rule.IdentityReference)
+                    && rule.RegistryRights.HasFlag(RegistryRights.Delete)
+                    && rule.RegistryRights.HasFlag(RegistryRights.WriteKey));
+            message = locked ? "ReadableFoundEveryoneDeny." : "ReadableNoEveryoneDeny.";
+            return true;
+        }
+        catch (SecurityException ex)
+        {
+            Debug.WriteLine($"[IsShellNewOrderLocked] SecurityException when reading ACL: {ex.Message}");
+            locked = true;
+            message = $"UnreadableSecurityException={ex.Message}";
             return false;
         }
         catch (UnauthorizedAccessException ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[IsShellNewOrderLocked] UnauthorizedAccessException when reading ACL: {ex.Message}");
+            Debug.WriteLine($"[IsShellNewOrderLocked] UnauthorizedAccessException when reading ACL: {ex.Message}");
+            locked = true;
+            message = $"UnreadableUnauthorizedAccessException={ex.Message}";
             return false;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[IsShellNewOrderLocked] Unexpected exception when reading ACL: {ex.Message}");
+            Debug.WriteLine($"[IsShellNewOrderLocked] Unexpected exception when reading ACL: {ex.Message}");
+            locked = false;
+            message = $"UnexpectedAclReadFailure={ex.Message}";
             return false;
         }
     }
@@ -3031,6 +3208,10 @@ public sealed class SpecialMenuService
     private const uint ERROR_NOT_ALL_ASSIGNED = 1300;
 
     private const string SE_SECURITY_NAME = "SeSecurityPrivilege";
+
+    private sealed record ShellNewAclResetResult(bool KeyMissing, bool UsedOwnershipFallback, string Message);
+
+    private sealed record ShellNewLockChangeResult(bool KeyCreated, ShellNewAclResetResult Reset, string VerificationMessage);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LUID

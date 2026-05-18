@@ -45,5 +45,6 @@ public enum PipeCommand
     GetEnhanceMenuState,
     SetLogLevel,
     RequestShutdown,
-    RestartExplorer
+    RestartExplorer,
+    RepairShellNewOrderAcl
 }

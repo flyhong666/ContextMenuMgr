@@ -92,10 +92,10 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Gets snapshot Async.
     /// </summary>
-    public async Task<IReadOnlyList<ContextMenuEntry>> GetSnapshotAsync(CancellationToken cancellationToken = default, BackendUserContext? userContext = null)
+    public async Task<IReadOnlyList<ContextMenuEntry>> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {
         return await BuildSnapshotAsync(
-            await EnumerateActualEntriesAsync(cancellationToken, userContext),
+            await EnumerateActualEntriesAsync(cancellationToken),
             static state => MonitoredStableRootPaths.Contains(state.SourceRootPath) || state.IsWindows11ContextMenu,
             persistDiscoveredStates: true,
             persistSnapshotUpdates: true,
@@ -168,11 +168,10 @@ public sealed class ContextMenuRegistryCatalog
     }
 
     public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
-        CancellationToken cancellationToken = default,
-        BackendUserContext? userContext = null)
+        CancellationToken cancellationToken = default)
     {
         return _windows11Catalog.IsSupported
-            ? await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext)
+            ? await _windows11Catalog.EnumerateEntriesAsync(cancellationToken)
             : [];
     }
 
@@ -364,17 +363,10 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<PipeResponse> ApplyDesiredStateAsync(
         string itemId,
         bool enable,
-        CancellationToken cancellationToken,
-        BackendUserContext? userContext = null,
-        ContextMenuEntry? fallbackItem = null)
+        CancellationToken cancellationToken)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
+        var snapshot = await GetSnapshotAsync(cancellationToken);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
-        if (item is null)
-        {
-            item = TryUseSceneFallbackItem(itemId, fallbackItem);
-        }
-
         if (item is null)
         {
             return CreateFailure($"Menu item '{itemId}' was not found.");
@@ -391,7 +383,7 @@ public sealed class ContextMenuRegistryCatalog
             {
                 // Win11 packaged verbs do not use the classic shell verb/handler
                 // write paths, so they are toggled through the blocked-extension list.
-                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable))
+                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, null, enable))
                 {
                     return CreateFailure($"Unable to update the Win11 context menu item '{item.DisplayName}'.");
                 }
@@ -436,7 +428,7 @@ public sealed class ContextMenuRegistryCatalog
 
             await _logger.LogAsync($"{(enable ? "Enabled" : "Disabled")} {item.DisplayName} ({item.RegistryPath}).", cancellationToken);
 
-            var refreshed = (await GetSnapshotAsync(cancellationToken, userContext))
+            var refreshed = (await GetSnapshotAsync(cancellationToken))
                 .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
                 ?? item with { IsEnabled = enable };
 
@@ -460,21 +452,20 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<PipeResponse> ApplyDecisionAsync(
         string itemId,
         ContextMenuDecision decision,
-        CancellationToken cancellationToken,
-        BackendUserContext? userContext = null)
+        CancellationToken cancellationToken)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
+        var snapshot = await GetSnapshotAsync(cancellationToken);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
 
         return decision switch
         {
             ContextMenuDecision.Allow => item is null
                 ? CreateFailure($"Menu item '{itemId}' was not found.")
-                : await ApplyDesiredStateAsync(itemId, enable: true, cancellationToken, userContext),
+                : await ApplyDesiredStateAsync(itemId, enable: true, cancellationToken),
             ContextMenuDecision.Deny => item is null
                 ? await RemovePendingApprovalStateAsync(itemId, cancellationToken)
-                : await ApplyDesiredStateAsync(itemId, enable: false, cancellationToken, userContext),
-            ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, userContext, cancellationToken),
+                : await ApplyDesiredStateAsync(itemId, enable: false, cancellationToken),
+            ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, cancellationToken),
             _ => CreateFailure("Unknown approval decision.")
         };
     }
@@ -956,9 +947,9 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Sets registry Protection Setting Async.
     /// </summary>
-    public async Task<PipeResponse> SetRegistryProtectionSettingAsync(bool enable, BackendUserContext? userContext, CancellationToken cancellationToken)
+    public async Task<PipeResponse> SetRegistryProtectionSettingAsync(bool enable, CancellationToken cancellationToken)
     {
-        var errors = ApplyRegistryWriteProtection(enable, userContext);
+        var errors = ApplyRegistryWriteProtection(enable);
         if (errors.Count > 0)
         {
             var detail = string.Join(Environment.NewLine, errors);
@@ -985,30 +976,24 @@ public sealed class ContextMenuRegistryCatalog
     /// </summary>
     public async Task<PipeResponse> DeleteItemAsync(
         string itemId,
-        CancellationToken cancellationToken,
-        BackendUserContext? userContext = null,
-        ContextMenuEntry? fallbackItem = null)
+        CancellationToken cancellationToken)
     {
         var states = await _stateStore.LoadAsync(cancellationToken);
         var persistedState = states.GetValueOrDefault(itemId);
         var usedFallbackItem = false;
-        var item = TryUseSceneFallbackItem(itemId, fallbackItem);
-        if (item is not null)
-        {
-            usedFallbackItem = true;
-        }
+        ContextMenuEntry? item = null;
 
         if (item is null)
         {
-            var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
+            var snapshot = await GetSnapshotAsync(cancellationToken);
             item = SelectPreferredDeleteCandidate(
                 snapshot.Where(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase)),
-                userContext?.Sid);
+                currentUserSid: null);
         }
 
         if (item is null)
         {
-            item = await TryFindEntryByIdAsync(itemId, cancellationToken, userContext);
+            item = await TryFindEntryByIdAsync(itemId, cancellationToken);
         }
 
         if (item is null && persistedState is null)
@@ -1051,8 +1036,6 @@ public sealed class ContextMenuRegistryCatalog
                     + $"backendRegistryPath={backendRegistryPath}; "
                     + $"handlerClsid={item?.HandlerClsid ?? persistedState?.HandlerClsid}; "
                     + $"usedFallbackItem={usedFallbackItem}; "
-                    + $"hasUserContext={userContext is not null}; "
-                    + $"userSid={userContext?.Sid}; "
                     + $"targetExists={targetExists}.",
                     cancellationToken);
 
@@ -1095,9 +1078,9 @@ public sealed class ContextMenuRegistryCatalog
             await _logger.LogAsync($"Deleted {state.DisplayName} with backup {backupFilePath}.", cancellationToken);
 
             var refreshed = SelectPreferredDeleteCandidate(
-                    (await GetSnapshotAsync(cancellationToken, userContext))
+                    (await GetSnapshotAsync(cancellationToken))
                     .Where(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase)),
-                    userContext?.Sid)
+                    currentUserSid: null)
                 ?? CreateVirtualEntry(state, null, ContextMenuChangeKind.None, null);
 
             return new PipeResponse
@@ -1159,12 +1142,11 @@ public sealed class ContextMenuRegistryCatalog
     private async Task<PipeResponse> RemovePendingApprovalItemAsync(
         ContextMenuEntry? item,
         string itemId,
-        BackendUserContext? userContext,
         CancellationToken cancellationToken)
     {
         if (item is not null && item.IsPresentInRegistry && !item.IsDeleted)
         {
-            return await DeleteItemAsync(itemId, cancellationToken, userContext, item);
+            return await DeleteItemAsync(itemId, cancellationToken);
         }
 
         return await RemovePendingApprovalStateAsync(itemId, cancellationToken);
@@ -1303,7 +1285,7 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Executes quarantine New Item Async.
     /// </summary>
-    public async Task<ContextMenuEntry> QuarantineNewItemAsync(ContextMenuEntry item, CancellationToken cancellationToken, BackendUserContext? userContext = null)
+    public async Task<ContextMenuEntry> QuarantineNewItemAsync(ContextMenuEntry item, CancellationToken cancellationToken)
     {
         // Step 1: disable the newly detected item immediately. This keeps the
         // service in a deny-by-default posture until the user explicitly allows it.
@@ -1313,7 +1295,7 @@ public sealed class ContextMenuRegistryCatalog
                 SetShellVerbEnabled(item.BackendRegistryPath, enable: false);
                 break;
             case ContextMenuEntryKind.ShellExtension when item.IsWindows11ContextMenu:
-                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable: false))
+                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, null, enable: false))
                 {
                     throw new InvalidOperationException($"Unable to quarantine the Win11 context menu item '{item.DisplayName}'.");
                 }
@@ -1341,7 +1323,7 @@ public sealed class ContextMenuRegistryCatalog
 
         await _logger.LogAsync($"Quarantined new menu item pending approval: {item.DisplayName} ({item.RegistryPath}).", cancellationToken);
 
-        return (await GetSnapshotAsync(cancellationToken, userContext))
+        return (await GetSnapshotAsync(cancellationToken))
             .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
             ?? item with
             {
@@ -1377,17 +1359,17 @@ public sealed class ContextMenuRegistryCatalog
         return true;
     }
 
-    private async Task<IReadOnlyList<ContextMenuEntry>> EnumerateActualEntriesAsync(CancellationToken cancellationToken, BackendUserContext? userContext = null)
+    private async Task<IReadOnlyList<ContextMenuEntry>> EnumerateActualEntriesAsync(CancellationToken cancellationToken)
     {
         var results = new List<ContextMenuEntry>();
-        foreach (var item in EnumerateEntries(MonitoredRoots, userContext?.Sid))
+        foreach (var item in EnumerateEntries(MonitoredRoots))
         {
             results.Add(item);
         }
 
         if (_windows11Catalog.IsSupported)
         {
-            results.AddRange(await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext));
+            results.AddRange(await _windows11Catalog.EnumerateEntriesAsync(cancellationToken));
         }
 
         return results;
@@ -1741,8 +1723,7 @@ public sealed class ContextMenuRegistryCatalog
 
     private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(
         string itemId,
-        CancellationToken cancellationToken,
-        BackendUserContext? userContext = null)
+        CancellationToken cancellationToken)
     {
         var separatorIndex = itemId.LastIndexOf('|');
         if (separatorIndex < 0)
@@ -1754,7 +1735,7 @@ public sealed class ContextMenuRegistryCatalog
         var keyName = itemId[(separatorIndex + 1)..];
         var candidates = new List<ContextMenuEntry>();
 
-        foreach (var instance in EnumerateRootInstances(userContext?.Sid))
+        foreach (var instance in EnumerateRootInstances())
         {
             using var baseKey = instance.OpenBaseKey(stableRelativePath);
             if (baseKey is null)
@@ -1841,7 +1822,7 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         await Task.CompletedTask;
-        return SelectPreferredDeleteCandidate(candidates, userContext?.Sid);
+        return SelectPreferredDeleteCandidate(candidates, currentUserSid: null);
     }
 
     private static ContextMenuCategory DetermineCategoryFromPath(string stableRelativePath)
@@ -2849,7 +2830,7 @@ public sealed class ContextMenuRegistryCatalog
         };
     }
 
-    private List<string> ApplyRegistryWriteProtection(bool enable, BackendUserContext? userContext)
+    private List<string> ApplyRegistryWriteProtection(bool enable)
     {
         var errors = new List<string>();
 
@@ -2859,36 +2840,9 @@ public sealed class ContextMenuRegistryCatalog
         {
             ApplyRegistryWriteProtection(RegistryHive.LocalMachine, relativePath, enable, errors);
 
-            if (userContext is not null)
-            {
-                try
-                {
-                    using var userRoot = OpenUserRegistryRoot(userContext, writable: true);
-                    ApplyRegistryWriteProtectionToUserKey(userRoot, relativePath, enable, errors);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Unable to apply protection to user registry: {ex.Message}");
-                }
-            }
-            else
-            {
-                errors.Add("Unable to apply protection to user registry: caller user context is not available.");
-            }
         }
 
         return errors;
-    }
-
-    private static RegistryKey OpenUserRegistryRoot(BackendUserContext userContext, bool writable)
-    {
-        if (string.IsNullOrWhiteSpace(userContext.Sid))
-        {
-            throw new InvalidOperationException("The frontend user SID is not available.");
-        }
-
-        return Registry.Users.OpenSubKey(userContext.Sid, writable)
-            ?? throw new InvalidOperationException($"The registry hive for user {userContext.Sid} is not loaded.");
     }
 
     private static void ApplyRegistryWriteProtectionToUserKey(RegistryKey userRoot, string relativePath, bool enable, List<string> errors)

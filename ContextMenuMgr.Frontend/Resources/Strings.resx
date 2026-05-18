@@ -1026,6 +1026,15 @@
   <data name="LockNewMenu" xml:space="preserve">
     <value>Lock new menu and enable sorting</value>
   </data>
+  <data name="LockNewMenuDescription" xml:space="preserve">
+    <value>When enabled, prevents third-party programs from adding items and lets you sort existing items; turning it off restores the original order.</value>
+  </data>
+  <data name="RepairShellNewAcl" xml:space="preserve">
+    <value>Repair new menu lock</value>
+  </data>
+  <data name="RepairShellNewAclConfirmation" xml:space="preserve">
+    <value>Repairing will reset the new-menu lock permissions. Continue?</value>
+  </data>
   <data name="DefaultDropEffect" xml:space="preserve">
     <value>Default drop effect</value>
   </data>

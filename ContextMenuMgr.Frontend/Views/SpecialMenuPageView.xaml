@@ -28,9 +28,51 @@
                         Orientation="Horizontal">
                         <ui:ToggleSwitch
                             Margin="8,0,0,0"
-                            Content="{Binding LockNewMenuText}"
                             IsChecked="{Binding IsShellNewOrderLocked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            Visibility="{Binding ShowShellNewOrderLock, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            ToolTip="{Binding LockNewMenuDescription}"
+                            Visibility="{Binding ShowShellNewOrderLock, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ui:ToggleSwitch.Content>
+                                <StackPanel MaxWidth="360">
+                                    <TextBlock Text="{Binding LockNewMenuText}" />
+                                    <TextBlock
+                                        Margin="0,2,0,0"
+                                        FontSize="12"
+                                        Opacity="0.72"
+                                        Text="{Binding LockNewMenuDescription}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </ui:ToggleSwitch.Content>
+                        </ui:ToggleSwitch>
+                        <Grid
+                            Margin="8,0,0,0"
+                            Visibility="{Binding ShowShellNewAclRepair, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ui:Flyout
+                                IsOpen="{Binding IsRepairShellNewAclFlyoutOpen, Mode=TwoWay}"
+                                Placement="Top">
+                                <StackPanel Width="300">
+                                    <TextBlock
+                                        Text="{Binding RepairShellNewAclConfirmationText}"
+                                        TextWrapping="Wrap" />
+                                    <StackPanel
+                                        Margin="0,12,0,0"
+                                        HorizontalAlignment="Right"
+                                        Orientation="Horizontal">
+                                        <ui:Button
+                                            Margin="0,0,8,0"
+                                            Command="{Binding CloseRepairShellNewAclFlyoutCommand}"
+                                            Content="{Binding CancelText}" />
+                                        <ui:Button
+                                            Appearance="Primary"
+                                            Command="{Binding ConfirmRepairShellNewOrderAclCommand}"
+                                            Content="{Binding RepairShellNewAclText}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </ui:Flyout>
+                            <ui:Button
+                                Command="{Binding OpenRepairShellNewAclFlyoutCommand}"
+                                Content="{Binding RepairShellNewAclText}"
+                                Icon="{ui:SymbolIcon Symbol=Settings24}" />
+                        </Grid>
                         <ui:Button
                             Margin="8,0,0,0"
                             Command="{Binding RestoreDefaultsCommand}"
