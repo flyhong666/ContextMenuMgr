@@ -38,7 +38,7 @@ public sealed class Windows11ContextMenuService
     /// <summary>
     /// Gets a value indicating whether this instance is supported.
     /// </summary>
-    public bool IsSupported => Environment.OSVersion.Version.Major >= 10
+    public bool IsSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
                                && Registry.ClassesRoot.OpenSubKey(@"PackagedCom\Package") is not null;
 
     /// <summary>
