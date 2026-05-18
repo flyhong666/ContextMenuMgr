@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
 using System.Text.Json;
@@ -49,12 +50,18 @@ internal static class BackendServiceBootstrapper
     {
         try
         {
+            var userSidArgument = TryGetUserSidArgument(args);
+            if (!userSidArgument.IsValid)
+            {
+                return (false, "INVALID_USER_SID", userSidArgument.Detail ?? "Invalid --user-sid.");
+            }
+
             return command.ToLowerInvariant() switch
             {
-                "install-or-repair" => InstallOrRepairService(),
+                "install-or-repair" => InstallOrRepairService(userSidArgument.Sid),
                 "uninstall" => UninstallService(),
                 "stop" => StopService(),
-                "set-startup-mode" => SetServiceStartupMode(TryParseEnabledArgument(args)),
+                "set-startup-mode" => SetServiceStartupMode(TryParseEnabledArgument(args), userSidArgument.Sid),
                 _ => (false, "UNKNOWN_BOOTSTRAP_COMMAND", command)
             };
         }
@@ -65,7 +72,7 @@ internal static class BackendServiceBootstrapper
         }
     }
 
-    private static (bool Success, string Code, string Detail) InstallOrRepairService()
+    private static (bool Success, string Code, string Detail) InstallOrRepairService(string? userSid)
     {
         var serviceExePath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(serviceExePath) || !File.Exists(serviceExePath))
@@ -74,7 +81,7 @@ internal static class BackendServiceBootstrapper
         }
 
         var binaryPath = $"\"{serviceExePath}\" --service";
-        var startupMode = IsAutostartEnabledForCurrentUser() ? "auto" : "demand";
+        var startupMode = IsAutostartEnabledForUser(userSid) ? "auto" : "demand";
 
         if (ServiceExists(ServiceMetadata.ServiceName) && !TestServiceRegistrationHealthy(ServiceMetadata.ServiceName))
         {
@@ -185,7 +192,7 @@ internal static class BackendServiceBootstrapper
             : (false, "SERVICE_NOT_STOPPED", status);
     }
 
-    private static (bool Success, string Code, string Detail) SetServiceStartupMode(bool enabled)
+    private static (bool Success, string Code, string Detail) SetServiceStartupMode(bool enabled, string? userSid)
     {
         if (!ServiceExists(ServiceMetadata.ServiceName))
         {
@@ -197,6 +204,8 @@ internal static class BackendServiceBootstrapper
             ServiceMetadata.ServiceName,
             "start=",
             enabled ? "auto" : "demand");
+
+        SetAutostartPolicyForUser(userSid, enabled);
 
         return (true, enabled ? "STARTUP_AUTO" : "STARTUP_MANUAL", enabled ? "Automatic" : "Manual");
     }
@@ -254,21 +263,59 @@ internal static class BackendServiceBootstrapper
         return !string.IsNullOrWhiteSpace(imagePath) && start is not null && type is not null;
     }
 
-    private static bool IsAutostartEnabledForCurrentUser()
+    private static bool IsAutostartEnabledForUser(string? userSid)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(FrontendPolicyKeyPath, writable: false);
-        var value = key?.GetValue(FrontendPolicyValueName);
-        if (value is int intValue)
+        RegistryKey? key = null;
+        try
         {
-            return intValue != 0;
+            key = string.IsNullOrWhiteSpace(userSid)
+                ? Registry.CurrentUser.OpenSubKey(FrontendPolicyKeyPath, writable: false)
+                : Registry.Users.OpenSubKey($@"{userSid}\{FrontendPolicyKeyPath}", writable: false);
+
+            var value = key?.GetValue(FrontendPolicyValueName);
+            if (value is int intValue)
+            {
+                return intValue != 0;
+            }
+
+            if (value is string stringValue && int.TryParse(stringValue, out var parsed))
+            {
+                return parsed != 0;
+            }
+
+            return false;
+        }
+        finally
+        {
+            key?.Dispose();
+        }
+    }
+
+    private static void SetAutostartPolicyForUser(string? userSid, bool enabled)
+    {
+        if (string.IsNullOrWhiteSpace(userSid))
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(FrontendPolicyKeyPath, writable: true);
+            key?.SetValue(FrontendPolicyValueName, enabled ? 1 : 0, RegistryValueKind.DWord);
+            return;
         }
 
-        if (value is string stringValue && int.TryParse(stringValue, out var parsed))
+        var policyPath = $@"HKEY_USERS\{userSid}\{FrontendPolicyKeyPath}\{FrontendPolicyValueName}";
+        try
         {
-            return parsed != 0;
-        }
+            using var userRoot = Registry.Users.OpenSubKey(userSid, writable: true)
+                ?? throw new InvalidOperationException($"The registry hive for user {userSid} is not loaded.");
 
-        return false;
+            using var key = userRoot.CreateSubKey(FrontendPolicyKeyPath, writable: true)
+                ?? throw new InvalidOperationException(
+                    $@"Unable to open frontend autostart policy key HKEY_USERS\{userSid}\{FrontendPolicyKeyPath}.");
+
+            key.SetValue(FrontendPolicyValueName, enabled ? 1 : 0, RegistryValueKind.DWord);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to write {policyPath}: {ex.Message}", ex);
+        }
     }
 
     private static string GetServiceStatusText(string serviceName)
@@ -430,6 +477,25 @@ internal static class BackendServiceBootstrapper
         return null;
     }
 
+    private static UserSidArgument TryGetUserSidArgument(IReadOnlyList<string> args)
+    {
+        var sid = TryGetArgumentValue(args, "--user-sid");
+        if (string.IsNullOrWhiteSpace(sid))
+        {
+            return new UserSidArgument(true, null, null);
+        }
+
+        try
+        {
+            _ = new SecurityIdentifier(sid);
+            return new UserSidArgument(true, sid, null);
+        }
+        catch (Exception ex)
+        {
+            return new UserSidArgument(false, null, $"Invalid --user-sid value '{sid}': {ex.Message}");
+        }
+    }
+
     private static bool TryParseEnabledArgument(IReadOnlyList<string> args)
     {
         var value = TryGetArgumentValue(args, "--enabled");
@@ -438,4 +504,6 @@ internal static class BackendServiceBootstrapper
     }
 
     private sealed record BootstrapResult(bool Success, string Code, string Detail);
+
+    private sealed record UserSidArgument(bool IsValid, string? Sid, string? Detail);
 }

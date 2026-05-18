@@ -465,12 +465,12 @@ public sealed class NamedPipeBackendServer
                 => await _autoStartService.SetAutoStartEnabledAsync(
                     request.AutoStartEnabled.Value,
                     request.ClientOperationId,
-                    null,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken),
                     cancellationToken),
             PipeCommand.GetAutoStartEnabled
                 => await _autoStartService.GetAutoStartEnabledAsync(
                     request.ClientOperationId,
-                    null,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken),
                     cancellationToken),
             _ => new PipeResponse
             {
@@ -537,6 +537,22 @@ public sealed class NamedPipeBackendServer
         }
 
         return null;
+    }
+
+    private async Task<BackendUserContext?> ResolveFrontendUserContextAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
+    {
+        var resolver = new BackendUserContextResolver(_logger);
+        var userContext = resolver.TryResolveFromPipeClient(stream)
+            ?? resolver.TryResolveInteractiveUserFallback();
+        if (userContext is null)
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                "Frontend user context could not be resolved for user-scoped request.",
+                cancellationToken);
+        }
+
+        return userContext;
     }
 
     // Resolve only for context-aware special menus (ShellNew / SendTo / WinX).

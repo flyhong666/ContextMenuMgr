@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
 using System.Text.Json;
@@ -69,7 +70,7 @@ public sealed class BackendServiceManager : IBackendServiceManager
         {
             using var process = Process.Start(CreateElevatedBackendStartInfo(
                 backendExePath,
-                $"--service-bootstrap install-or-repair --result-file \"{resultFilePath}\""));
+                AppendUserSidArgument($"--service-bootstrap install-or-repair --result-file \"{resultFilePath}\"")));
             if (process is null)
             {
                 FrontendDebugLog.Info("BackendServiceManager", "Failed to start elevated bootstrap process.");
@@ -261,7 +262,7 @@ public sealed class BackendServiceManager : IBackendServiceManager
         {
             using var process = Process.Start(CreateElevatedBackendStartInfo(
                 backendExePath,
-                $"--service-bootstrap set-startup-mode --enabled {(enabled ? "1" : "0")} --result-file \"{resultFilePath}\""));
+                AppendUserSidArgument($"--service-bootstrap set-startup-mode --enabled {(enabled ? "1" : "0")} --result-file \"{resultFilePath}\"")));
             if (process is null)
             {
                 return new BackendServiceBootstrapResult(false, false, "FAILED_TO_START_ELEVATED_PROCESS", string.Empty);
@@ -359,6 +360,30 @@ public sealed class BackendServiceManager : IBackendServiceManager
             WindowStyle = ProcessWindowStyle.Hidden,
             WorkingDirectory = Path.GetDirectoryName(backendExePath) ?? AppContext.BaseDirectory
         };
+    }
+
+    private static string? GetCurrentUserSid()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return identity.User?.Value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string AppendUserSidArgument(string arguments)
+    {
+        var sid = GetCurrentUserSid();
+        if (string.IsNullOrWhiteSpace(sid))
+        {
+            return arguments;
+        }
+
+        return $"{arguments} --user-sid \"{sid}\"";
     }
 
     private static string BuildInstallScript(string backendExePath, string resultFilePath)
