@@ -168,10 +168,11 @@ public sealed class ContextMenuRegistryCatalog
     }
 
     public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
+        BackendUserContext? userContext,
         CancellationToken cancellationToken = default)
     {
         return _windows11Catalog.IsSupported
-            ? await _windows11Catalog.EnumerateEntriesAsync(cancellationToken)
+            ? await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext)
             : [];
     }
 
@@ -363,6 +364,7 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<PipeResponse> ApplyDesiredStateAsync(
         string itemId,
         bool enable,
+        BackendUserContext? userContext,
         CancellationToken cancellationToken)
     {
         var snapshot = await GetSnapshotAsync(cancellationToken);
@@ -383,7 +385,7 @@ public sealed class ContextMenuRegistryCatalog
             {
                 // Win11 packaged verbs do not use the classic shell verb/handler
                 // write paths, so they are toggled through the blocked-extension list.
-                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, null, enable))
+                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable))
                 {
                     return CreateFailure($"Unable to update the Win11 context menu item '{item.DisplayName}'.");
                 }
@@ -452,6 +454,7 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<PipeResponse> ApplyDecisionAsync(
         string itemId,
         ContextMenuDecision decision,
+        BackendUserContext? userContext,
         CancellationToken cancellationToken)
     {
         var snapshot = await GetSnapshotAsync(cancellationToken);
@@ -461,10 +464,10 @@ public sealed class ContextMenuRegistryCatalog
         {
             ContextMenuDecision.Allow => item is null
                 ? CreateFailure($"Menu item '{itemId}' was not found.")
-                : await ApplyDesiredStateAsync(itemId, enable: true, cancellationToken),
+                : await ApplyDesiredStateAsync(itemId, enable: true, userContext, cancellationToken),
             ContextMenuDecision.Deny => item is null
                 ? await RemovePendingApprovalStateAsync(itemId, cancellationToken)
-                : await ApplyDesiredStateAsync(itemId, enable: false, cancellationToken),
+                : await ApplyDesiredStateAsync(itemId, enable: false, userContext, cancellationToken),
             ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, cancellationToken),
             _ => CreateFailure("Unknown approval decision.")
         };
@@ -1295,6 +1298,10 @@ public sealed class ContextMenuRegistryCatalog
                 SetShellVerbEnabled(item.BackendRegistryPath, enable: false);
                 break;
             case ContextMenuEntryKind.ShellExtension when item.IsWindows11ContextMenu:
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    "Quarantining Win11 context menu entry without frontend user context; using compatibility fallback user detection.",
+                    cancellationToken);
                 if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, null, enable: false))
                 {
                     throw new InvalidOperationException($"Unable to quarantine the Win11 context menu item '{item.DisplayName}'.");
@@ -1369,6 +1376,10 @@ public sealed class ContextMenuRegistryCatalog
 
         if (_windows11Catalog.IsSupported)
         {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                "Enumerating Win11 context menu entries without frontend user context; user-level blocked state may be incomplete in this compatibility snapshot path.",
+                cancellationToken);
             results.AddRange(await _windows11Catalog.EnumerateEntriesAsync(cancellationToken));
         }
 

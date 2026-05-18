@@ -331,7 +331,7 @@ public sealed class NamedPipeBackendServer
             PipeCommand.AcknowledgeItemState when request.ItemId is not null
                 => await _catalog.AcknowledgeItemStateAsync(request.ItemId, cancellationToken),
             PipeCommand.SetEnabled when request.ItemId is not null && request.Enable is not null
-                => await _catalog.ApplyDesiredStateAsync(request.ItemId, request.Enable.Value, cancellationToken),
+                => await HandleSetEnabledAsync(request, stream, cancellationToken),
             PipeCommand.SetShellAttribute when request.ItemId is not null && request.Enable is not null && request.ShellAttribute is not null
                 => await _catalog.ApplyShellAttributeAsync(request.ItemId, request.ShellAttribute.Value, request.Enable.Value, cancellationToken),
             PipeCommand.SetDisplayText when request.ItemId is not null && request.TextValue is not null
@@ -341,10 +341,7 @@ public sealed class NamedPipeBackendServer
             PipeCommand.SetRegistryProtectionSetting when request.Enable is not null
                 => await _catalog.SetRegistryProtectionSettingAsync(request.Enable.Value, cancellationToken),
             PipeCommand.ApplyDecision when request.ItemId is not null && request.Decision is not null
-                => await _catalog.ApplyDecisionAsync(
-                    request.ItemId,
-                    request.Decision.Value,
-                    cancellationToken),
+                => await HandleApplyDecisionAsync(request, stream, cancellationToken),
             PipeCommand.DeleteItem when request.ItemId is not null
                 => await _catalog.DeleteItemAsync(request.ItemId, cancellationToken),
             PipeCommand.UndoDelete when request.ItemId is not null
@@ -434,33 +431,13 @@ public sealed class NamedPipeBackendServer
             PipeCommand.RestartExplorer
                 => HandleRestartExplorerRequest(),
             PipeCommand.SetWin11BlockedItem when request.ItemId is not null
-                => await _windows11BlocksService.SetWin11BlockedItemAsync(
-                    request.ItemId,
-                    request.DisplayName ?? string.Empty,
-                    request.BlockMachine ?? false,
-                    request.ClientOperationId,
-                    null,
-                    cancellationToken),
+                => await HandleSetWin11BlockedItemAsync(request, stream, cancellationToken),
             PipeCommand.RemoveWin11BlockedItem when request.ItemId is not null
-                => await _windows11BlocksService.RemoveWin11BlockedItemAsync(
-                    request.ItemId,
-                    request.UnblockMachine ?? false,
-                    request.ClientOperationId,
-                    null,
-                    cancellationToken),
+                => await HandleRemoveWin11BlockedItemAsync(request, stream, cancellationToken),
             PipeCommand.GetWin11BlockedItems
-                => await _windows11BlocksService.GetWin11BlockedItemsAsync(
-                    request.ClientOperationId,
-                    null,
-                    cancellationToken),
+                => await HandleGetWin11BlockedItemsAsync(request, stream, cancellationToken),
             PipeCommand.GetWin11ContextMenuSnapshot
-                => new PipeResponse
-                {
-                    Success = true,
-                    Message = "Win11 context menu snapshot loaded.",
-                    Items = await _catalog.GetWindows11SnapshotAsync(cancellationToken),
-                    ClientOperationId = request.ClientOperationId
-                },
+                => await HandleGetWin11ContextMenuSnapshotAsync(request, stream, cancellationToken),
             PipeCommand.SetAutoStartEnabled when request.AutoStartEnabled is not null
                 => await _autoStartService.SetAutoStartEnabledAsync(
                     request.AutoStartEnabled.Value,
@@ -478,6 +455,185 @@ public sealed class NamedPipeBackendServer
                 Message = "The request was missing required data."
             }
         };
+    }
+
+    private async Task<PipeResponse> HandleSetEnabledAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        return await _catalog.ApplyDesiredStateAsync(
+            request.ItemId ?? string.Empty,
+            request.Enable.GetValueOrDefault(),
+            userContext,
+            cancellationToken);
+    }
+
+    private async Task<PipeResponse> HandleApplyDecisionAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        return await _catalog.ApplyDecisionAsync(
+            request.ItemId ?? string.Empty,
+            request.Decision.GetValueOrDefault(),
+            userContext,
+            cancellationToken);
+    }
+
+    private async Task<PipeResponse> HandleSetWin11BlockedItemAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        var handlerClsid = request.ItemId ?? string.Empty;
+        var blockMachine = request.BlockMachine ?? false;
+        await LogWin11CommandAsync(
+            PipeCommand.SetWin11BlockedItem,
+            userContext,
+            blockMachine,
+            handlerClsid,
+            "started",
+            cancellationToken);
+
+        var response = await _windows11BlocksService.SetWin11BlockedItemAsync(
+            handlerClsid,
+            request.DisplayName ?? string.Empty,
+            blockMachine,
+            request.ClientOperationId,
+            userContext,
+            cancellationToken);
+
+        await LogWin11CommandAsync(
+            PipeCommand.SetWin11BlockedItem,
+            userContext,
+            blockMachine,
+            handlerClsid,
+            response.Success ? "succeeded" : "failed",
+            cancellationToken);
+
+        return response;
+    }
+
+    private async Task<PipeResponse> HandleRemoveWin11BlockedItemAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        var handlerClsid = request.ItemId ?? string.Empty;
+        var unblockMachine = request.UnblockMachine ?? false;
+        await LogWin11CommandAsync(
+            PipeCommand.RemoveWin11BlockedItem,
+            userContext,
+            unblockMachine,
+            handlerClsid,
+            "started",
+            cancellationToken);
+
+        var response = await _windows11BlocksService.RemoveWin11BlockedItemAsync(
+            handlerClsid,
+            unblockMachine,
+            request.ClientOperationId,
+            userContext,
+            cancellationToken);
+
+        await LogWin11CommandAsync(
+            PipeCommand.RemoveWin11BlockedItem,
+            userContext,
+            unblockMachine,
+            handlerClsid,
+            response.Success ? "succeeded" : "failed",
+            cancellationToken);
+
+        return response;
+    }
+
+    private async Task<PipeResponse> HandleGetWin11BlockedItemsAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        await LogWin11CommandAsync(
+            PipeCommand.GetWin11BlockedItems,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: "started",
+            cancellationToken);
+
+        var response = await _windows11BlocksService.GetWin11BlockedItemsAsync(
+            request.ClientOperationId,
+            userContext,
+            cancellationToken);
+
+        await LogWin11CommandAsync(
+            PipeCommand.GetWin11BlockedItems,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: response.Success ? "succeeded" : "failed",
+            cancellationToken);
+
+        return response;
+    }
+
+    private async Task<PipeResponse> HandleGetWin11ContextMenuSnapshotAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        await LogWin11CommandAsync(
+            PipeCommand.GetWin11ContextMenuSnapshot,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: "started",
+            cancellationToken);
+
+        var items = await _catalog.GetWindows11SnapshotAsync(userContext, cancellationToken);
+        await LogWin11CommandAsync(
+            PipeCommand.GetWin11ContextMenuSnapshot,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: "succeeded",
+            cancellationToken);
+
+        return new PipeResponse
+        {
+            Success = true,
+            Message = "Win11 context menu snapshot loaded.",
+            Items = items,
+            ClientOperationId = request.ClientOperationId
+        };
+    }
+
+    private async Task LogWin11CommandAsync(
+        PipeCommand command,
+        BackendUserContext? userContext,
+        bool machineScope,
+        string? handlerClsid,
+        string result,
+        CancellationToken cancellationToken)
+    {
+        var sid = string.IsNullOrWhiteSpace(userContext?.Sid) ? "<null>" : userContext.Sid;
+        var normalizedClsid = string.IsNullOrWhiteSpace(handlerClsid) ? "<none>" : NormalizeGuid(handlerClsid);
+        await _logger.LogAsync(
+            $"Win11 command {command}: Sid={sid}, Machine={machineScope}, Clsid={normalizedClsid}, Result={result}.",
+            cancellationToken);
+    }
+
+    private static string NormalizeGuid(string guidText)
+    {
+        return Guid.TryParse(guidText, out var guid)
+            ? guid.ToString("B")
+            : guidText.Trim('{', '}');
     }
 
     private async Task<BackendUserContext?> ResolveSpecialMenuUserContextIfNeededAsync(

@@ -13,6 +13,7 @@ public sealed class Windows11BlocksService
 {
     private const string UserBlockedPathSuffix = @"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
     private const string MachineBlockedPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
+    private const string MissingUserContextMessage = "User context is required for user-level Win11 context menu blocking.";
 
     private readonly FileLogger _logger;
 
@@ -40,6 +41,18 @@ public sealed class Windows11BlocksService
             }
 
             var normalizedClsid = NormalizeGuid(handlerClsid);
+            await _logger.LogAsync(
+                $"Win11 command SetWin11BlockedItem: Sid={FormatSid(userContext)}, Machine={blockMachine}, Clsid={normalizedClsid}, Result=started.",
+                cancellationToken);
+
+            if (!blockMachine && userContext is null)
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    $"Win11 command SetWin11BlockedItem: Sid=<null>, Machine={blockMachine}, Clsid={normalizedClsid}, Result=failed. {MissingUserContextMessage}",
+                    cancellationToken);
+                return Failure(MissingUserContextMessage, operationId);
+            }
 
             if (blockMachine)
             {
@@ -52,10 +65,12 @@ public sealed class Windows11BlocksService
             }
             else
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, "No user context provided for user-level Win11 block operation.", cancellationToken);
+                await _logger.LogAsync(
+                    $"Win11 command SetWin11BlockedItem: Sid=<null>, Machine={blockMachine}, Clsid={normalizedClsid}, Result=machine-only.",
+                    cancellationToken);
             }
 
-            await _logger.LogAsync($"Win11 context menu item blocked: {normalizedClsid} (Machine={blockMachine}, User={userContext is not null})", cancellationToken);
+            await _logger.LogAsync($"Win11 command SetWin11BlockedItem: Sid={FormatSid(userContext)}, Machine={blockMachine}, Clsid={normalizedClsid}, Result=succeeded.", cancellationToken);
             return new PipeResponse
             {
                 Success = true,
@@ -88,6 +103,18 @@ public sealed class Windows11BlocksService
             }
 
             var normalizedClsid = NormalizeGuid(handlerClsid);
+            await _logger.LogAsync(
+                $"Win11 command RemoveWin11BlockedItem: Sid={FormatSid(userContext)}, Machine={unblockMachine}, Clsid={normalizedClsid}, Result=started.",
+                cancellationToken);
+
+            if (!unblockMachine && userContext is null)
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    $"Win11 command RemoveWin11BlockedItem: Sid=<null>, Machine={unblockMachine}, Clsid={normalizedClsid}, Result=failed. {MissingUserContextMessage}",
+                    cancellationToken);
+                return Failure(MissingUserContextMessage, operationId);
+            }
 
             if (unblockMachine)
             {
@@ -100,10 +127,12 @@ public sealed class Windows11BlocksService
             }
             else
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, "No user context provided for user-level Win11 unblock operation.", cancellationToken);
+                await _logger.LogAsync(
+                    $"Win11 command RemoveWin11BlockedItem: Sid=<null>, Machine={unblockMachine}, Clsid={normalizedClsid}, Result=machine-only.",
+                    cancellationToken);
             }
 
-            await _logger.LogAsync($"Win11 context menu item unblocked: {normalizedClsid} (Machine={unblockMachine}, User={userContext is not null})", cancellationToken);
+            await _logger.LogAsync($"Win11 command RemoveWin11BlockedItem: Sid={FormatSid(userContext)}, Machine={unblockMachine}, Clsid={normalizedClsid}, Result=succeeded.", cancellationToken);
             return new PipeResponse
             {
                 Success = true,
@@ -129,13 +158,21 @@ public sealed class Windows11BlocksService
         try
         {
             var machineItems = GetMachineBlockedItems();
+            if (userContext is null)
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    "Win11 command GetWin11BlockedItems: Sid=<null>, Machine=False, Clsid=<none>, Result=machine-only fallback.",
+                    cancellationToken);
+            }
+
             var userItems = userContext is not null
                 ? GetUserBlockedItems(userContext)
                 : new List<Win11BlockedItem>();
 
             var allItems = machineItems.Concat(userItems).ToArray();
 
-            await _logger.LogAsync($"Retrieved {allItems.Length} Win11 blocked items (Machine={machineItems.Count}, User={userItems.Count})", cancellationToken);
+            await _logger.LogAsync($"Win11 command GetWin11BlockedItems: Sid={FormatSid(userContext)}, Machine=False, Clsid=<none>, Result=succeeded. Retrieved {allItems.Length} blocked items (Machine={machineItems.Count}, User={userItems.Count}).", cancellationToken);
             return new PipeResponse
             {
                 Success = true,
@@ -300,6 +337,11 @@ public sealed class Windows11BlocksService
         return Guid.TryParse(guidText, out var guid)
             ? guid.ToString("B")
             : guidText.Trim('{', '}');
+    }
+
+    private static string FormatSid(BackendUserContext? userContext)
+    {
+        return string.IsNullOrWhiteSpace(userContext?.Sid) ? "<null>" : userContext.Sid;
     }
 
     private static void DeleteGuidValue(RegistryKey key, string normalizedClsid)
