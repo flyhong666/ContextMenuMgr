@@ -101,7 +101,7 @@ $NuGetConfig = Join-Path $RepoRoot "NuGet.Config"
 $PublishRoot = Join-Path $RepoRoot "build\publish"
 $DistRoot = Join-Path $RepoRoot "build\dist"
 $Version = Get-FrontendVersion -ProjectPath $FrontendProject
-$ArtifactProductName = "ContextMenuManagerPlus"
+$ArtifactProductName = "ContextMenuMgrPlus"
 $IsccPath = Resolve-IsccPath -RepoRoot $RepoRoot
 $InstallerIss = Join-Path $RepoRoot "Installer\build_Installer.iss"
 
