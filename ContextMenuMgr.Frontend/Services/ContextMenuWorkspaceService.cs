@@ -274,7 +274,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var updated = item.IsDeleted
                 ? await _backendClient.UndoDeleteAsync(item.Id, cts.Token)
-                : await _backendClient.DeleteItemAsync(item.Id, cts.Token);
+                : await _backendClient.DeleteItemAsync(item.Id, cts.Token, item.Entry);
 
             if (updated is not null)
             {

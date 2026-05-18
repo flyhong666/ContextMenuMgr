@@ -983,25 +983,48 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Deletes item Async.
     /// </summary>
-    public async Task<PipeResponse> DeleteItemAsync(string itemId, CancellationToken cancellationToken)
+    public async Task<PipeResponse> DeleteItemAsync(
+        string itemId,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null,
+        ContextMenuEntry? fallbackItem = null)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken);
-        var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
         var states = await _stateStore.LoadAsync(cancellationToken);
         var persistedState = states.GetValueOrDefault(itemId);
+        var usedFallbackItem = false;
+        var item = TryUseSceneFallbackItem(itemId, fallbackItem);
+        if (item is not null)
+        {
+            usedFallbackItem = true;
+        }
+
+        if (item is null)
+        {
+            var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
+            item = SelectPreferredDeleteCandidate(
+                snapshot.Where(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase)),
+                userContext?.Sid);
+        }
+
+        if (item is null)
+        {
+            item = await TryFindEntryByIdAsync(itemId, cancellationToken, userContext);
+        }
 
         if (item is null && persistedState is null)
         {
-            item = await TryFindEntryByIdAsync(itemId, cancellationToken);
-            if (item is null)
-            {
-                return CreateFailure($"Menu item '{itemId}' was not found.");
-            }
+            return CreateFailure($"Menu item '{itemId}' was not found.");
         }
 
         if (item is not null && item.IsDeleted)
         {
             return CreateFailure($"Menu item '{item.DisplayName}' is already deleted.", item);
+        }
+
+        if (item is null && persistedState?.IsDeleted == true)
+        {
+            var deletedItem = CreateVirtualEntry(persistedState, GetDeletedConsistencyIssue(persistedState), ContextMenuChangeKind.None, null);
+            return CreateFailure($"Menu item '{persistedState.DisplayName}' is already deleted.", deletedItem);
         }
 
         if (item is not null && !item.IsPresentInRegistry)
@@ -1015,6 +1038,32 @@ public sealed class ContextMenuRegistryCatalog
             if (string.IsNullOrWhiteSpace(backendRegistryPath))
             {
                 return CreateFailure($"Cannot delete '{itemId}': registry path is unknown.");
+            }
+
+            using (var existingKey = OpenRegistryKey(backendRegistryPath, writable: false))
+            {
+                var targetExists = existingKey is not null;
+                await _logger.LogAsync(
+                    "Preparing to delete context menu item: "
+                    + $"itemId={itemId}; "
+                    + $"displayName={item?.DisplayName ?? persistedState?.DisplayName ?? itemId}; "
+                    + $"registryPath={item?.RegistryPath ?? persistedState?.RegistryPath}; "
+                    + $"backendRegistryPath={backendRegistryPath}; "
+                    + $"handlerClsid={item?.HandlerClsid ?? persistedState?.HandlerClsid}; "
+                    + $"usedFallbackItem={usedFallbackItem}; "
+                    + $"hasUserContext={userContext is not null}; "
+                    + $"userSid={userContext?.Sid}; "
+                    + $"targetExists={targetExists}.",
+                    cancellationToken);
+
+                if (!targetExists)
+                {
+                    return await RemoveStaleDeleteStateAsync(
+                        itemId,
+                        item?.DisplayName ?? persistedState?.DisplayName ?? itemId,
+                        states,
+                        cancellationToken);
+                }
             }
 
             var backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
@@ -1032,8 +1081,10 @@ public sealed class ContextMenuRegistryCatalog
 
             await _logger.LogAsync($"Deleted {state.DisplayName} with backup {backupFilePath}.", cancellationToken);
 
-            var refreshed = (await GetSnapshotAsync(cancellationToken))
-                .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
+            var refreshed = SelectPreferredDeleteCandidate(
+                    (await GetSnapshotAsync(cancellationToken, userContext))
+                    .Where(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase)),
+                    userContext?.Sid)
                 ?? CreateVirtualEntry(state, null, ContextMenuChangeKind.None, null);
 
             return new PipeResponse
@@ -1070,6 +1121,28 @@ public sealed class ContextMenuRegistryCatalog
         };
     }
 
+    private async Task<PipeResponse> RemoveStaleDeleteStateAsync(
+        string itemId,
+        string displayName,
+        Dictionary<string, PersistedContextMenuState> states,
+        CancellationToken cancellationToken)
+    {
+        if (states.Remove(itemId))
+        {
+            PruneTransientStates(states);
+            await _stateStore.SaveAsync(states, cancellationToken);
+        }
+
+        await _logger.LogAsync($"Delete skipped for missing registry key. Removed stale state for {displayName}.", cancellationToken);
+
+        return new PipeResponse
+        {
+            Success = true,
+            Message = $"Removed missing item {displayName} from the list.",
+            Item = null
+        };
+    }
+
     private async Task<PipeResponse> RemovePendingApprovalItemAsync(
         ContextMenuEntry? item,
         string itemId,
@@ -1077,7 +1150,7 @@ public sealed class ContextMenuRegistryCatalog
     {
         if (item is not null && item.IsPresentInRegistry && !item.IsDeleted)
         {
-            return await DeleteItemAsync(itemId, cancellationToken);
+            return await DeleteItemAsync(itemId, cancellationToken, fallbackItem: item);
         }
 
         return await RemovePendingApprovalStateAsync(itemId, cancellationToken);
@@ -1293,7 +1366,7 @@ public sealed class ContextMenuRegistryCatalog
     private async Task<IReadOnlyList<ContextMenuEntry>> EnumerateActualEntriesAsync(CancellationToken cancellationToken, BackendUserContext? userContext = null)
     {
         var results = new List<ContextMenuEntry>();
-        foreach (var item in EnumerateEntries(MonitoredRoots))
+        foreach (var item in EnumerateEntries(MonitoredRoots, userContext?.Sid))
         {
             results.Add(item);
         }
@@ -1306,20 +1379,20 @@ public sealed class ContextMenuRegistryCatalog
         return results;
     }
 
-    private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots)
+    private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots, string? currentUserSid = null)
     {
         foreach (var root in roots)
         {
-            foreach (var item in EnumerateRoot(root))
+            foreach (var item in EnumerateRoot(root, currentUserSid))
             {
                 yield return item;
             }
         }
     }
 
-    private IEnumerable<ContextMenuEntry> EnumerateRoot(RegistryRootDescriptor root)
+    private IEnumerable<ContextMenuEntry> EnumerateRoot(RegistryRootDescriptor root, string? currentUserSid = null)
     {
-        foreach (var instance in EnumerateRootInstances())
+        foreach (var instance in EnumerateRootInstances(currentUserSid))
         {
             using var baseKey = instance.OpenBaseKey(root.RelativePath);
             if (baseKey is null)
@@ -1652,7 +1725,10 @@ public sealed class ContextMenuRegistryCatalog
         };
     }
 
-    private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(string itemId, CancellationToken cancellationToken)
+    private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(
+        string itemId,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null)
     {
         var separatorIndex = itemId.LastIndexOf('|');
         if (separatorIndex < 0)
@@ -1662,8 +1738,9 @@ public sealed class ContextMenuRegistryCatalog
 
         var stableRelativePath = itemId[..separatorIndex];
         var keyName = itemId[(separatorIndex + 1)..];
+        var candidates = new List<ContextMenuEntry>();
 
-        foreach (var instance in EnumerateRootInstances())
+        foreach (var instance in EnumerateRootInstances(userContext?.Sid))
         {
             using var baseKey = instance.OpenBaseKey(stableRelativePath);
             if (baseKey is null)
@@ -1722,7 +1799,7 @@ public sealed class ContextMenuRegistryCatalog
                 _ => true
             };
 
-            return new ContextMenuEntry
+            candidates.Add(new ContextMenuEntry
             {
                 Id = itemId,
                 Category = category,
@@ -1746,10 +1823,11 @@ public sealed class ContextMenuRegistryCatalog
                 IsEnabled = isEnabled,
                 IsPresentInRegistry = true,
                 Notes = BuildNotes(entryKind, commandText, handlerClsid)
-            };
+            });
         }
 
-        return null;
+        await Task.CompletedTask;
+        return SelectPreferredDeleteCandidate(candidates, userContext?.Sid);
     }
 
     private static ContextMenuCategory DetermineCategoryFromPath(string stableRelativePath)
@@ -1786,6 +1864,40 @@ public sealed class ContextMenuRegistryCatalog
             return ContextMenuCategory.File;
 
         return ContextMenuCategory.File;
+    }
+
+    private static ContextMenuEntry? SelectPreferredDeleteCandidate(
+        IEnumerable<ContextMenuEntry> candidates,
+        string? currentUserSid)
+    {
+        return candidates
+            .Where(static entry => entry.IsPresentInRegistry && !entry.IsDeleted)
+            .OrderBy(entry => GetDeleteTargetRank(entry, currentUserSid))
+            .ThenBy(static entry => IsDisabledContainerEntry(entry) ? 1 : 0)
+            .FirstOrDefault();
+    }
+
+    private static int GetDeleteTargetRank(ContextMenuEntry entry, string? currentUserSid)
+    {
+        if (!string.IsNullOrWhiteSpace(currentUserSid)
+            && IsUnderUserClasses(entry.BackendRegistryPath, currentUserSid))
+        {
+            return 0;
+        }
+
+        if (entry.BackendRegistryPath.StartsWith(@"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\", StringComparison.OrdinalIgnoreCase)
+            || entry.BackendRegistryPath.StartsWith(@"HKLM\SOFTWARE\Classes\", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return 2;
+    }
+
+    private static bool IsUnderUserClasses(string registryPath, string userSid)
+    {
+        return registryPath.StartsWith($@"HKEY_USERS\{userSid}\Software\Classes\", StringComparison.OrdinalIgnoreCase)
+               || registryPath.StartsWith($@"HKU\{userSid}\Software\Classes\", StringComparison.OrdinalIgnoreCase);
     }
 
     private static PersistedContextMenuState GetOrCreateState(
@@ -3053,23 +3165,56 @@ public sealed class ContextMenuRegistryCatalog
                || entry.BackendRegistryPath.Contains(@"\-ContextMenuHandlers\", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IEnumerable<RegistryRootInstance> EnumerateRootInstances()
+    private static IEnumerable<RegistryRootInstance> EnumerateRootInstances(string? currentUserSid = null)
     {
+        if (!string.IsNullOrWhiteSpace(currentUserSid))
+        {
+            foreach (var userSid in EnumerateLoadedUserClassSids()
+                         .Where(sid => !string.Equals(sid, currentUserSid, StringComparison.OrdinalIgnoreCase)))
+            {
+                yield return new RegistryRootInstance(
+                    Registry.Users,
+                    $@"{userSid}\Software\Classes",
+                    $@"HKEY_USERS\{userSid}\Software\Classes");
+            }
+
+            yield return new RegistryRootInstance(
+                Registry.LocalMachine,
+                @"SOFTWARE\Classes",
+                @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes");
+
+            using var currentUserClassesKey = Registry.Users.OpenSubKey($@"{currentUserSid}\Software\Classes", writable: false);
+            if (currentUserClassesKey is not null)
+            {
+                yield return new RegistryRootInstance(
+                    Registry.Users,
+                    $@"{currentUserSid}\Software\Classes",
+                    $@"HKEY_USERS\{currentUserSid}\Software\Classes");
+            }
+
+            yield break;
+        }
+
         yield return new RegistryRootInstance(
             Registry.LocalMachine,
             @"SOFTWARE\Classes",
             @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes");
 
-        foreach (var userSid in Registry.Users.GetSubKeyNames()
-                     .Where(static sid => sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
-                                          && !sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
-                     .OrderBy(static sid => sid, StringComparer.OrdinalIgnoreCase))
+        foreach (var userSid in EnumerateLoadedUserClassSids())
         {
             yield return new RegistryRootInstance(
                 Registry.Users,
                 $@"{userSid}\Software\Classes",
                 $@"HKEY_USERS\{userSid}\Software\Classes");
         }
+    }
+
+    private static IEnumerable<string> EnumerateLoadedUserClassSids()
+    {
+        return Registry.Users.GetSubKeyNames()
+            .Where(static sid => sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
+                                 && !sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static sid => sid, StringComparer.OrdinalIgnoreCase);
     }
 
     private static void WriteDetailedEditRegistryValue(

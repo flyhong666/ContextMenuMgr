@@ -285,13 +285,17 @@ public sealed class NamedPipeBackendClient : IBackendClient
     /// <summary>
     /// Deletes item Async.
     /// </summary>
-    public async Task<ContextMenuEntry?> DeleteItemAsync(string itemId, CancellationToken cancellationToken)
+    public async Task<ContextMenuEntry?> DeleteItemAsync(
+        string itemId,
+        CancellationToken cancellationToken,
+        ContextMenuEntry? item = null)
     {
         var response = await SendRequestAsync(
             new PipeRequest
             {
                 Command = PipeCommand.DeleteItem,
-                ItemId = itemId
+                ItemId = itemId,
+                Item = item
             },
             cancellationToken);
 

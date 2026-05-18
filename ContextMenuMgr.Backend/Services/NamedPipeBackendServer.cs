@@ -369,7 +369,7 @@ public sealed class NamedPipeBackendServer
                     cancellationToken,
                     userContext),
             PipeCommand.DeleteItem when request.ItemId is not null
-                => await _catalog.DeleteItemAsync(request.ItemId, cancellationToken),
+                => await _catalog.DeleteItemAsync(request.ItemId, cancellationToken, userContext, request.Item),
             PipeCommand.UndoDelete when request.ItemId is not null
                 => await _catalog.UndoDeleteAsync(request.ItemId, cancellationToken),
             PipeCommand.PurgeDeletedItem when request.ItemId is not null

@@ -68,7 +68,7 @@ public interface IBackendClient : IAsyncDisposable
 
     Task<ContextMenuEntry?> ApplyDecisionAsync(string itemId, ContextMenuDecision decision, CancellationToken cancellationToken);
 
-    Task<ContextMenuEntry?> DeleteItemAsync(string itemId, CancellationToken cancellationToken);
+    Task<ContextMenuEntry?> DeleteItemAsync(string itemId, CancellationToken cancellationToken, ContextMenuEntry? item = null);
 
     Task<ContextMenuEntry?> UndoDeleteAsync(string itemId, CancellationToken cancellationToken);
 
