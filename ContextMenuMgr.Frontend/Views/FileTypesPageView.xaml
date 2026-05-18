@@ -119,14 +119,14 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
-                    <ListBox
+                    <ItemsControl
                         Grid.Row="1"
                         Background="Transparent"
                         BorderThickness="0"
                         ItemsSource="{Binding AnalysisResults}"
                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                         ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <ListBox.ItemTemplate>
+                        <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border
                                     Margin="0,0,0,10"
@@ -157,8 +157,8 @@
                                     </DockPanel>
                                 </Border>
                             </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </Grid>
             </TabItem>
         </TabControl>
