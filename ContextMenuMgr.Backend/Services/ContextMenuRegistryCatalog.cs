@@ -474,7 +474,7 @@ public sealed class ContextMenuRegistryCatalog
             ContextMenuDecision.Deny => item is null
                 ? await RemovePendingApprovalStateAsync(itemId, cancellationToken)
                 : await ApplyDesiredStateAsync(itemId, enable: false, cancellationToken, userContext),
-            ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, cancellationToken),
+            ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, userContext, cancellationToken),
             _ => CreateFailure("Unknown approval decision.")
         };
     }
@@ -1066,7 +1066,20 @@ public sealed class ContextMenuRegistryCatalog
                 }
             }
 
-            var backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
+            string backupFilePath;
+            try
+            {
+                backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
+            }
+            catch (InvalidOperationException ex) when (IsRegistryKeyMissingExportError(ex.Message))
+            {
+                return await RemoveStaleDeleteStateAsync(
+                    itemId,
+                    item?.DisplayName ?? persistedState?.DisplayName ?? itemId,
+                    states,
+                    cancellationToken);
+            }
+
             DeleteRegistryKey(backendRegistryPath);
 
             var state = GetOrCreateState(states, item ?? CreateMinimalEntry(itemId, persistedState!));
@@ -1146,11 +1159,12 @@ public sealed class ContextMenuRegistryCatalog
     private async Task<PipeResponse> RemovePendingApprovalItemAsync(
         ContextMenuEntry? item,
         string itemId,
+        BackendUserContext? userContext,
         CancellationToken cancellationToken)
     {
         if (item is not null && item.IsPresentInRegistry && !item.IsDeleted)
         {
-            return await DeleteItemAsync(itemId, cancellationToken, fallbackItem: item);
+            return await DeleteItemAsync(itemId, cancellationToken, userContext, item);
         }
 
         return await RemovePendingApprovalStateAsync(itemId, cancellationToken);
@@ -1898,6 +1912,18 @@ public sealed class ContextMenuRegistryCatalog
     {
         return registryPath.StartsWith($@"HKEY_USERS\{userSid}\Software\Classes\", StringComparison.OrdinalIgnoreCase)
                || registryPath.StartsWith($@"HKU\{userSid}\Software\Classes\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRegistryKeyMissingExportError(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return false;
+        }
+
+        return message.Contains("系统找不到指定的注册表项或值", StringComparison.Ordinal)
+               || message.Contains("The system was unable to find the specified registry key or value", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("unable to find the specified registry key", StringComparison.OrdinalIgnoreCase);
     }
 
     private static PersistedContextMenuState GetOrCreateState(
@@ -3169,6 +3195,10 @@ public sealed class ContextMenuRegistryCatalog
     {
         if (!string.IsNullOrWhiteSpace(currentUserSid))
         {
+            // This order is intentional. BuildSnapshotAsync stores entries by logical
+            // item id and later duplicates replace earlier ones, so current-user
+            // classic registrations must be yielded last to win over duplicate HKLM
+            // or other loaded HKU registrations.
             foreach (var userSid in EnumerateLoadedUserClassSids()
                          .Where(sid => !string.Equals(sid, currentUserSid, StringComparison.OrdinalIgnoreCase)))
             {
