@@ -6,8 +6,9 @@
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views">
     <Grid>
-        <TabControl Margin="0,8,0,0">
-            <TabItem>
+        <!-- Named for code-behind tab selection tracking to toggle outer ScrollViewer -->
+        <TabControl x:Name="MainTabControl" Margin="0,8,0,0">
+            <TabItem Tag="EnhanceMenus">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="Star24" />
@@ -102,14 +103,18 @@
                                         TextWrapping="Wrap" />
                                 </StackPanel>
 
-                                <ItemsControl
+                                <!-- ScrollViewer wrapping ItemsControl for independent right-panel scrolling.
+                                     ItemsControl has no built-in ScrollViewer, so we wrap it explicitly.
+                                     The outer DynamicScrollViewer is disabled in code-behind for this tab. -->
+                                <ScrollViewer
                                     Grid.Row="1"
                                     Margin="12,0,12,12"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    ItemsSource="{Binding SelectedEnhanceGroup.Items}"
-                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                    ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        ItemsSource="{Binding SelectedEnhanceGroup.Items}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type viewModels:EnhanceMenuItemViewModel}">
                                             <Border
@@ -182,6 +187,7 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                </ScrollViewer>
                             </Grid>
                         </Border>
                     </Grid>
@@ -206,7 +212,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem>
+            <TabItem Tag="DetailedEdit">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="DocumentEdit24" />
@@ -312,14 +318,18 @@
                                         Visibility="{Binding SelectedDetailedEditGroup.FilePath, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
                                 </StackPanel>
 
-                                <ItemsControl
+                                <!-- ScrollViewer wrapping ItemsControl for independent right-panel scrolling.
+                                     ItemsControl has no built-in ScrollViewer, so we wrap it explicitly.
+                                     The outer DynamicScrollViewer is disabled in code-behind for this tab. -->
+                                <ScrollViewer
                                     Grid.Row="1"
                                     Margin="12,0,12,12"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    ItemsSource="{Binding SelectedDetailedEditGroup.Rules}"
-                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                    ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    HorizontalScrollBarVisibility="Disabled"
+                                    VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        ItemsSource="{Binding SelectedDetailedEditGroup.Rules}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type viewModels:DetailedEditRuleViewModel}">
                                             <Border
@@ -384,6 +394,7 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                </ScrollViewer>
                             </Grid>
                         </Border>
                     </Grid>
