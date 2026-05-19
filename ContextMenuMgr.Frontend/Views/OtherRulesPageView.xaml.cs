@@ -60,8 +60,10 @@ public partial class OtherRulesPageView : System.Windows.Controls.UserControl
     {
         if (_outerScrollViewer is null) return;
 
-        var selectedIndex = MainTabControl.SelectedIndex;
-        var needsDisable = selectedIndex is 0 or 1;
+        // var selectedIndex = MainTabControl.SelectedIndex;
+        // var needsDisable = selectedIndex is 0 or 1;
+        var selectedItem = (TabItem)MainTabControl.SelectedItem;
+        var needsDisable = selectedItem.Tag is "EnhanceMenus" or "DetailedEdit";
 
         // Only modify the property when the state actually changes to avoid layout thrashing
         if (needsDisable && !_isOuterScrollViewerDisabled)

@@ -8,7 +8,7 @@
     <Grid>
         <!-- Named for code-behind tab selection tracking to toggle outer ScrollViewer -->
         <TabControl x:Name="MainTabControl" Margin="0,8,0,0">
-            <TabItem>
+            <TabItem Tag="EnhanceMenus">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="Star24" />
@@ -212,7 +212,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem>
+            <TabItem Tag="DetailedEdit">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="DocumentEdit24" />
