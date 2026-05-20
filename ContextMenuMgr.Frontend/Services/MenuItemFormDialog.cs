@@ -297,11 +297,12 @@ public class MenuItemFormDialog
                 Opacity = 0.6,
                 Margin = new System.Windows.Thickness(0, 0, 0, 4)
             };
-            var textBox = new System.Windows.Controls.TextBox
+            var textBox = new Wpf.Ui.Controls.TextBox
             {
                 Text = initialValue,
                 Padding = new System.Windows.Thickness(10, 6, 10, 6),
-                MinWidth = 400
+                Width = 400,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left
             };
             panel.Children.Add(label);
             panel.Children.Add(descriptionText);
@@ -327,17 +328,19 @@ public class MenuItemFormDialog
                 Opacity = 0.6,
                 Margin = new System.Windows.Thickness(0, 0, 0, 4)
             };
-            var textBox = new System.Windows.Controls.TextBox
+            var textBox = new Wpf.Ui.Controls.TextBox
             {
                 Text = initialValue,
                 Padding = new System.Windows.Thickness(10, 6, 10, 6),
-                MinWidth = 400
+                MinWidth = 400,
+                Width = 400
             };
             var button = new Wpf.Ui.Controls.Button
             {
                 Content = buttonText,
                 MinWidth = 80,
-                Margin = new System.Windows.Thickness(8, 0, 0, 0)
+                Margin = new System.Windows.Thickness(8, 0, 0, 0),
+                Icon = new SymbolIcon() { Symbol = SymbolRegular.SidebarSearchRtl20 }
             };
             button.Click += (_, _) => OnBrowseClick(textBox, dialogType);
 

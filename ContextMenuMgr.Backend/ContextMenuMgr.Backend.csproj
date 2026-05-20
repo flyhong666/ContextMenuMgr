@@ -38,9 +38,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.6" />
-    <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.6" />
-    <PackageReference Include="System.Drawing.Common" Version="10.0.6" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.8" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.8" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.8" />
   </ItemGroup>
 
 </Project>

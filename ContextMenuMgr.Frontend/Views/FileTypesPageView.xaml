@@ -115,7 +115,7 @@
                                     Margin="8,0,0,0"
                                     Command="{Binding AnalyzeFolderCommand}"
                                     Content="{Binding AnalyzeFolderText}"
-                                    Icon="{ui:SymbolIcon Symbol=FolderSync24}" />
+                                    Icon="{ui:SymbolIcon Symbol=SidebarSearchRtl20}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
