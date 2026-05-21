@@ -107,8 +107,13 @@ jobs:
           }
 
           $releaseTag = "v$releaseVersion"
-          $releaseName = "Release-$releaseTag"
           $isPrerelease = [string]::Equals($configuration, 'Beta', [System.StringComparison]::OrdinalIgnoreCase)
+          if ($isPrerelease) {
+            $releaseName = $releaseTag
+          }
+          else {
+            $releaseName = "$releaseTag-Release"
+          }
 
           git fetch --tags --force
           $previousTag = git tag --sort=-version:refname | Select-Object -First 1
