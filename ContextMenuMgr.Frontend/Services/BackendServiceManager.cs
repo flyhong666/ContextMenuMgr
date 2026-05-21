@@ -307,21 +307,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
 
     private static string? ResolveBackendExecutablePath()
     {
-        var candidates = new[]
+        var candidates = new List<string>
         {
-            Path.Combine(AppContext.BaseDirectory, "ContextMenuManagerPlus.Service.exe"),
-            Path.GetFullPath(Path.Combine(
+            Path.Combine(AppContext.BaseDirectory, "ContextMenuManagerPlus.Service.exe")
+        };
+
+        foreach (var configuration in new[] { "Beta", "Release", "Debug" })
+        {
+            candidates.Add(Path.GetFullPath(Path.Combine(
                 AppContext.BaseDirectory,
                 "..", "..", "..", "..",
                 "artifacts", "backend",
-#if DEBUG
-                "Debug",
-#else
-                "Release",
-#endif
+                configuration,
                 "net10.0-windows",
-                "ContextMenuManagerPlus.Service.exe"))
-        };
+                "ContextMenuManagerPlus.Service.exe")));
+        }
 
         foreach (var candidate in candidates)
         {

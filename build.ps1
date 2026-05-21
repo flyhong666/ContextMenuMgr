@@ -34,22 +34,76 @@ function Invoke-External {
     }
 }
 
-function Get-FrontendVersion {
-    param([Parameter(Mandatory)] [string] $ProjectPath)
+function Test-PropertyGroupMatchesConfiguration {
+    param(
+        [Parameter(Mandatory)] [object] $PropertyGroup,
+        [Parameter(Mandatory)] [string] $Configuration
+    )
+
+    $condition = [string] $PropertyGroup.GetAttribute("Condition")
+    if ([string]::IsNullOrWhiteSpace($condition)) {
+        return $true
+    }
+
+    $expanded = $condition.Replace('$(Configuration)', $Configuration)
+    $match = [regex]::Match(
+        $expanded,
+        "^\s*['""]?(?<left>[^'""]*)['""]?\s*(?<operator>==|!=)\s*['""]?(?<right>[^'""]*)['""]?\s*$")
+
+    if (-not $match.Success) {
+        return $false
+    }
+
+    $left = $match.Groups["left"].Value.Trim()
+    $right = $match.Groups["right"].Value.Trim()
+    $equals = [string]::Equals($left, $right, [System.StringComparison]::OrdinalIgnoreCase)
+
+    if ($match.Groups["operator"].Value -eq "==") {
+        return $equals
+    }
+
+    return -not $equals
+}
+
+function Get-ProjectPropertyValue {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $PropertyName,
+        [Parameter(Mandatory)] [string] $Configuration
+    )
 
     [xml] $projectXml = Get-Content -LiteralPath $ProjectPath
     $propertyGroups = @($projectXml.Project.PropertyGroup)
+    $value = $null
 
     foreach ($group in $propertyGroups) {
-        if ($group.InformationalVersion) {
-            return [string] $group.InformationalVersion
+        if (-not (Test-PropertyGroupMatchesConfiguration -PropertyGroup $group -Configuration $Configuration)) {
+            continue
+        }
+
+        $property = $group.SelectSingleNode($PropertyName)
+        if ($property) {
+            $value = [string] $property.InnerText
         }
     }
 
-    foreach ($group in $propertyGroups) {
-        if ($group.FileVersion) {
-            return [string] $group.FileVersion
-        }
+    return $value
+}
+
+function Get-FrontendVersion {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $Configuration
+    )
+
+    $informationalVersion = Get-ProjectPropertyValue -ProjectPath $ProjectPath -PropertyName "InformationalVersion" -Configuration $Configuration
+    if (-not [string]::IsNullOrWhiteSpace($informationalVersion)) {
+        return $informationalVersion
+    }
+
+    $fileVersion = Get-ProjectPropertyValue -ProjectPath $ProjectPath -PropertyName "FileVersion" -Configuration $Configuration
+    if (-not [string]::IsNullOrWhiteSpace($fileVersion)) {
+        return $fileVersion
     }
 
     return "0.0.0"
@@ -63,6 +117,46 @@ function Ensure-FileExists {
 
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "$Description is missing: $Path"
+    }
+}
+
+function Remove-DirectoryIfExists {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    try {
+        [System.IO.Directory]::Delete((Resolve-Path -LiteralPath $Path).Path, $true)
+        return
+    }
+    catch {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+        }
+
+        Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                try {
+                    $_.Attributes = [System.IO.FileAttributes]::Normal
+                }
+                catch {
+                }
+
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+            }
+
+        Get-ChildItem -LiteralPath $Path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            ForEach-Object {
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+            }
+
+        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
     }
 }
 
@@ -100,18 +194,13 @@ $TrayHostProject = Join-Path $RepoRoot "ContextMenuMgr.TrayHost\ContextMenuMgr.T
 $NuGetConfig = Join-Path $RepoRoot "NuGet.Config"
 $PublishRoot = Join-Path $RepoRoot "build\publish"
 $DistRoot = Join-Path $RepoRoot "build\dist"
-$Version = Get-FrontendVersion -ProjectPath $FrontendProject
+$Version = Get-FrontendVersion -ProjectPath $FrontendProject -Configuration $Configuration
 $ArtifactProductName = "ContextMenuMgrPlus"
 $IsccPath = Resolve-IsccPath -RepoRoot $RepoRoot
 $InstallerIss = Join-Path $RepoRoot "Installer\build_Installer.iss"
 
-if (Test-Path -LiteralPath $PublishRoot) {
-    Remove-Item -LiteralPath $PublishRoot -Recurse -Force
-}
-
-if (Test-Path -LiteralPath $DistRoot) {
-    Remove-Item -LiteralPath $DistRoot -Recurse -Force
-}
+Remove-DirectoryIfExists -Path $PublishRoot
+Remove-DirectoryIfExists -Path $DistRoot
 
 New-Item -ItemType Directory -Path $PublishRoot | Out-Null
 New-Item -ItemType Directory -Path $DistRoot | Out-Null
@@ -213,6 +302,46 @@ $jobInitScript = {
 
         if (-not (Test-Path -LiteralPath $Path)) {
             throw "$Description is missing: $Path"
+        }
+    }
+
+    function Remove-DirectoryIfExists {
+        param([Parameter(Mandatory)] [string] $Path)
+
+        if (-not (Test-Path -LiteralPath $Path)) {
+            return
+        }
+
+        try {
+            [System.IO.Directory]::Delete((Resolve-Path -LiteralPath $Path).Path, $true)
+            return
+        }
+        catch {
+            try {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+                return
+            }
+            catch {
+            }
+
+            Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    try {
+                        $_.Attributes = [System.IO.FileAttributes]::Normal
+                    }
+                    catch {
+                    }
+
+                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+                }
+
+            Get-ChildItem -LiteralPath $Path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
         }
     }
 
@@ -344,9 +473,7 @@ $jobInitScript = {
         $publishDir = Join-Path $PublishRoot (Join-Path $PublishGroup (Join-Path $DistributionMode $platformLabel))
         $taskArtifactsRoot = Join-Path $PublishRoot (Join-Path "_artifacts" (Join-Path $PublishGroup (Join-Path $DistributionMode $platformLabel)))
 
-        if (Test-Path -LiteralPath $publishDir) {
-            Remove-Item -LiteralPath $publishDir -Recurse -Force
-        }
+        Remove-DirectoryIfExists -Path $publishDir
 
         New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
         New-Item -ItemType Directory -Path $taskArtifactsRoot -Force | Out-Null

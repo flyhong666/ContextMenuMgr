@@ -5,16 +5,22 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Configurations>Debug;Release;Beta</Configurations>
     <BaseOutputPath>..\artifacts\backend\</BaseOutputPath>
     <AssemblyName>ContextMenuManagerPlus.Service</AssemblyName>
     <Product>Context Menu Manager Plus</Product>
     <Title>Context Menu Manager Plus Service</Title>
     <Description>Elevated backend service for Context Menu Manager Plus.</Description>
     <Company>PLFJY</Company>
-    <FileVersion>1.6.4.0</FileVersion>
+    <FileVersion>1.6.5.0</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <InformationalVersion>1.6.4</InformationalVersion>
+    <InformationalVersion>1.6.5</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Beta'">
+    <FileVersion>1.6.5.0</FileVersion>
+    <InformationalVersion>1.6.5-Beta</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

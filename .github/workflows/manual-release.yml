@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - Release
+          - Beta
           - Debug
       app_id:
         description: Installer/App GUID metadata value
@@ -42,22 +43,63 @@ jobs:
         run: |
           [xml] $projectXml = Get-Content -LiteralPath '.\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj'
           $propertyGroups = @($projectXml.Project.PropertyGroup)
+          $configuration = '${{ inputs.configuration }}'
 
-          $releaseVersion = $null
-          foreach ($group in $propertyGroups) {
-            if ($group.InformationalVersion) {
-              $releaseVersion = [string] $group.InformationalVersion
-              break
+          function Test-PropertyGroupMatchesConfiguration {
+            param(
+              [Parameter(Mandatory)] [object] $PropertyGroup,
+              [Parameter(Mandatory)] [string] $Configuration
+            )
+
+            $condition = [string] $PropertyGroup.GetAttribute("Condition")
+            if ([string]::IsNullOrWhiteSpace($condition)) {
+              return $true
             }
+
+            $expanded = $condition.Replace('$(Configuration)', $Configuration)
+            $match = [regex]::Match(
+              $expanded,
+              "^\s*['""]?(?<left>[^'""]*)['""]?\s*(?<operator>==|!=)\s*['""]?(?<right>[^'""]*)['""]?\s*$")
+
+            if (-not $match.Success) {
+              return $false
+            }
+
+            $left = $match.Groups["left"].Value.Trim()
+            $right = $match.Groups["right"].Value.Trim()
+            $equals = [string]::Equals($left, $right, [System.StringComparison]::OrdinalIgnoreCase)
+
+            if ($match.Groups["operator"].Value -eq "==") {
+              return $equals
+            }
+
+            return -not $equals
           }
 
-          if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
+          function Get-ProjectPropertyValue {
+            param(
+              [Parameter(Mandatory)] [string] $PropertyName,
+              [Parameter(Mandatory)] [string] $Configuration
+            )
+
+            $value = $null
             foreach ($group in $propertyGroups) {
-              if ($group.FileVersion) {
-                $releaseVersion = [string] $group.FileVersion
-                break
+              if (-not (Test-PropertyGroupMatchesConfiguration -PropertyGroup $group -Configuration $Configuration)) {
+                continue
+              }
+
+              $property = $group.SelectSingleNode($PropertyName)
+              if ($property) {
+                $value = [string] $property.InnerText
               }
             }
+
+            return $value
+          }
+
+          $releaseVersion = Get-ProjectPropertyValue -PropertyName 'InformationalVersion' -Configuration $configuration
+          if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
+            $releaseVersion = Get-ProjectPropertyValue -PropertyName 'FileVersion' -Configuration $configuration
           }
 
           if ([string]::IsNullOrWhiteSpace($releaseVersion)) {

@@ -5,6 +5,7 @@
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Configurations>Debug;Release;Beta</Configurations>
     <UseWPF>true</UseWPF>
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
@@ -13,12 +14,17 @@
     <Title>Context Menu Manager Plus</Title>
     <Description>Windows context menu manager frontend for Context Menu Manager Plus.</Description>
     <Company>PLFJY</Company>
-    <FileVersion>1.6.4.0</FileVersion>
+    <FileVersion>1.6.5.0</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <InformationalVersion>1.6.4</InformationalVersion>
+    <InformationalVersion>1.6.5</InformationalVersion>
     <BackendTargetFramework>net10.0-windows</BackendTargetFramework>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <BackendOutputDir>$(MSBuildThisFileDirectory)..\artifacts\backend\$(Configuration)\$(BackendTargetFramework)\</BackendOutputDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Beta'">
+    <FileVersion>1.6.5.0</FileVersion>
+    <InformationalVersion>1.6.5-Beta</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
