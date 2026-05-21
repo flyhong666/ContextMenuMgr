@@ -108,6 +108,7 @@ jobs:
 
           $releaseTag = "v$releaseVersion"
           $releaseName = "Release-$releaseTag"
+          $isPrerelease = [string]::Equals($configuration, 'Beta', [System.StringComparison]::OrdinalIgnoreCase)
 
           git fetch --tags --force
           $previousTag = git tag --sort=-version:refname | Select-Object -First 1
@@ -142,6 +143,7 @@ jobs:
           "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_name=$releaseName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "prerelease=$($isPrerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
           "release_body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           $releaseBodyLines | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
@@ -170,6 +172,7 @@ jobs:
           tag_name: ${{ steps.release_meta.outputs.release_tag }}
           name: ${{ steps.release_meta.outputs.release_name }}
           draft: true
+          prerelease: ${{ steps.release_meta.outputs.prerelease }}
           body: ${{ steps.release_meta.outputs.release_body }}
           files: |
             build/dist/*.exe
