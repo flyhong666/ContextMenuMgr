@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.ServiceProcess;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -44,6 +44,7 @@ public partial class MainViewModel : ObservableObject
         [
             new LanguageOptionViewModel(AppLanguageOption.System, _localization),
             new LanguageOptionViewModel(AppLanguageOption.ChineseSimplified, _localization),
+            new LanguageOptionViewModel(AppLanguageOption.ChineseTraditionalTaiwan, _localization),
             new LanguageOptionViewModel(AppLanguageOption.EnglishUnitedStates, _localization)
         ];
 

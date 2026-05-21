@@ -1,4 +1,4 @@
-﻿using ContextMenuMgr.Frontend.Resources;
+using ContextMenuMgr.Frontend.Resources;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -46,7 +46,7 @@ public sealed class LocalizationService
     /// <summary>
     /// Gets the selected UI culture name.
     /// </summary>
-    public string CurrentCultureName => UsesChinese() ? "zh-CN" : "en-US";
+    public string CurrentCultureName => GetSupportedCultureName(GetSelectedCulture());
 
     /// <summary>
     /// Applies persisted Language.
@@ -80,6 +80,11 @@ public sealed class LocalizationService
         return GetSelectedCulture().Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
     }
 
+    public bool UsesChineseTraditional()
+    {
+        return string.Equals(CurrentCultureName, "zh-TW", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void ApplyCulture()
     {
         var culture = GetSelectedCulture();
@@ -103,11 +108,32 @@ public sealed class LocalizationService
     {
         return _selectedLanguage switch
         {
-            AppLanguageOption.System => GetSystemCulture(),
+            AppLanguageOption.System => GetSupportedCulture(GetSystemCulture()),
             AppLanguageOption.ChineseSimplified => CultureInfo.GetCultureInfo("zh-CN"),
             AppLanguageOption.EnglishUnitedStates => CultureInfo.GetCultureInfo("en-US"),
-            _ => GetSystemCulture()
+            AppLanguageOption.ChineseTraditionalTaiwan => CultureInfo.GetCultureInfo("zh-TW"),
+            _ => GetSupportedCulture(GetSystemCulture())
         };
+    }
+
+    private static CultureInfo GetSupportedCulture(CultureInfo culture)
+    {
+        return CultureInfo.GetCultureInfo(GetSupportedCultureName(culture));
+    }
+
+    private static string GetSupportedCultureName(CultureInfo culture)
+    {
+        if (culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            return culture.Name.Contains("Hant", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(culture.Name, "zh-TW", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(culture.Name, "zh-HK", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(culture.Name, "zh-MO", StringComparison.OrdinalIgnoreCase)
+                ? "zh-TW"
+                : "zh-CN";
+        }
+
+        return "en-US";
     }
 
     private static CultureInfo GetSystemCulture()

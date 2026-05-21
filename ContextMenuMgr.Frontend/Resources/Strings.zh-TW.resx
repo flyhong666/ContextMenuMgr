@@ -118,1017 +118,1017 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="WindowTitle" xml:space="preserve">
-    <value>Context Menu Manager Plus</value>
+    <value>快顯功能表管理員</value>
   </data>
   <data name="AppTitle" xml:space="preserve">
-    <value>Context Menu Manager Plus</value>
+    <value>快顯功能表管理員</value>
   </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>Review file and folder context-menu entries, toggle them safely, and review new additions detected by the backend service.</value>
+    <value>檢視檔案和資料夾的快顯功能表項目，安全地啟用或停用，並審核後端服務偵測到的新項目。</value>
   </data>
   <data name="UpdateAvailableTitle" xml:space="preserve">
-    <value>Update available</value>
+    <value>發現新版本</value>
   </data>
   <data name="UpdateAvailableMessage" xml:space="preserve">
-    <value>Version {0} is available on GitHub Releases.</value>
+    <value>GitHub Releases 已釋出 {0}。</value>
   </data>
   <data name="BackendStatusTitle" xml:space="preserve">
-    <value>Backend status</value>
+    <value>後端狀態</value>
   </data>
   <data name="SystemServiceRequiredBanner" xml:space="preserve">
-    <value>System service is not installed. Open Settings to install it.</value>
+    <value>系統服務尚未安裝，請前往設定頁安裝。</value>
   </data>
   <data name="SystemServiceUnavailableBanner" xml:space="preserve">
-    <value>System service is unavailable. Open Settings to install or repair it.</value>
+    <value>系統服務目前無法使用，請前往設定頁安裝或修復。</value>
   </data>
   <data name="SystemServiceInstallingBanner" xml:space="preserve">
-    <value>Installing or starting system service...</value>
+    <value>正在安裝或啟動系統服務...</value>
   </data>
   <data name="LanguageLabel" xml:space="preserve">
-    <value>Language</value>
+    <value>語言</value>
   </data>
   <data name="Refresh" xml:space="preserve">
-    <value>Refresh</value>
+    <value>重新整理</value>
   </data>
   <data name="Add" xml:space="preserve">
-    <value>Add</value>
+    <value>新增</value>
   </data>
   <data name="Edit" xml:space="preserve">
-    <value>Edit</value>
+    <value>編輯</value>
   </data>
   <data name="RestartExplorer" xml:space="preserve">
-    <value>Restart Explorer</value>
+    <value>重新啟動檔案總管</value>
   </data>
   <data name="RestartExplorerFailed" xml:space="preserve">
-    <value>Failed to restart File Explorer.</value>
+    <value>重新啟動檔案總管失敗。</value>
   </data>
   <data name="SearchLabel" xml:space="preserve">
-    <value>Filter</value>
+    <value>篩選</value>
   </data>
   <data name="LogLevelLabel" xml:space="preserve">
-    <value>Log level</value>
+    <value>記錄檔等級</value>
   </data>
   <data name="LogLevelInformation" xml:space="preserve">
-    <value>Information</value>
+    <value>資訊</value>
   </data>
   <data name="LogLevelWarning" xml:space="preserve">
-    <value>Warning</value>
+    <value>警告</value>
   </data>
   <data name="LogLevelError" xml:space="preserve">
-    <value>Error</value>
+    <value>錯誤</value>
   </data>
   <data name="MonitoredCategoriesTitle" xml:space="preserve">
-    <value>Monitored Categories</value>
+    <value>監視的分類</value>
   </data>
   <data name="MonitoredCategoriesDescription" xml:space="preserve">
-    <value>The backend watches common HKCR shell-verb and shell-extension roots for files, folders, directories, backgrounds, drives, libraries, and all file-system objects.</value>
+    <value>後端會監視檔案、檔案系統物件、資料夾、目錄、背景區域、磁碟機和程式庫等常見 HKCR Shell Verb 與 Shell Extension 根路徑。</value>
   </data>
   <data name="PendingApprovalTitle" xml:space="preserve">
-    <value>Pending Review</value>
+    <value>待審核</value>
   </data>
   <data name="PendingApprovalDescription" xml:space="preserve">
-    <value>Newly detected items appear here in a disabled state so you can allow them, keep them disabled, or remove them.</value>
+    <value>新偵測到的功能表項目會先以停用狀態顯示在這裡，等待你允許、保持停用或移除。</value>
   </data>
   <data name="PendingApprovalBadge" xml:space="preserve">
-    <value>Needs review</value>
+    <value>待審核</value>
   </data>
   <data name="Windows11PendingApprovalTag" xml:space="preserve">
-    <value>Win11 new menu</value>
+    <value>Win11 新功能表</value>
   </data>
   <data name="ServiceNotesTitle" xml:space="preserve">
-    <value>Service Notes</value>
+    <value>服務說明</value>
   </data>
   <data name="ServiceNotesDescription" xml:space="preserve">
-    <value>The backend runs as a Windows Service. Shell verbs are toggled through LegacyDisable, and shell extensions are blocked through the standard Shell Extensions\Blocked registry path.</value>
+    <value>後端以 Windows 服務方式執行。Shell Verb 透過 LegacyDisable 切換，Shell Extension 透過標準的 Shell Extensions\Blocked 登錄檔路徑進行封鎖。</value>
   </data>
   <data name="Allow" xml:space="preserve">
-    <value>Allow</value>
+    <value>允許</value>
   </data>
   <data name="Deny" xml:space="preserve">
-    <value>Deny</value>
+    <value>拒絕</value>
   </data>
   <data name="KeepDisabled" xml:space="preserve">
-    <value>Keep disabled</value>
+    <value>保持停用</value>
   </data>
   <data name="Remove" xml:space="preserve">
-    <value>Remove</value>
+    <value>移除</value>
   </data>
   <data name="ConfirmRemove" xml:space="preserve">
-    <value>Remove</value>
+    <value>確認移除</value>
   </data>
   <data name="ApprovalRemovePrompt" xml:space="preserve">
-    <value>Remove {0} from the pending-review queue and delete its registry item?</value>
+    <value>移除待審核項目「{0}」，並刪除對應的登錄檔功能表項目？</value>
   </data>
   <data name="Enabled" xml:space="preserve">
-    <value>Enabled</value>
+    <value>已啟用</value>
   </data>
   <data name="Disabled" xml:space="preserve">
-    <value>Disabled</value>
+    <value>已停用</value>
   </data>
   <data name="ToggleOn" xml:space="preserve">
-    <value>On</value>
+    <value>開</value>
   </data>
   <data name="ToggleOff" xml:space="preserve">
-    <value>Off</value>
+    <value>關</value>
   </data>
   <data name="NoNotes" xml:space="preserve">
-    <value>No command text or CLSID metadata was captured for this entry.</value>
+    <value>此項目沒有擷取到命令文字或 CLSID 中繼資料。</value>
   </data>
   <data name="NoRegistryPath" xml:space="preserve">
-    <value>No registry path was provided.</value>
+    <value>未提供登錄檔路徑。</value>
   </data>
   <data name="FileCategoryName" xml:space="preserve">
-    <value>File</value>
+    <value>檔案</value>
   </data>
   <data name="FileCategoryDescription" xml:space="preserve">
-    <value>HKCR\*\shell and HKCR\*\shellex\ContextMenuHandlers</value>
+    <value>HKCR\*\shell 和 HKCR\*\shellex\ContextMenuHandlers</value>
   </data>
   <data name="FolderCategoryName" xml:space="preserve">
-    <value>Folder</value>
+    <value>資料夾</value>
   </data>
   <data name="AllObjectsCategoryName" xml:space="preserve">
-    <value>All objects</value>
+    <value>所有物件</value>
   </data>
   <data name="AllObjectsCategoryDescription" xml:space="preserve">
-    <value>HKCR\AllFilesystemObjects\shell and HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers</value>
+    <value>HKCR\AllFilesystemObjects\shell 和 HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers</value>
   </data>
   <data name="FolderCategoryDescription" xml:space="preserve">
-    <value>HKCR\Folder\shell and HKCR\Folder\shellex\ContextMenuHandlers</value>
+    <value>HKCR\Folder\shell 和 HKCR\Folder\shellex\ContextMenuHandlers</value>
   </data>
   <data name="DirectoryCategoryName" xml:space="preserve">
-    <value>Directory</value>
+    <value>目錄</value>
   </data>
   <data name="DirectoryCategoryDescription" xml:space="preserve">
-    <value>HKCR\Directory\shell and HKCR\Directory\shellex\ContextMenuHandlers</value>
+    <value>HKCR\Directory\shell 和 HKCR\Directory\shellex\ContextMenuHandlers</value>
   </data>
   <data name="BackgroundCategoryName" xml:space="preserve">
-    <value>Explorer background</value>
+    <value>目錄背景</value>
   </data>
   <data name="BackgroundCategoryDescription" xml:space="preserve">
-    <value>HKCR\Directory\Background\shell and HKCR\Directory\Background\shellex\ContextMenuHandlers</value>
+    <value>HKCR\Directory\Background\shell 和 HKCR\Directory\Background\shellex\ContextMenuHandlers</value>
   </data>
   <data name="DesktopCategoryName" xml:space="preserve">
-    <value>Desktop background</value>
+    <value>桌面背景</value>
   </data>
   <data name="DesktopCategoryDescription" xml:space="preserve">
-    <value>HKCR\DesktopBackground\shell and HKCR\DesktopBackground\shellex\ContextMenuHandlers</value>
+    <value>HKCR\DesktopBackground\shell 和 HKCR\DesktopBackground\shellex\ContextMenuHandlers</value>
   </data>
   <data name="DriveCategoryName" xml:space="preserve">
-    <value>Drive</value>
+    <value>磁碟機</value>
   </data>
   <data name="DriveCategoryDescription" xml:space="preserve">
-    <value>HKCR\Drive\shell and HKCR\Drive\shellex\ContextMenuHandlers</value>
+    <value>HKCR\Drive\shell 和 HKCR\Drive\shellex\ContextMenuHandlers</value>
   </data>
   <data name="LibraryCategoryName" xml:space="preserve">
-    <value>Library</value>
+    <value>程式庫</value>
   </data>
   <data name="LibraryCategoryDescription" xml:space="preserve">
-    <value>HKCR\LibraryFolder, HKCR\LibraryFolder\Background, and HKCR\UserLibraryFolder shell roots</value>
+    <value>HKCR\LibraryFolder、HKCR\LibraryFolder\Background 和 HKCR\UserLibraryFolder 的 Shell 根路徑</value>
   </data>
   <data name="ComputerCategoryName" xml:space="preserve">
-    <value>This PC</value>
+    <value>我的電腦</value>
   </data>
   <data name="ComputerCategoryDescription" xml:space="preserve">
-    <value>HKCR\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D} shell roots</value>
+    <value>HKCR\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D} 的 Shell 根路徑</value>
   </data>
   <data name="RecycleBinCategoryName" xml:space="preserve">
-    <value>Recycle Bin</value>
+    <value>資源回收筒</value>
   </data>
   <data name="RecycleBinCategoryDescription" xml:space="preserve">
-    <value>HKCR\CLSID\{645FF040-5081-101B-9F08-00AA002F954E} shell roots</value>
+    <value>HKCR\CLSID\{645FF040-5081-101B-9F08-00AA002F954E} 的 Shell 根路徑</value>
   </data>
   <data name="ExplorerCategoryName" xml:space="preserve">
-    <value>Explorer blank space</value>
+    <value>檔案總管空白區域</value>
   </data>
   <data name="ExplorerCategoryDescription" xml:space="preserve">
-    <value>Legacy label retained for compatibility.</value>
+    <value>保留的舊標籤，僅供相容使用。</value>
   </data>
   <data name="ChangeKindAdded" xml:space="preserve">
-    <value>Externally added</value>
+    <value>外部新增</value>
   </data>
   <data name="ChangeKindRemoved" xml:space="preserve">
-    <value>Externally removed</value>
+    <value>外部遺失</value>
   </data>
   <data name="ChangeKindModified" xml:space="preserve">
-    <value>Externally modified</value>
+    <value>外部修改</value>
   </data>
   <data name="ChangeKindReappeared" xml:space="preserve">
-    <value>Reappeared</value>
+    <value>再次出現</value>
   </data>
   <data name="DismissDetectedChange" xml:space="preserve">
-    <value>Dismiss this notice</value>
+    <value>忽略這則提醒</value>
   </data>
   <data name="StartupChangeSummaryFormat" xml:space="preserve">
-    <value>Detected {1} in the {0} category.</value>
+    <value>在「{0}」分類下偵測到{1}。</value>
   </data>
   <data name="ConsistencyIssueGeneric" xml:space="preserve">
-    <value>The current registry state does not match the app's saved state.</value>
+    <value>目前登錄檔狀態與軟體記錄不一致。</value>
   </data>
   <data name="StartupChangeNotificationFormat" xml:space="preserve">
-    <value>Detected an external change for {1} in the {0} category.</value>
+    <value>{1} 在「{0}」分類下偵測到外部變更。</value>
   </data>
   <data name="RegistryMissingText" xml:space="preserve">
-    <value>This item is currently missing from the registry.</value>
+    <value>這個功能表項目目前已不在登錄檔中。</value>
   </data>
   <data name="ItemCountFormat" xml:space="preserve">
-    <value>{0} item{1}</value>
+    <value>{0} 個項目</value>
   </data>
   <data name="ItemCountPluralSuffix" xml:space="preserve">
-    <value>s</value>
+    <value />
   </data>
   <data name="ConnectingStatus" xml:space="preserve">
-    <value>Connecting to backend...</value>
+    <value>正在連線至後端服務...</value>
   </data>
   <data name="ConnectedStatus" xml:space="preserve">
-    <value>Connected</value>
+    <value>已連線</value>
   </data>
   <data name="BackendUnavailableStatus" xml:space="preserve">
-    <value>Backend unavailable. Showing placeholder data. {0}</value>
+    <value>後端無法使用，目前顯示預留位置資料。{0}</value>
   </data>
   <data name="ItemUpdatedStatus" xml:space="preserve">
-    <value>{0} updated at {1:T}.</value>
+    <value>{0} 已於 {1:T} 更新。</value>
   </data>
   <data name="ItemUpdateFailedStatus" xml:space="preserve">
-    <value>Unable to update {0}: {1}</value>
+    <value>無法更新 {0}：{1}</value>
   </data>
   <data name="DecisionAppliedStatus" xml:space="preserve">
-    <value>{0} decision applied to {1}.</value>
+    <value>已對 {1} 套用「{0}」決策。</value>
   </data>
   <data name="DecisionApplyFailedStatus" xml:space="preserve">
-    <value>Unable to apply decision: {0}</value>
+    <value>無法套用決策：{0}</value>
   </data>
   <data name="NotificationReceivedStatus" xml:space="preserve">
-    <value>Received backend notification at {0:T}.</value>
+    <value>已於 {0:T} 收到後端通知。</value>
   </data>
   <data name="PendingApprovalSystemNotificationTitle" xml:space="preserve">
-    <value>New context menu item pending review</value>
+    <value>發現新的待審核快顯功能表</value>
   </data>
   <data name="PendingApprovalSystemNotificationMessage" xml:space="preserve">
-    <value>{0} was added to the review queue. Open the app to review it.</value>
+    <value>{0} 已加入待審核佇列，請開啟應用程式處理。</value>
   </data>
   <data name="ApprovalRemoveWithoutRegistryConfirmation" xml:space="preserve">
-    <value>This review item no longer exists in the registry. It will only be removed from the review list.</value>
+    <value>這個待審核項目對應的登錄檔項目已不存在，將只從待審核清單移除。</value>
   </data>
   <data name="ApprovalRemoveConfirmation" xml:space="preserve">
-    <value>This review item still exists in the registry. Confirming will only remove it from the review queue; delete it from its page if you also want to remove the menu entry.</value>
+    <value>這個待審核項目對應的登錄檔項目仍然存在。確認後將從待審核清單移除；如果你還想徹底去掉功能表，請在對應頁面裡繼續刪除。</value>
   </data>
   <data name="ServiceMissingTitle" xml:space="preserve">
-    <value>Backend service missing</value>
+    <value>後端服務尚未安裝</value>
   </data>
   <data name="ServiceMissingPrompt" xml:space="preserve">
-    <value>The backend service is not installed. Install and start it with administrator privileges now?</value>
+    <value>偵測到後端服務尚未安裝。是否現在以系統管理員權限安裝並啟動它？</value>
   </data>
   <data name="ServiceRepairTitle" xml:space="preserve">
-    <value>Backend service unavailable</value>
+    <value>後端服務無法使用</value>
   </data>
   <data name="ServiceRepairPrompt" xml:space="preserve">
-    <value>The backend service is installed but not reachable. Repair or start it with administrator privileges now?</value>
+    <value>後端服務已安裝但目前無法連線。是否現在以系統管理員權限修復或啟動它？</value>
   </data>
   <data name="ServiceInstallSucceeded" xml:space="preserve">
-    <value>The backend service is installed and running.</value>
+    <value>後端服務已安裝並正在執行。</value>
   </data>
   <data name="ServiceInstallFailed" xml:space="preserve">
-    <value>The backend service could not be installed or started: {0}</value>
+    <value>後端服務安裝或啟動失敗：{0}</value>
   </data>
   <data name="ServiceInstallFailedDetailed" xml:space="preserve">
-    <value>The backend service could not be installed or started. Details: {0}</value>
+    <value>後端服務安裝或啟動失敗，詳細資訊：{0}</value>
   </data>
   <data name="ServiceNotRunningStatus" xml:space="preserve">
-    <value>The backend service is installed, but it is not running. Current status: {0}</value>
+    <value>後端服務已安裝，但目前未執行。目前狀態：{0}</value>
   </data>
   <data name="ServicePipeUnavailableStatus" xml:space="preserve">
-    <value>The backend service started, but the IPC pipe is still unavailable. Service status: {0}</value>
+    <value>後端服務已啟動，但 IPC 管道暫時無法使用。服務狀態：{0}</value>
   </data>
   <data name="ServiceBootstrapInProgress" xml:space="preserve">
-    <value>Installing or repairing the backend service...</value>
+    <value>正在安裝或修復後端服務...</value>
   </data>
   <data name="BackendExecutableMissing" xml:space="preserve">
-    <value>Could not find ContextMenuManagerPlus.Service.exe. Build or publish the backend first.</value>
+    <value>找不到 ContextMenuManagerPlus.Service.exe，請先建置或發行後端程式。</value>
   </data>
   <data name="ServiceOperationCancelled" xml:space="preserve">
-    <value>The elevated install/start operation was cancelled.</value>
+    <value>已取消提高權限的安裝或啟動操作。</value>
   </data>
   <data name="ServiceStatusRunning" xml:space="preserve">
-    <value>Running</value>
+    <value>正在執行</value>
   </data>
   <data name="ServiceStatusStopped" xml:space="preserve">
-    <value>Stopped</value>
+    <value>已停止</value>
   </data>
   <data name="ServiceStatusStartPending" xml:space="preserve">
-    <value>Starting</value>
+    <value>正在啟動</value>
   </data>
   <data name="ServiceStatusStopPending" xml:space="preserve">
-    <value>Stopping</value>
+    <value>正在停止</value>
   </data>
   <data name="ServiceStatusPaused" xml:space="preserve">
-    <value>Paused</value>
+    <value>已暫停</value>
   </data>
   <data name="ServiceStatusPausePending" xml:space="preserve">
-    <value>Pausing</value>
+    <value>正在暫停</value>
   </data>
   <data name="ServiceStatusContinuePending" xml:space="preserve">
-    <value>Continuing</value>
+    <value>正在繼續</value>
   </data>
   <data name="ServiceStatusMissing" xml:space="preserve">
-    <value>Missing</value>
+    <value>未安裝</value>
   </data>
   <data name="SystemLanguage" xml:space="preserve">
-    <value>Follow system</value>
+    <value>依系統設定</value>
   </data>
   <data name="ChineseLanguage" xml:space="preserve">
-    <value>Chinese (Simplified)</value>
+    <value>簡體中文</value>
   </data>
   <data name="ChineseTraditionalLanguage" xml:space="preserve">
-    <value>Chinese (Traditional, Taiwan)</value>
+    <value>繁體中文（台灣）</value>
   </data>
   <data name="EnglishLanguage" xml:space="preserve">
-    <value>English (United States)</value>
+    <value>英文（美國）</value>
   </data>
   <data name="DecisionAllow" xml:space="preserve">
-    <value>Allow</value>
+    <value>允許</value>
   </data>
   <data name="DecisionDeny" xml:space="preserve">
-    <value>Deny</value>
+    <value>拒絕</value>
   </data>
   <data name="TrayOpen" xml:space="preserve">
-    <value>Open</value>
+    <value>開啟主視窗</value>
   </data>
   <data name="TrayExit" xml:space="preserve">
-    <value>Exit and stop monitoring</value>
+    <value>結束並停止常駐程式</value>
   </data>
   <data name="TrayTooltip" xml:space="preserve">
-    <value>Context Menu Manager Plus</value>
+    <value>快顯功能表管理員</value>
   </data>
   <data name="TrayBackgroundInfoTitle" xml:space="preserve">
-    <value>Still running</value>
+    <value>仍在背景執行</value>
   </data>
   <data name="TrayBackgroundInfoText" xml:space="preserve">
-    <value>The app is minimized to the system tray and keeps watching backend notifications.</value>
+    <value>程式已最小化到系統匣，並會繼續接收後端通知。</value>
   </data>
   <data name="DeletedState" xml:space="preserve">
-    <value>Deleted</value>
+    <value>已刪除</value>
   </data>
   <data name="Delete" xml:space="preserve">
-    <value>Delete</value>
+    <value>刪除</value>
   </data>
   <data name="DeletedAt" xml:space="preserve">
-    <value>Deleted at</value>
+    <value>刪除於</value>
   </data>
   <data name="UndoDelete" xml:space="preserve">
-    <value>Undo</value>
+    <value>復原</value>
   </data>
   <data name="PermanentDelete" xml:space="preserve">
-    <value>Permanent delete</value>
+    <value>永久刪除</value>
   </data>
   <data name="PermanentDeleteTitle" xml:space="preserve">
-    <value>Permanently remove backup</value>
+    <value>永久移除備份</value>
   </data>
   <data name="PermanentDeletePrompt" xml:space="preserve">
-    <value>Permanently remove the backup for {0}? This action cannot be undone.</value>
+    <value>確定要永久移除 {0} 的備份嗎？此操作無法復原。</value>
   </data>
   <data name="DeleteFailedStatus" xml:space="preserve">
-    <value>Unable to delete {0}: {1}</value>
+    <value>無法刪除 {0}：{1}</value>
   </data>
   <data name="UndoDeleteFailedStatus" xml:space="preserve">
-    <value>Unable to restore {0}: {1}</value>
+    <value>無法復原 {0}：{1}</value>
   </data>
   <data name="PermanentDeleteFailedStatus" xml:space="preserve">
-    <value>Unable to permanently delete {0}: {1}</value>
+    <value>無法永久刪除 {0}：{1}</value>
   </data>
   <data name="DeleteOperationTimeoutDetail" xml:space="preserve">
-    <value>The operation timed out and may have been blocked by security software.</value>
+    <value>操作超時，可能已被安全軟體攔截。</value>
   </data>
   <data name="DeletedAtFormat" xml:space="preserve">
-    <value>Deleted at {0:G}</value>
+    <value>刪除時間：{0:G}</value>
   </data>
   <data name="ThemeLabel" xml:space="preserve">
-    <value>Theme</value>
+    <value>主題</value>
   </data>
   <data name="ThemeSystem" xml:space="preserve">
-    <value>Follow system</value>
+    <value>依系統設定</value>
   </data>
   <data name="ThemeLight" xml:space="preserve">
-    <value>Light</value>
+    <value>淺色</value>
   </data>
   <data name="ThemeDark" xml:space="preserve">
-    <value>Dark</value>
+    <value>深色</value>
   </data>
   <data name="StartupBehaviorTitle" xml:space="preserve">
-    <value>Startup</value>
+    <value>啟動</value>
   </data>
   <data name="AutoStartOnLoginLabel" xml:space="preserve">
-    <value>Start with Windows</value>
+    <value>隨 Windows 啟動</value>
   </data>
   <data name="AutoStartOnLoginDescription" xml:space="preserve">
-    <value>Launch automatically after sign-in and stay in the system tray.</value>
+    <value>登入 Windows 後自動在背景啟動，並直接常駐系統匣。</value>
   </data>
   <data name="LaunchMinimizedLabel" xml:space="preserve">
-    <value>Go directly to the tray when auto-started</value>
+    <value>開機自動啟動時直接縮到系統匣</value>
   </data>
   <data name="LaunchMinimizedDescription" xml:space="preserve">
-    <value>This only applies to Windows auto-start launches. Double-clicking the app still opens the main window normally.</value>
+    <value>僅在「隨 Windows 登入自動啟動」情境下生效。直接按兩下程式時，仍會正常開啟主視窗。</value>
   </data>
   <data name="LocalFilesTitle" xml:space="preserve">
-    <value>Local files</value>
+    <value>本機檔案</value>
   </data>
   <data name="DebugToolsTitle" xml:space="preserve">
-    <value>Debug</value>
+    <value>除錯</value>
   </data>
   <data name="OpenLogsFolder" xml:space="preserve">
-    <value>Open logs folder</value>
+    <value>開啟記錄檔目錄</value>
   </data>
   <data name="OpenStateFolder" xml:space="preserve">
-    <value>Open data folder</value>
+    <value>開啟資料目錄</value>
   </data>
   <data name="OpenConfigFolder" xml:space="preserve">
-    <value>Open backups folder</value>
+    <value>開啟備份目錄</value>
   </data>
   <data name="ResetStateDatabase" xml:space="preserve">
-    <value>Reset state database</value>
+    <value>重設狀態資料庫</value>
   </data>
   <data name="ResetSettings" xml:space="preserve">
-    <value>Reset app settings</value>
+    <value>重設軟體設定</value>
   </data>
   <data name="ClearAllLogs" xml:space="preserve">
-    <value>Clear log files</value>
+    <value>清除記錄檔</value>
   </data>
   <data name="MaintenanceResetStateSucceeded" xml:space="preserve">
-    <value>The local state database and deleted backups were reset.</value>
+    <value>本機狀態資料庫和刪除備份已重設。</value>
   </data>
   <data name="MaintenanceResetSettingsSucceeded" xml:space="preserve">
-    <value>The application settings were restored to defaults.</value>
+    <value>軟體設定已還原為預設值。</value>
   </data>
   <data name="MaintenanceClearLogsSucceeded" xml:space="preserve">
-    <value>The frontend, backend, and tray logs were cleared.</value>
+    <value>前端、後端和系統匣記錄檔已清除。</value>
   </data>
   <data name="ProtectionTitle" xml:space="preserve">
-    <value>Enhancement</value>
+    <value>增強</value>
   </data>
   <data name="UtilitiesTitle" xml:space="preserve">
-    <value>Utilities</value>
+    <value>輔助工具</value>
   </data>
   <data name="Settings.StartWithWindows" xml:space="preserve">
-    <value>Start tray process automatically on user logon</value>
+    <value>登入 Windows 後自動啟動系統匣處理程序</value>
   </data>
   <data name="Settings.StartWithWindows.Description" xml:space="preserve">
-    <value>When enabled, the tray process starts automatically after user logon. The main window will not be opened automatically.</value>
+    <value>啟用後，在使用者登入 Windows 時自動啟動系統匣處理程序，不會自動開啟主視窗。</value>
   </data>
   <data name="Settings.KeepBackgroundAfterClose" xml:space="preserve">
-    <value>Keep tray and backend running after closing the main window</value>
+    <value>關閉主視窗後保留後端服務和系統匣處理程序</value>
   </data>
   <data name="Settings.KeepBackgroundAfterClose.Description" xml:space="preserve">
-    <value>When enabled, closing the main window only exits the frontend UI process while the tray process and backend service continue running.</value>
+    <value>啟用後，關閉主視窗只會結束前端介面處理程序，系統匣處理程序和後端服務會繼續執行。</value>
   </data>
   <data name="LockNewContextMenuItemsLabel" xml:space="preserve">
-    <value>Block new context menu items at the registry permission level</value>
+    <value>從登錄檔權限層級禁止新增快顯功能表</value>
   </data>
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
-    <value>Adds deny write rules to the monitored shell roots so ordinary processes cannot add new context menu entries even when the backend is not running.</value>
+    <value>會給受監視的 Shell 根路徑加上拒絕寫入權限。即使背景常駐程式結束，一般處理程序也無法繼續往這些位置新增快顯功能表項目。</value>
   </data>
   <data name="NavigationToggleToolTip" xml:space="preserve">
-    <value>Toggle navigation pane</value>
+    <value>切換導覽窗格</value>
   </data>
   <data name="DialogConfirm" xml:space="preserve">
-    <value>Confirm</value>
+    <value>確定</value>
   </data>
   <data name="DialogCancel" xml:space="preserve">
-    <value>Cancel</value>
+    <value>取消</value>
   </data>
   <data name="DialogClose" xml:space="preserve">
-    <value>Close</value>
+    <value>關閉</value>
   </data>
   <data name="SettingsTitle" xml:space="preserve">
-    <value>Settings</value>
+    <value>設定</value>
   </data>
   <data name="ServiceSettingsTitle" xml:space="preserve">
-    <value>Service</value>
+    <value>服務</value>
   </data>
   <data name="InstallOrRepairService" xml:space="preserve">
-    <value>Install or repair service</value>
+    <value>安裝或修復服務</value>
   </data>
   <data name="SettingsUninstallService" xml:space="preserve">
-    <value>Uninstall service</value>
+    <value>解除安裝服務</value>
   </data>
   <data name="UninstallServiceTitle" xml:space="preserve">
-    <value>Uninstall service</value>
+    <value>解除安裝服務</value>
   </data>
   <data name="UninstallServicePrompt" xml:space="preserve">
-    <value>Stop and uninstall the backend service now?</value>
+    <value>是否現在停止並解除安裝後端服務？</value>
   </data>
   <data name="ServiceStatusFormat" xml:space="preserve">
-    <value>Service status: {0}</value>
+    <value>服務狀態：{0}</value>
   </data>
   <data name="ServicePipeUnavailableSimple" xml:space="preserve">
-    <value>The service started, but the backend pipe is still unavailable.</value>
+    <value>服務已經啟動，但後端管道暫時無法使用。</value>
   </data>
   <data name="ApprovalNeededMessage" xml:space="preserve">
-    <value>{0} needs review.</value>
+    <value>{0} 需要審核。</value>
   </data>
   <data name="BackendUnavailableStatusStandalone" xml:space="preserve">
-    <value>Backend unavailable.</value>
+    <value>後端無法使用。</value>
   </data>
   <data name="ServiceStoppedStatus" xml:space="preserve">
-    <value>Backend monitoring has been stopped.</value>
+    <value>後端監視已停止。</value>
   </data>
   <data name="ServiceStopCancelled" xml:space="preserve">
-    <value>The elevated stop-monitoring operation was cancelled.</value>
+    <value>已取消提高權限的停止監視操作。</value>
   </data>
   <data name="ServiceStopFailedDetailed" xml:space="preserve">
-    <value>Unable to stop backend monitoring. Details: {0}</value>
+    <value>停止後端監視失敗，詳細資訊：{0}</value>
   </data>
   <data name="MoreActions" xml:space="preserve">
-    <value>More</value>
+    <value>其他動作</value>
   </data>
   <data name="OtherAttributesTitle" xml:space="preserve">
-    <value>Other attributes</value>
+    <value>其他屬性</value>
   </data>
   <data name="DetailsTitle" xml:space="preserve">
-    <value>Details</value>
+    <value>詳細資訊</value>
   </data>
   <data name="OnlyWithShiftLabel" xml:space="preserve">
-    <value>Show only when Shift is pressed</value>
+    <value>僅在按住 Shift 鍵後顯示</value>
   </data>
   <data name="OnlyInExplorerLabel" xml:space="preserve">
-    <value>Show only in Explorer windows</value>
+    <value>僅在檔案總管視窗顯示</value>
   </data>
   <data name="NoWorkingDirectoryLabel" xml:space="preserve">
-    <value>Do not use the clicked item's directory info</value>
+    <value>不使用按右鍵所在的目錄資訊</value>
   </data>
   <data name="NeverDefaultLabel" xml:space="preserve">
-    <value>Never use as the default left-click command</value>
+    <value>永遠不作為按兩下的預設執行命令</value>
   </data>
   <data name="ShowAsDisabledIfHiddenLabel" xml:space="preserve">
-    <value>Show as disabled instead of hiding</value>
+    <value>被停用時以灰色顯示而不隱藏</value>
   </data>
   <data name="DetailsSearchOnline" xml:space="preserve">
-    <value>Search online</value>
+    <value>線上搜尋</value>
   </data>
   <data name="DetailsChangeText" xml:space="preserve">
-    <value>Change text</value>
+    <value>變更文字</value>
   </data>
   <data name="DetailsCommandText" xml:space="preserve">
-    <value>Command text</value>
+    <value>命令文字</value>
   </data>
   <data name="DetailsFileProperties" xml:space="preserve">
-    <value>File properties</value>
+    <value>檔案內容</value>
   </data>
   <data name="DetailsFileLocation" xml:space="preserve">
-    <value>Open file location</value>
+    <value>開啟檔案位置</value>
   </data>
   <data name="DetailsRegistryLocation" xml:space="preserve">
-    <value>Open registry location</value>
+    <value>開啟登錄檔位置</value>
   </data>
   <data name="DetailsExportRegistry" xml:space="preserve">
-    <value>Export registry key</value>
+    <value>匯出登錄檔項目</value>
   </data>
   <data name="DetailsClsidLocation" xml:space="preserve">
-    <value>Open CLSID location</value>
+    <value>開啟 CLSID 位置</value>
   </data>
   <data name="CommandTextUnavailable" xml:space="preserve">
-    <value>No command text is available for this menu item.</value>
+    <value>目前功能表項目沒有可顯示的命令文字。</value>
   </data>
   <data name="ItemTextLabel" xml:space="preserve">
-    <value>Menu text</value>
+    <value>功能表文字</value>
   </data>
   <data name="TextCannotBeEmpty" xml:space="preserve">
-    <value>Menu text cannot be empty.</value>
+    <value>功能表文字不能空白。</value>
   </data>
   <data name="ModulePathUnavailable" xml:space="preserve">
-    <value>No module file path is available for this menu item.</value>
+    <value>目前功能表項目沒有可用的模組檔案路徑。</value>
   </data>
   <data name="ClsidLocationUnavailable" xml:space="preserve">
-    <value>No CLSID location is available for this menu item.</value>
+    <value>目前功能表項目沒有可用的 CLSID 位置。</value>
   </data>
   <data name="ExportRegistryFailed" xml:space="preserve">
-    <value>Failed to export the registry key.</value>
+    <value>匯出登錄檔項目失敗。</value>
   </data>
   <data name="DetailsActionFailed" xml:space="preserve">
-    <value>Unable to complete this action: {0}</value>
+    <value>無法執行該操作：{0}</value>
   </data>
   <data name="FileTypesPageTitle" xml:space="preserve">
-    <value>File Types</value>
+    <value>檔案類型</value>
   </data>
   <data name="Windows11PageTitle" xml:space="preserve">
-    <value>Win11 New Menu</value>
+    <value>Win11 新功能表</value>
   </data>
   <data name="Windows11PageDescription" xml:space="preserve">
-    <value>Manage packaged-app entries that appear in the Windows 11 modern context menu. This first pass supports enable and disable only.</value>
+    <value>管理 Windows 11 新版快顯功能表中的封裝應用程式項目。目前先支援啟用和停用。</value>
   </data>
   <data name="Windows11NoItems" xml:space="preserve">
-    <value>No manageable Windows 11 modern context-menu entries were found.</value>
+    <value>沒有找到可管理的 Win11 新功能表項目。</value>
   </data>
   <data name="Windows11PackageFamilyLabel" xml:space="preserve">
-    <value>Package family</value>
+    <value>套件系列名稱</value>
   </data>
   <data name="Windows11PublisherLabel" xml:space="preserve">
-    <value>Publisher</value>
+    <value>發行者</value>
   </data>
   <data name="Windows11ContextTypesLabel" xml:space="preserve">
-    <value>Applies to</value>
+    <value>適用情境</value>
   </data>
   <data name="Windows11MachineBlockedText" xml:space="preserve">
-    <value>Blocked at machine scope</value>
+    <value>已被系統範圍封鎖</value>
   </data>
   <data name="OtherRulesPageTitle" xml:space="preserve">
-    <value>Other Rules</value>
+    <value>其他規則</value>
   </data>
   <data name="SceneLnkFileTitle" xml:space="preserve">
-    <value>Shortcut (.lnk)</value>
+    <value>捷徑</value>
   </data>
   <data name="SceneLnkFileDescription" xml:space="preserve">
-    <value>Manage shell verbs and shell extensions registered for classic shortcut files.</value>
+    <value>檢視和管理傳統 .lnk 捷徑對應的快顯功能表項目。</value>
   </data>
   <data name="SceneUwpShortcutTitle" xml:space="preserve">
-    <value>UWP Shortcut</value>
+    <value>UWP 捷徑</value>
   </data>
   <data name="SceneUwpShortcutDescription" xml:space="preserve">
-    <value>Review context-menu entries attached to packaged-application shortcut launchers.</value>
+    <value>檢視封裝應用程式捷徑對應的快顯功能表項目。</value>
   </data>
   <data name="SceneExeFileTitle" xml:space="preserve">
-    <value>Executable (.exe)</value>
+    <value>可執行檔</value>
   </data>
   <data name="SceneExeFileDescription" xml:space="preserve">
-    <value>Review the executable-file shell scene, similar to the target app's file-type page.</value>
+    <value>檢視 exe 檔案類型對應的快顯功能表項目。</value>
   </data>
   <data name="SceneCustomExtensionTitle" xml:space="preserve">
-    <value>Custom Extension</value>
+    <value>自訂副檔名</value>
   </data>
   <data name="SceneCustomExtensionDescription" xml:space="preserve">
-    <value>Enter an extension such as .txt or .zip to browse file-type-specific context-menu items.</value>
+    <value>輸入 .txt、.zip 這類副檔名，檢視對應檔案類型專屬的快顯功能表項目。</value>
   </data>
   <data name="ScenePerceivedTypeTitle" xml:space="preserve">
-    <value>Perceived Type</value>
+    <value>感知類型</value>
   </data>
   <data name="ScenePerceivedTypeDescription" xml:space="preserve">
-    <value>Browse SystemFileAssociations items for shared perceived file types such as text or image.</value>
+    <value>檢視 Text、Image 這類感知類型在 SystemFileAssociations 下的功能表項目。</value>
   </data>
   <data name="SceneDirectoryTypeTitle" xml:space="preserve">
-    <value>Directory Type</value>
+    <value>目錄類型</value>
   </data>
   <data name="SceneDirectoryTypeDescription" xml:space="preserve">
-    <value>Browse directory-type shell rules for document, image, video, and audio folders.</value>
+    <value>檢視文件、圖片、視訊、音訊目錄類型對應的快顯功能表項目。</value>
   </data>
   <data name="SceneUnknownTypeTitle" xml:space="preserve">
-    <value>Unknown Type</value>
+    <value>未知類型</value>
   </data>
   <data name="SceneUnknownTypeDescription" xml:space="preserve">
-    <value>Review fallback shell rules for file types without a specific association.</value>
+    <value>檢視沒有明確關聯類型時使用的備用快顯功能表項目。</value>
   </data>
   <data name="SceneCustomRegistryTitle" xml:space="preserve">
-    <value>Custom Registry Path</value>
+    <value>自訂登錄檔路徑</value>
   </data>
   <data name="SceneCustomRegistryDescription" xml:space="preserve">
-    <value>Enter an HKCR path and inspect its shell or ContextMenuHandlers children with the same editor surface.</value>
+    <value>輸入 HKCR 路徑，按同一套編輯介面瀏覽其 shell 或 ContextMenuHandlers 子項目。</value>
   </data>
   <data name="SceneExtensionSelectorLabel" xml:space="preserve">
-    <value>Extension</value>
+    <value>副檔名</value>
   </data>
   <data name="ScenePerceivedTypeSelectorLabel" xml:space="preserve">
-    <value>Perceived type</value>
+    <value>感知類型</value>
   </data>
   <data name="SceneDirectoryTypeSelectorLabel" xml:space="preserve">
-    <value>Directory type</value>
+    <value>目錄類型</value>
   </data>
   <data name="SceneRegistryPathSelectorLabel" xml:space="preserve">
-    <value>Registry path</value>
+    <value>登錄檔路徑</value>
   </data>
   <data name="ApplySceneSelection" xml:space="preserve">
-    <value>Load</value>
+    <value>載入</value>
   </data>
   <data name="SceneSelectionRequired" xml:space="preserve">
-    <value>Select or enter a scene value first.</value>
+    <value>請先選取或輸入情境值。</value>
   </data>
   <data name="SceneNoItems" xml:space="preserve">
-    <value>No context-menu items were found for the selected scene.</value>
+    <value>目前情境下沒有找到快顯功能表項目。</value>
   </data>
   <data name="PerceivedTypeText" xml:space="preserve">
-    <value>Text</value>
+    <value>文字</value>
   </data>
   <data name="PerceivedTypeDocument" xml:space="preserve">
-    <value>Document</value>
+    <value>文件</value>
   </data>
   <data name="PerceivedTypeImage" xml:space="preserve">
-    <value>Image</value>
+    <value>圖片</value>
   </data>
   <data name="PerceivedTypeVideo" xml:space="preserve">
-    <value>Video</value>
+    <value>視訊</value>
   </data>
   <data name="PerceivedTypeAudio" xml:space="preserve">
-    <value>Audio</value>
+    <value>音訊</value>
   </data>
   <data name="PerceivedTypeCompressed" xml:space="preserve">
-    <value>Compressed</value>
+    <value>壓縮</value>
   </data>
   <data name="PerceivedTypeSystem" xml:space="preserve">
-    <value>System</value>
+    <value>系統</value>
   </data>
   <data name="DirectoryTypeDocument" xml:space="preserve">
-    <value>Document</value>
+    <value>文件</value>
   </data>
   <data name="DirectoryTypeImage" xml:space="preserve">
-    <value>Image</value>
+    <value>圖片</value>
   </data>
   <data name="DirectoryTypeVideo" xml:space="preserve">
-    <value>Video</value>
+    <value>視訊</value>
   </data>
   <data name="DirectoryTypeAudio" xml:space="preserve">
-    <value>Audio</value>
+    <value>音訊</value>
   </data>
   <data name="BehaviorRulesTitle" xml:space="preserve">
-    <value>Behavior Rules</value>
+    <value>行為規則</value>
   </data>
   <data name="BehaviorRulesDescription" xml:space="preserve">
-    <value>Move the target app's behavior-style switches here so they live in their own rules page instead of general settings.</value>
+    <value>把類似目標軟體中的行為類開關單獨放到這裡，和通用設定分開。</value>
   </data>
   <data name="OpenMoreRegeditLabel" xml:space="preserve">
-    <value>Open Registry Editor in a separate window</value>
+    <value>開啟多個登錄編輯程式視窗</value>
   </data>
   <data name="OpenMoreExplorerLabel" xml:space="preserve">
-    <value>Open File Explorer in a separate window</value>
+    <value>開啟多個檔案總管視窗</value>
   </data>
   <data name="HideDisabledItemsLabel" xml:space="preserve">
-    <value>Hide disabled menu items</value>
+    <value>隱藏已停用的功能表項目</value>
   </data>
   <data name="EnhanceMenusTitle" xml:space="preserve">
-    <value>Enhance Menus</value>
+    <value>增強功能表</value>
   </data>
   <data name="DetailedEditTitle" xml:space="preserve">
-    <value>Detailed Edit</value>
+    <value>詳細編輯</value>
   </data>
   <data name="EnhanceMenusDescription" xml:space="preserve">
-    <value>Manage predefined enhance-menu entries by dictionary group. This page toggles the enhancement items directly; edit names and details in the corresponding editor pages.</value>
+    <value>按字典分組管理預先定義的增強項目。這裡直接控制增強項目本身的啟用狀態，名稱和細節請到對應編輯頁調整。</value>
   </data>
   <data name="EnhanceMenuToggleFailed" xml:space="preserve">
-    <value>Unable to toggle this enhance-menu item.</value>
+    <value>無法切換該增強功能表項目。</value>
   </data>
   <data name="LiveSceneTitle" xml:space="preserve">
-    <value>Live items</value>
+    <value>即時功能表項目</value>
   </data>
   <data name="DefinedItemsTitle" xml:space="preserve">
-    <value>Defined items</value>
+    <value>預先定義項目</value>
   </data>
   <data name="RawXmlTitle" xml:space="preserve">
-    <value>Raw XML</value>
+    <value>原始 XML</value>
   </data>
   <data name="NoRuleGroupSelected" xml:space="preserve">
-    <value>Select a group on the left.</value>
+    <value>請選取左側分組。</value>
   </data>
   <data name="Apply" xml:space="preserve">
-    <value>Apply</value>
+    <value>套用</value>
   </data>
   <data name="RestartExplorerHint" xml:space="preserve">
-    <value>This change usually requires restarting File Explorer.</value>
+    <value>此項目修改後通常需要重新啟動檔案總管。</value>
   </data>
   <data name="NumberRuleInvalid" xml:space="preserve">
-    <value>Please enter a valid number.</value>
+    <value>請輸入有效的數字。</value>
   </data>
   <data name="DictionaryReadOnlyHint" xml:space="preserve">
-    <value>This first migration step brings the target app's dictionary content into the new rules page. Editing actions will be wired next.</value>
+    <value>這一版先把目標程式中的字典內容遷到新的規則頁裡，後續再繼續把編輯操作接上。</value>
   </data>
   <data name="ShellNewPageTitle" xml:space="preserve">
-    <value>New Menu</value>
+    <value>新增功能表</value>
   </data>
   <data name="ShellNewPageDescription" xml:space="preserve">
-    <value>Manage ShellNew entries, ordering, and visibility through the backend service.</value>
+    <value>透過後端服務管理 ShellNew 項目、排序和可見性。</value>
   </data>
   <data name="SendToPageTitle" xml:space="preserve">
-    <value>Send To</value>
+    <value>傳送到</value>
   </data>
   <data name="SendToPageDescription" xml:space="preserve">
-    <value>Manage the current user's SendTo folder entries and shortcuts.</value>
+    <value>管理目前使用者 SendTo 目錄中的檔案和捷徑。</value>
   </data>
   <data name="WinXPageTitle" xml:space="preserve">
     <value>Win+X</value>
   </data>
   <data name="WinXPageDescription" xml:space="preserve">
-    <value>Manage Win+X groups and hashed shortcuts.</value>
+    <value>管理 Win+X 分組和帶 hash 的捷徑。</value>
   </data>
   <data name="DragDropPageTitle" xml:space="preserve">
-    <value>Right Drag</value>
+    <value>右鍵拖曳</value>
   </data>
   <data name="DragDropPageDescription" xml:space="preserve">
-    <value>Manage ShellEx DragDropHandlers and the default drop effect.</value>
+    <value>管理 ShellEx DragDropHandlers 和預設拖放效果。</value>
   </data>
   <data name="CommandStorePageTitle" xml:space="preserve">
-    <value>Public References</value>
+    <value>公用參照</value>
   </data>
   <data name="CommandStorePageDescription" xml:space="preserve">
-    <value>Manage CommandStore shell entries shared by context menu scenes.</value>
+    <value>管理可被多個快顯功能表情境參照的 CommandStore shell 項目。</value>
   </data>
   <data name="GuidBlockPageTitle" xml:space="preserve">
-    <value>GUID Block</value>
+    <value>GUID 鎖定</value>
   </data>
   <data name="GuidBlockPageDescription" xml:space="preserve">
-    <value>Manage globally blocked shell extension GUIDs.</value>
+    <value>管理全域封鎖的 Shell 擴充功能 GUID。</value>
   </data>
   <data name="IeMenuPageTitle" xml:space="preserve">
-    <value>IE Menus</value>
+    <value>IE 功能表</value>
   </data>
   <data name="IeMenuPageDescription" xml:space="preserve">
-    <value>Manage legacy Internet Explorer MenuExt entries when present.</value>
+    <value>在系統仍存在時管理舊版 Internet Explorer MenuExt 項目。</value>
   </data>
   <data name="MenuAnalysisTitle" xml:space="preserve">
-    <value>Menu Analysis</value>
+    <value>功能表分析</value>
   </data>
   <data name="MenuAnalysisDescription" xml:space="preserve">
-    <value>Analyze a file, folder, or shortcut and jump to the matching context menu scene.</value>
+    <value>分析檔案、資料夾或捷徑，並跳至相符的快顯功能表情境。</value>
   </data>
   <data name="AnalyzeFile" xml:space="preserve">
-    <value>Analyze File</value>
+    <value>分析檔案</value>
   </data>
   <data name="AnalyzeFolder" xml:space="preserve">
-    <value>Analyze Folder</value>
+    <value>分析資料夾</value>
   </data>
   <data name="JumpToScene" xml:space="preserve">
-    <value>Jump</value>
+    <value>跳至</value>
   </data>
   <data name="AnalysisResultAllFiles" xml:space="preserve">
-    <value>All files (*)</value>
+    <value>所有檔案 (*)</value>
   </data>
   <data name="AnalysisResultAllFilesReason" xml:space="preserve">
-    <value>Applies to every file.</value>
+    <value>適用於所有檔案。</value>
   </data>
   <data name="AnalysisResultAllFilesystemObjects" xml:space="preserve">
-    <value>All filesystem objects</value>
+    <value>所有檔案系統物件</value>
   </data>
   <data name="AnalysisResultAllFilesystemObjectsReason" xml:space="preserve">
-    <value>Applies to files and folders.</value>
+    <value>適用於檔案和資料夾。</value>
   </data>
   <data name="AnalysisResultExecutable" xml:space="preserve">
-    <value>Executable files</value>
+    <value>可執行檔</value>
   </data>
   <data name="AnalysisResultExecutableReason" xml:space="preserve">
-    <value>The target file is an executable.</value>
+    <value>目標檔案是可執行程式。</value>
   </data>
   <data name="AnalysisResultExtension" xml:space="preserve">
-    <value>Extension {0}</value>
+    <value>副檔名 {0}</value>
   </data>
   <data name="AnalysisResultExtensionReason" xml:space="preserve">
-    <value>Applies to this extension.</value>
+    <value>適用於此副檔名。</value>
   </data>
   <data name="AnalysisResultShortcut" xml:space="preserve">
-    <value>Shortcut (.lnk)</value>
+    <value>捷徑 (.lnk)</value>
   </data>
   <data name="AnalysisResultShortcutReason" xml:space="preserve">
-    <value>The selected item is a shortcut.</value>
+    <value>選取的項目是捷徑。</value>
   </data>
   <data name="AnalysisResultUnknownType" xml:space="preserve">
-    <value>Unknown file type</value>
+    <value>未知檔案類型</value>
   </data>
   <data name="AnalysisResultUnknownTypeReason" xml:space="preserve">
-    <value>The extension has no ProgId/open mode.</value>
+    <value>該副檔名沒有關聯的程式識別碼 (ProgId) 或開啟方式。</value>
   </data>
   <data name="AnalysisResultPerceivedType" xml:space="preserve">
-    <value>Perceived type {0}</value>
+    <value>感知類型 {0}</value>
   </data>
   <data name="AnalysisResultPerceivedTypeReason" xml:space="preserve">
-    <value>Applies to files with this perceived type.</value>
+    <value>適用於具有此感知類型的檔案。</value>
   </data>
   <data name="AnalysisResultFolder" xml:space="preserve">
-    <value>Folders</value>
+    <value>資料夾</value>
   </data>
   <data name="AnalysisResultFolderReason" xml:space="preserve">
-    <value>Applies to shell folders.</value>
+    <value>適用於系統資料夾。</value>
   </data>
   <data name="AnalysisResultDrive" xml:space="preserve">
-    <value>Drives</value>
+    <value>磁碟機</value>
   </data>
   <data name="AnalysisResultDriveReason" xml:space="preserve">
-    <value>The selected folder is a drive root.</value>
+    <value>選取的資料夾是磁碟根目錄。</value>
   </data>
   <data name="AnalysisResultDirectory" xml:space="preserve">
-    <value>Directories</value>
+    <value>目錄</value>
   </data>
   <data name="AnalysisResultDirectoryReason" xml:space="preserve">
-    <value>Applies to file-system directories.</value>
+    <value>適用於檔案系統目錄。</value>
   </data>
   <data name="AnalysisResultDirectoryType" xml:space="preserve">
-    <value>Directory type</value>
+    <value>目錄類型</value>
   </data>
   <data name="AnalysisResultDirectoryTypeReason" xml:space="preserve">
-    <value>Use a specific directory type if one matches this folder.</value>
+    <value>如果此資料夾符合特定目錄類型，則使用該類型。</value>
   </data>
   <data name="JumpToAllFilesHint" xml:space="preserve">
-    <value>The "All files" scene corresponds to the "File" category on the Home page. Please select the relevant option under "Directory" in the left navigation bar to manage it.</value>
+    <value>「所有檔案」情境對應於首頁中的「檔案」類別。請在左側導覽列中選取「目錄」下的相關選項進行管理。</value>
   </data>
   <data name="JumpToAllObjectsHint" xml:space="preserve">
-    <value>"All filesystem objects" applies to both files and folders. You can find related settings in the "Directory" or "Desktop Background" category.</value>
+    <value>「所有檔案系統物件」同時適用於檔案和資料夾。您可以在「目錄」或「桌面背景」類別中找到相關設定。</value>
   </data>
   <data name="JumpToCustomPathHint" xml:space="preserve">
-    <value>This scene corresponds to a custom registry path: {0}\n\nThis path may need to be managed directly through Registry Editor, or find the corresponding category on the Home page.</value>
+    <value>該情境對應於自訂登錄檔路徑：{0}\n\n此路徑可能需要透過登錄編輯程式直接管理，或在首頁中尋找對應的類別。</value>
   </data>
   <data name="UnsupportedSceneKind" xml:space="preserve">
-    <value>Unsupported scene kind: {0}</value>
+    <value>不支援的情境類型：{0}</value>
   </data>
   <data name="AddMenuItem" xml:space="preserve">
-    <value>Add Menu Item</value>
+    <value>新增功能表項目</value>
   </data>
   <data name="RestoreDefault" xml:space="preserve">
-    <value>Restore Defaults</value>
+    <value>還原預設值</value>
   </data>
   <data name="LockNewMenu" xml:space="preserve">
-    <value>Lock new menu and enable sorting</value>
+    <value>鎖定新增功能表並啟用排序功能</value>
   </data>
   <data name="LockNewMenuDescription" xml:space="preserve">
-    <value>When enabled, prevents third-party programs from adding items and lets you sort existing items; turning it off restores the original order.</value>
+    <value>啟用後可阻止第三方程式增加項目，且可對現有項目排序；關閉後會還原初始排序。</value>
   </data>
   <data name="RepairShellNewAcl" xml:space="preserve">
-    <value>Repair new menu lock</value>
+    <value>修復新增功能表鎖定</value>
   </data>
   <data name="RepairShellNewAclConfirmation" xml:space="preserve">
-    <value>Repairing will reset the new-menu lock permissions. Continue?</value>
+    <value>修復會重設新增功能表鎖定權限。是否繼續？</value>
   </data>
   <data name="DefaultDropEffect" xml:space="preserve">
-    <value>Default drop effect</value>
+    <value>預設拖放效果</value>
   </data>
   <data name="SystemLevelItems" xml:space="preserve">
-    <value>System-level items</value>
+    <value>系統層級項目</value>
   </data>
   <data name="UserLevelItems" xml:space="preserve">
-    <value>User-level items</value>
+    <value>使用者層級項目</value>
   </data>
   <data name="ShellNewFolder" xml:space="preserve">
-    <value>Folder</value>
+    <value>資料夾</value>
   </data>
   <data name="ShellNewShortcut" xml:space="preserve">
-    <value>Shortcut</value>
+    <value>捷徑</value>
   </data>
   <data name="ShellNewLibrary" xml:space="preserve">
-    <value>Library</value>
+    <value>程式庫</value>
   </data>
   <data name="ShellNewSeparator" xml:space="preserve">
-    <value>&gt;&gt;&gt;&gt;&gt;&gt; Separator &lt;&lt;&lt;&lt;&lt;&lt;</value>
+    <value>&gt;&gt;&gt;&gt;&gt;&gt; 分隔線 &lt;&lt;&lt;&lt;&lt;&lt;</value>
   </data>
   <data name="LegacyContextMenuItems" xml:space="preserve">
-    <value>Legacy Context Menu Items</value>
+    <value>傳統快顯功能表項目</value>
   </data>
   <data name="MenuFormName" xml:space="preserve">
-    <value>Menu Item Name</value>
+    <value>功能表項目名稱</value>
   </data>
   <data name="MenuFormNameDescription" xml:space="preserve">
-    <value>Display name shown in context menu</value>
+    <value>在快顯功能表中顯示的名稱</value>
   </data>
   <data name="MenuFormTarget" xml:space="preserve">
-    <value>Target Application</value>
+    <value>目標程式</value>
   </data>
   <data name="MenuFormTargetDescription" xml:space="preserve">
-    <value>Full path to executable file</value>
+    <value>執行檔的完整路徑</value>
   </data>
   <data name="MenuFormArguments" xml:space="preserve">
-    <value>Arguments</value>
+    <value>引數</value>
   </data>
   <data name="MenuFormArgumentsDescription" xml:space="preserve">
-    <value>Command-line arguments (optional)</value>
+    <value>命令列引數（選擇性）</value>
   </data>
   <data name="MenuFormWorkingDir" xml:space="preserve">
-    <value>Working Directory</value>
+    <value>工作目錄</value>
   </data>
   <data name="MenuFormWorkingDirDescription" xml:space="preserve">
-    <value>Working folder for the application (optional)</value>
+    <value>應用程式的工作資料夾（選擇性）</value>
   </data>
   <data name="MenuFormIcon" xml:space="preserve">
-    <value>Icon</value>
+    <value>圖示</value>
   </data>
   <data name="MenuFormIconDescription" xml:space="preserve">
-    <value>Path to icon file or executable (optional)</value>
+    <value>圖示檔或執行檔的路徑（選擇性）</value>
   </data>
   <data name="MenuFormRunAsAdmin" xml:space="preserve">
-    <value>Run as administrator</value>
+    <value>以系統管理員身分執行</value>
   </data>
   <data name="MenuFormGroup" xml:space="preserve">
-    <value>Group</value>
+    <value>群組</value>
   </data>
   <data name="MenuFormBrowse" xml:space="preserve">
-    <value>Browse...</value>
+    <value>瀏覽...</value>
   </data>
   <data name="MenuFormSelectTarget" xml:space="preserve">
-    <value>Select Target Application</value>
+    <value>選取目標程式</value>
   </data>
   <data name="MenuFormSelectFolder" xml:space="preserve">
-    <value>Select Working Directory</value>
+    <value>選取工作目錄</value>
   </data>
   <data name="MenuFormSelectIcon" xml:space="preserve">
-    <value>Select Icon</value>
+    <value>選取圖示</value>
   </data>
   <data name="MenuFormShellNewExtension" xml:space="preserve">
-    <value>File Extension</value>
+    <value>副檔名</value>
   </data>
   <data name="MenuFormShellNewExtensionDescription" xml:space="preserve">
-    <value>File extension including the dot (e.g., .txt, .docx)</value>
+    <value>包括句點的副檔名（例如 .txt、.docx）</value>
   </data>
   <data name="MenuFormShellNewDisplayName" xml:space="preserve">
-    <value>Display Name</value>
+    <value>顯示名稱</value>
   </data>
   <data name="MenuFormShellNewDisplayNameDescription" xml:space="preserve">
-    <value>Name shown in the New context menu</value>
+    <value>在「新增」功能表中顯示的名稱</value>
   </data>
   <data name="MenuFormShellNewCommand" xml:space="preserve">
-    <value>Command</value>
+    <value>命令</value>
   </data>
   <data name="MenuFormShellNewCommandDescription" xml:space="preserve">
-    <value>Command template with %1 for file path (optional)</value>
+    <value>命令範本，使用 %1 表示檔案路徑（選擇性）</value>
   </data>
   <data name="MenuFormShellNewBeforeSeparator" xml:space="preserve">
-    <value>Show before separator</value>
+    <value>在分隔符號前顯示</value>
   </data>
 </root>

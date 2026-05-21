@@ -2817,24 +2817,33 @@ public sealed class ContextMenuRegistryCatalog
     {
         if (string.IsNullOrWhiteSpace(cultureName))
         {
-            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
-                ? "zh-CN"
-                : "en-US";
+            return NormalizeSupportedCultureName(CultureInfo.CurrentUICulture);
         }
 
         try
         {
             var culture = CultureInfo.GetCultureInfo(cultureName.Trim());
-            return culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
-                ? "zh-CN"
-                : "en-US";
+            return NormalizeSupportedCultureName(culture);
         }
         catch (CultureNotFoundException)
         {
-            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
-                ? "zh-CN"
-                : "en-US";
+            return NormalizeSupportedCultureName(CultureInfo.CurrentUICulture);
         }
+    }
+
+    private static string NormalizeSupportedCultureName(CultureInfo culture)
+    {
+        if (culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            return culture.Name.Contains("Hant", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(culture.Name, "zh-TW", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(culture.Name, "zh-HK", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(culture.Name, "zh-MO", StringComparison.OrdinalIgnoreCase)
+                ? "zh-TW"
+                : "zh-CN";
+        }
+
+        return "en-US";
     }
 
     private static string GetUniqueRegistryPath(string basePath, string keyName)

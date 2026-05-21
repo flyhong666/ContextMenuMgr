@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Xml.Linq;
@@ -480,12 +480,12 @@ public sealed class RuleDictionaryCatalogService
 
         return string.Equals(culture, "en-US", StringComparison.OrdinalIgnoreCase)
             ? !_localization.UsesChinese()
-            : string.Equals(culture, "zh-CN", StringComparison.OrdinalIgnoreCase) && _localization.UsesChinese();
+            : string.Equals(culture, GetPreferredDictionaryCulture(), StringComparison.OrdinalIgnoreCase);
     }
 
     private string GetPreferredDictionaryCulture()
     {
-        return _localization.UsesChinese() ? "zh-CN" : "en-US";
+        return _localization.CurrentCultureName;
     }
 
     private static bool HasCulture(XElement element, string cultureName)

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using ContextMenuMgr.Contracts;
@@ -246,9 +246,12 @@ public sealed class ContextMenuItemActionsService
     private void OpenRegistryEditor(string fullRegistryPath)
     {
         using var regeditKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit");
-        var computerLabel = _localization.UsesChinese()
-            ? "计算机"
-            : "Computer";
+        var computerLabel = _localization.CurrentCultureName switch
+        {
+            "zh-CN" => "计算机",
+            "zh-TW" => "電腦",
+            _ => "Computer"
+        };
         regeditKey?.SetValue("LastKey", $@"{computerLabel}\{fullRegistryPath}", RegistryValueKind.String);
         Process.Start(new ProcessStartInfo("regedit.exe", _settingsService.Current.OpenMoreRegedit ? "-m" : string.Empty)
         {

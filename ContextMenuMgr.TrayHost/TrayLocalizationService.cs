@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Resources;
@@ -72,6 +72,7 @@ internal sealed class TrayLocalizationService
             {
                 1 => CultureInfo.GetCultureInfo("zh-CN"),
                 2 => CultureInfo.GetCultureInfo("en-US"),
+                3 => CultureInfo.GetCultureInfo("zh-TW"),
                 _ => GetSystemCulture()
             };
         }
@@ -86,12 +87,28 @@ internal sealed class TrayLocalizationService
         try
         {
             var languageId = NativeMethods.GetUserDefaultUILanguage();
-            return CultureInfo.GetCultureInfo(languageId);
+            return GetSupportedCulture(CultureInfo.GetCultureInfo(languageId));
         }
         catch
         {
-            return CultureInfo.InstalledUICulture;
+            return GetSupportedCulture(CultureInfo.InstalledUICulture);
         }
+    }
+
+    private static CultureInfo GetSupportedCulture(CultureInfo culture)
+    {
+        if (culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            var cultureName = culture.Name.Contains("Hant", StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(culture.Name, "zh-TW", StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(culture.Name, "zh-HK", StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(culture.Name, "zh-MO", StringComparison.OrdinalIgnoreCase)
+                ? "zh-TW"
+                : "zh-CN";
+            return CultureInfo.GetCultureInfo(cultureName);
+        }
+
+        return CultureInfo.GetCultureInfo("en-US");
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)

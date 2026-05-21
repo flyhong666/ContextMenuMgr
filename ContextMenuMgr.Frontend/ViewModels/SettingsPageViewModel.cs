@@ -50,6 +50,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         [
             new LanguageOptionViewModel(AppLanguageOption.System, localization),
             new LanguageOptionViewModel(AppLanguageOption.ChineseSimplified, localization),
+            new LanguageOptionViewModel(AppLanguageOption.ChineseTraditionalTaiwan, localization),
             new LanguageOptionViewModel(AppLanguageOption.EnglishUnitedStates, localization)
         ];
 
