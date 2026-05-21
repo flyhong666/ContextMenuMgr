@@ -109,6 +109,29 @@ function Get-FrontendVersion {
     return "0.0.0"
 }
 
+function Get-GitShortCommit {
+    $commit = & git rev-parse --short HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
+        throw "Unable to resolve the current Git commit hash."
+    }
+
+    return $commit.Trim()
+}
+
+function Get-BuildVersion {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $Configuration
+    )
+
+    $version = Get-FrontendVersion -ProjectPath $ProjectPath -Configuration $Configuration
+    if ([string]::Equals($Configuration, "Beta", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $version = "$version+$(Get-GitShortCommit)"
+    }
+
+    return $version
+}
+
 function Ensure-FileExists {
     param(
         [Parameter(Mandatory)] [string] $Path,
@@ -194,7 +217,7 @@ $TrayHostProject = Join-Path $RepoRoot "ContextMenuMgr.TrayHost\ContextMenuMgr.T
 $NuGetConfig = Join-Path $RepoRoot "NuGet.Config"
 $PublishRoot = Join-Path $RepoRoot "build\publish"
 $DistRoot = Join-Path $RepoRoot "build\dist"
-$Version = Get-FrontendVersion -ProjectPath $FrontendProject -Configuration $Configuration
+$Version = Get-BuildVersion -ProjectPath $FrontendProject -Configuration $Configuration
 $ArtifactProductName = "ContextMenuMgrPlus"
 $IsccPath = Resolve-IsccPath -RepoRoot $RepoRoot
 $InstallerIss = Join-Path $RepoRoot "Installer\build_Installer.iss"
@@ -426,7 +449,8 @@ $jobInitScript = {
             [Parameter()] [string] $RuntimeIdentifier = "",
             [Parameter(Mandatory)] [string] $SelfContained,
             [Parameter(Mandatory)] [string] $OutputPath,
-            [Parameter(Mandatory)] [string] $ArtifactsPath
+            [Parameter(Mandatory)] [string] $ArtifactsPath,
+            [Parameter(Mandatory)] [string] $InformationalVersion
         )
 
         $arguments = @(
@@ -443,6 +467,7 @@ $jobInitScript = {
             "--no-restore",
             "--artifacts-path", $ArtifactsPath,
             "-p:UseAppHost=true",
+            "-p:InformationalVersion=$InformationalVersion",
             "-o", $OutputPath
         )
 
@@ -463,7 +488,8 @@ $jobInitScript = {
             [Parameter(Mandatory)] [string] $TrayHostProject,
             [Parameter(Mandatory)] [string] $PublishRoot,
             [Parameter(Mandatory)] [string] $NuGetConfig,
-            [Parameter(Mandatory)] [string] $PublishGroup
+            [Parameter(Mandatory)] [string] $PublishGroup,
+            [Parameter(Mandatory)] [string] $Version
         )
 
         $distributionOptions = Get-DistributionModeOptions -DistributionMode $DistributionMode
@@ -490,7 +516,8 @@ $jobInitScript = {
             -RuntimeIdentifier $runtimeIdentifier `
             -SelfContained $distributionOptions.SelfContained `
             -OutputPath $publishDir `
-            -ArtifactsPath $taskArtifactsRoot
+            -ArtifactsPath $taskArtifactsRoot `
+            -InformationalVersion $Version
 
         $backendRestoreArguments = New-DotNetRestoreArguments `
             -ProjectPath $BackendProject `
@@ -504,7 +531,8 @@ $jobInitScript = {
             -RuntimeIdentifier $runtimeIdentifier `
             -SelfContained $distributionOptions.SelfContained `
             -OutputPath $publishDir `
-            -ArtifactsPath $taskArtifactsRoot
+            -ArtifactsPath $taskArtifactsRoot `
+            -InformationalVersion $Version
 
         $trayHostRestoreArguments = New-DotNetRestoreArguments `
             -ProjectPath $TrayHostProject `
@@ -518,7 +546,8 @@ $jobInitScript = {
             -RuntimeIdentifier $runtimeIdentifier `
             -SelfContained $distributionOptions.SelfContained `
             -OutputPath $publishDir `
-            -ArtifactsPath $taskArtifactsRoot
+            -ArtifactsPath $taskArtifactsRoot `
+            -InformationalVersion $Version
 
         Invoke-External -FilePath "dotnet" -Arguments $frontendRestoreArguments -ErrorMessage "dotnet restore failed for frontend ($platformLabel, $DistributionMode)"
         Invoke-External -FilePath "dotnet" -Arguments $frontendPublishArguments -ErrorMessage "dotnet publish failed for frontend ($platformLabel, $DistributionMode)"
@@ -597,7 +626,8 @@ $jobInitScript = {
             -TrayHostProject $TrayHostProject `
             -PublishRoot $PublishRoot `
             -NuGetConfig $NuGetConfig `
-            -PublishGroup "installer"
+            -PublishGroup "installer" `
+            -Version $Version
 
         $installerOptions = Get-InstallerArchitectureOptions -Platform $Platform
         $setupBaseName = "$ArtifactProductName-$Version-$platformLabel-$($distributionOptions.InstallerSuffix)-Setup"
@@ -656,7 +686,8 @@ $jobInitScript = {
             -TrayHostProject $TrayHostProject `
             -PublishRoot $PublishRoot `
             -NuGetConfig $NuGetConfig `
-            -PublishGroup "portable"
+            -PublishGroup "portable" `
+            -Version $Version
 
         return New-PortableArchive `
             -PublishDir $publishDir `

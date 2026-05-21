@@ -106,8 +106,17 @@ jobs:
             throw "Neither InformationalVersion nor FileVersion was found in ContextMenuMgr.Frontend.csproj."
           }
 
-          $releaseTag = "v$releaseVersion"
           $isPrerelease = [string]::Equals($configuration, 'Beta', [System.StringComparison]::OrdinalIgnoreCase)
+          if ($isPrerelease) {
+            $commit = & git rev-parse --short HEAD
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
+              throw "Unable to resolve the current Git commit hash."
+            }
+
+            $releaseVersion = "$releaseVersion+$($commit.Trim())"
+          }
+
+          $releaseTag = "v$releaseVersion"
           if ($isPrerelease) {
             $releaseName = $releaseTag
           }
