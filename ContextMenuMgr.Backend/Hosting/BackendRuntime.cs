@@ -2,6 +2,7 @@
 using ContextMenuMgr.Contracts;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Security.Principal;
 
 namespace ContextMenuMgr.Backend.Hosting;
 
@@ -62,10 +63,31 @@ public sealed class BackendRuntime : IDisposable
         return new BackendRuntime(logger, monitor, pipeServer, frontendAutostartLauncher);
     }
 
+    public Task LogServiceStartupFailureAsync(Exception exception, bool cancellationRequested)
+    {
+        var identity = TryGetCurrentIdentityName();
+        return _logger.LogAsync(
+            RuntimeLogLevel.Error,
+            $"Windows service runtime startup failed. Identity={identity}, CancellationRequested={cancellationRequested}.{Environment.NewLine}{exception}",
+            CancellationToken.None);
+    }
+
     private static void TryMigrateLegacyRuntimeFiles()
     {
         TryCopyIfMissing(RuntimePaths.LegacyStateDatabasePath, RuntimePaths.StateDatabasePath);
         TryCopyIfMissing(RuntimePaths.LegacyBackendProtectionSettingsPath, Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"));
+    }
+
+    private static string TryGetCurrentIdentityName()
+    {
+        try
+        {
+            return WindowsIdentity.GetCurrent().Name;
+        }
+        catch (Exception ex)
+        {
+            return $"<unavailable:{ex.GetType().Name}>";
+        }
     }
 
     private static void TryCopyIfMissing(string sourcePath, string destinationPath)
@@ -122,24 +144,76 @@ public sealed class BackendRuntime : IDisposable
     {
         _ensureTrayHostOnStartup = ensureTrayHostOnStartup;
         _shutdownFrontendOnStop = true;
-        await _logger.LogAsync("========== Backend start ==========", cancellationToken);
-        await _logger.LogAsync("Backend starting.", cancellationToken);
-        await _monitor.Catalog.LogConsistencySummaryAsync(cancellationToken);
+        var stage = "Initialize";
 
-        _monitor.ItemDetected += OnItemDetected;
-        _pipeServer.BackendShutdownRequested += OnBackendShutdownRequested;
-        _pipeServer.EnsureTrayHostRequested += OnEnsureTrayHostRequested;
-        _monitor.Start(cancellationToken);
-        _pipeServer.Start(cancellationToken);
-
-        await _logger.LogAsync("Backend started.", cancellationToken);
-        await _logger.LogAsync("========== Backend started ==========", cancellationToken);
-
-        if (_ensureTrayHostOnStartup)
+        try
         {
-            // Service startup performs one best-effort tray launch. Follow-up
-            // attempts are then driven by session events and explicit pipe requests.
-            TryEnsureTrayHost(null, requireAutostartPolicy: true);
+            stage = "FileLogger";
+            await _logger.LogAsync("========== Backend start ==========", cancellationToken);
+            await _logger.LogAsync($"BackendStartStage=FileLogger initialized. CurrentLevel={_logger.CurrentLevel}.", cancellationToken);
+
+            stage = "BackendStarting";
+            await _logger.LogAsync("Backend starting.", cancellationToken);
+
+            stage = "LogConsistencySummary";
+            await LogConsistencySummaryForStartupAsync(cancellationToken);
+
+            stage = "MonitorEventSubscription";
+            await _logger.LogAsync("BackendStartStage=MonitorEventSubscription started.", cancellationToken);
+            _monitor.ItemDetected += OnItemDetected;
+            _pipeServer.BackendShutdownRequested += OnBackendShutdownRequested;
+            _pipeServer.EnsureTrayHostRequested += OnEnsureTrayHostRequested;
+            await _logger.LogAsync("BackendStartStage=MonitorEventSubscription completed.", cancellationToken);
+
+            stage = "MonitorStart";
+            await _logger.LogAsync("BackendStartStage=MonitorStart started.", cancellationToken);
+            _monitor.Start(cancellationToken);
+            await _logger.LogAsync("BackendStartStage=MonitorStart completed.", cancellationToken);
+
+            stage = "PipeServerStart";
+            await _logger.LogAsync("BackendStartStage=PipeServerStart started.", cancellationToken);
+            _pipeServer.Start(cancellationToken);
+            await _logger.LogAsync("BackendStartStage=PipeServerStart completed.", cancellationToken);
+
+            stage = "BackendStarted";
+            await _logger.LogAsync("Backend started.", cancellationToken);
+            await _logger.LogAsync("BackendStartStage=BackendStarted completed.", cancellationToken);
+            await _logger.LogAsync("========== Backend started ==========", cancellationToken);
+
+            if (_ensureTrayHostOnStartup)
+            {
+                stage = "TryEnsureTrayHost";
+                await _logger.LogAsync("BackendStartStage=TryEnsureTrayHost started.", cancellationToken);
+                // Service startup performs one best-effort tray launch. Follow-up
+                // attempts are then driven by session events and explicit pipe requests.
+                TryEnsureTrayHost(null, requireAutostartPolicy: true);
+                await _logger.LogAsync("BackendStartStage=TryEnsureTrayHost completed.", cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Error,
+                $"BackendStartStage={stage} failed: {ex}",
+                CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task LogConsistencySummaryForStartupAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _logger.LogAsync("BackendStartStage=LogConsistencySummary started.", cancellationToken);
+            await _monitor.Catalog.LogConsistencySummaryAsync(cancellationToken);
+            await _logger.LogAsync("BackendStartStage=LogConsistencySummary completed.", cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                "BackendStartStage=LogConsistencySummary failed but backend startup will continue: " + ex,
+                CancellationToken.None);
         }
     }
 

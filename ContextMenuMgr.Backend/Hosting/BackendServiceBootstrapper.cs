@@ -163,10 +163,38 @@ internal static class BackendServiceBootstrapper
 
         using (var service = new ServiceController(ServiceMetadata.ServiceName))
         {
-            if (service.Status != ServiceControllerStatus.Running)
+            var initialStatus = service.Status;
+            log($"ServiceStartCheck: InitialStatus={initialStatus}.");
+            if (initialStatus != ServiceControllerStatus.Running)
             {
+                log("ServiceStart: Calling Start().");
                 service.Start();
-                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(15));
+                log("ServiceStart: WaitForStatus Running started, Timeout=15s.");
+                try
+                {
+                    service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(15));
+                    service.Refresh();
+                    log($"ServiceStart: WaitForStatus succeeded, Status={service.Status}.");
+                }
+                catch (System.ServiceProcess.TimeoutException ex)
+                {
+                    var finalStatus = TryGetServiceControllerStatusText(service);
+                    log($"ServiceStart: WaitForStatus failed, Status={finalStatus}, Exception={ex}.");
+                    return (
+                        false,
+                        "SERVICE_START_TIMEOUT",
+                        $"InitialStatus={initialStatus}, FinalStatus={finalStatus}, Exception={ex}, Hint=Check backend.log and Windows Event Viewer for service startup exception.");
+                }
+                catch (Exception ex)
+                {
+                    var finalStatus = TryGetServiceControllerStatusText(service);
+                    log($"ServiceStart: WaitForStatus failed, Status={finalStatus}, Exception={ex}.");
+                    throw;
+                }
+            }
+            else
+            {
+                log($"ServiceStart: Already running, Status={initialStatus}.");
             }
         }
 
@@ -364,6 +392,19 @@ internal static class BackendServiceBootstrapper
         catch (InvalidOperationException)
         {
             return "Missing";
+        }
+    }
+
+    private static string TryGetServiceControllerStatusText(ServiceController service)
+    {
+        try
+        {
+            service.Refresh();
+            return service.Status.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"Unavailable({ex.GetType().Name}: {ex.Message})";
         }
     }
 

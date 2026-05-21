@@ -1,4 +1,5 @@
 ﻿using System.ServiceProcess;
+using System.Diagnostics;
 using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Hosting;
@@ -70,8 +71,11 @@ public sealed class BackendWindowsService : ServiceBase
             // the stricter "wait until pipe is ready" check separately.
             await _runtime.StartAsync(cancellationToken, ensureTrayHostOnStartup: true);
         }
-        catch
+        catch (Exception ex)
         {
+            await _runtime.LogServiceStartupFailureAsync(ex, cancellationToken.IsCancellationRequested);
+            TryWriteStartupFailureEventLog(ex, cancellationToken.IsCancellationRequested);
+
             try
             {
                 Stop();
@@ -79,6 +83,20 @@ public sealed class BackendWindowsService : ServiceBase
             catch
             {
             }
+        }
+    }
+
+    private void TryWriteStartupFailureEventLog(Exception exception, bool cancellationRequested)
+    {
+        try
+        {
+            EventLog.WriteEntry(
+                ServiceName,
+                $"Windows service runtime startup failed. CancellationRequested={cancellationRequested}.{Environment.NewLine}{exception}",
+                EventLogEntryType.Error);
+        }
+        catch
+        {
         }
     }
 
