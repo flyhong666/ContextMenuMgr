@@ -170,14 +170,74 @@ jobs:
           -Configuration "${{ inputs.configuration }}"
           -AppId "${{ inputs.app_id }}"
 
-      - name: Upload build artifacts
+      - name: Upload x64 self-contained installer
         uses: actions/upload-artifact@v7
         with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}
-          path: |
-            build/dist/*.exe
-            build/dist/*.zip
-            build/dist/artifacts.txt
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x64-self-contained-setup
+          path: build/dist/*-x64-self-contained-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload x86 self-contained installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x86-self-contained-setup
+          path: build/dist/*-x86-self-contained-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload arm64 self-contained installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-arm64-self-contained-setup
+          path: build/dist/*-arm64-self-contained-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload x64 framework-dependent installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x64-framework-dependent-setup
+          path: build/dist/*-x64-framework-dependent-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload x86 framework-dependent installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x86-framework-dependent-setup
+          path: build/dist/*-x86-framework-dependent-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload arm64 framework-dependent installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-arm64-framework-dependent-setup
+          path: build/dist/*-arm64-framework-dependent-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload x64 self-contained portable
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x64-self-contained-portable
+          path: build/dist/*-x64-self-contained-portable.zip
+          if-no-files-found: error
+
+      - name: Upload x86 self-contained portable
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x86-self-contained-portable
+          path: build/dist/*-x86-self-contained-portable.zip
+          if-no-files-found: error
+
+      - name: Upload arm64 self-contained portable
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-arm64-self-contained-portable
+          path: build/dist/*-arm64-self-contained-portable.zip
+          if-no-files-found: error
+
+      - name: Upload framework-dependent portable
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-framework-dependent-portable
+          path: build/dist/*-framework-dependent-portable.zip
           if-no-files-found: error
 
       - name: Create draft release
