@@ -19,6 +19,12 @@ internal sealed class Windows11ContextMenuCatalog
     private const string MachineBlockedPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
     private const string NamespaceCom = "http://schemas.microsoft.com/appx/manifest/com/windows10";
     private const string NamespaceDesktop4 = "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4";
+    private readonly FileLogger? _logger;
+
+    public Windows11ContextMenuCatalog(FileLogger? logger = null)
+    {
+        _logger = logger;
+    }
 
     public bool IsSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
 
@@ -37,16 +43,20 @@ internal sealed class Windows11ContextMenuCatalog
 
         if (!IsSupported || string.IsNullOrWhiteSpace(userSid))
         {
+            _logger?.LogFireAndForget($"Win11ContextMenuEnumerate: IsSupported={IsSupported}, UserSid={userSid ?? "<null>"}, Result=Skipped.");
             return [];
         }
 
         var packageNames = GetPackagedComPackages();
         if (packageNames.Length == 0)
         {
+            _logger?.LogFireAndForget($"Win11ContextMenuEnumerate: IsSupported={IsSupported}, UserSid={userSid}, PackageCount=0, Result=NoPackages.");
             return [];
         }
 
         var items = new ConcurrentDictionary<string, ContextMenuEntry>(StringComparer.OrdinalIgnoreCase);
+        var manifestCount = 0;
+        var parseFailureCount = 0;
 
         await Parallel.ForEachAsync(
             packageNames,
@@ -69,26 +79,36 @@ internal sealed class Windows11ContextMenuCatalog
                     var definitions = await AnalyzeManifestAsync(
                         package,
                         ct);
+                    if (definitions.Count > 0)
+                    {
+                        Interlocked.Increment(ref manifestCount);
+                    }
 
                     foreach (var definition in definitions)
                     {
                         var isEnabled = GetIsEnabled(definition.Id, userContext);
+                        var blockedSource = GetBlockedSource(definition.Id, userContext);
                         foreach (var category in MapCategories(definition.ContextTypes))
                         {
                             var entry = CreateEntry(definition, category, isEnabled, userSid);
                             items[entry.Id] = entry;
+                            _logger?.LogFireAndForget($"Win11ContextMenuEntry: PackageFullName={definition.Package.FullName}, DisplayName={definition.DisplayName}, Clsid={NormalizeGuid(definition.Id)}, HandlerPath={definition.ComServer.Path}, IsEnabled={isEnabled}, BlockedSource={blockedSource}, LogoPath=<not-resolved>.");
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Interlocked.Increment(ref parseFailureCount);
+                    _logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"Win11ContextMenuPackageParseFailure: PackageFullName={fullName}, Exception={ex}");
                 }
             });
 
-        return items.Values
+        var result = items.Values
             .OrderBy(static item => item.Category)
             .ThenBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        _logger?.LogFireAndForget($"Win11ContextMenuEnumerateSummary: IsSupported={IsSupported}, UserSid={userSid}, PackageCount={packageNames.Length}, ManifestCount={manifestCount}, EntriesCount={result.Length}, BlockedMachineCount={GetMachineBlockedCount()}, BlockedUserCount={GetUserBlockedCount(userSid)}, PackageParseFailures={parseFailureCount}.");
+        return result;
     }
 
     /// <summary>
@@ -118,10 +138,12 @@ internal sealed class Windows11ContextMenuCatalog
         if (enable)
         {
             DeleteGuidValue(userRoot, normalizedClsid);
+            _logger?.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("Win11ContextMenuSetEnabled", $@"HKEY_USERS\{userSid}\{UserBlockedPathSuffix}", normalizedClsid, RegistryValueKind.String, null, writable: true, result: "DeleteValue Success, Enable=true"));
         }
         else
         {
             userRoot.SetValue(normalizedClsid, displayName, RegistryValueKind.String);
+            _logger?.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("Win11ContextMenuSetEnabled", $@"HKEY_USERS\{userSid}\{UserBlockedPathSuffix}", normalizedClsid, RegistryValueKind.String, displayName, writable: true, result: "SetValue Success, Enable=false"));
         }
 
         return true;
@@ -443,6 +465,40 @@ internal sealed class Windows11ContextMenuCatalog
         // ContextMenuMgr writes {GUID} values; manual registry edits may omit braces.
         return key.GetValueNames()
             .Any(valueName => string.Equals(NormalizeGuid(valueName), normalizedClsid, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetBlockedSource(string handlerClsid, BackendUserContext? userContext)
+    {
+        var normalizedClsid = NormalizeGuid(handlerClsid);
+        using var machineBlocked = Registry.LocalMachine.OpenSubKey(MachineBlockedPath, writable: false);
+        var machine = HasGuidValue(machineBlocked, normalizedClsid);
+        var userSid = userContext?.Sid;
+        var user = false;
+        if (!string.IsNullOrWhiteSpace(userSid))
+        {
+            using var userBlocked = Registry.Users.OpenSubKey($@"{userSid}\{UserBlockedPathSuffix}", writable: false);
+            user = HasGuidValue(userBlocked, normalizedClsid);
+        }
+
+        return (machine, user) switch
+        {
+            (true, true) => "Both",
+            (true, false) => "Machine",
+            (false, true) => "User",
+            _ => "None"
+        };
+    }
+
+    private static int GetMachineBlockedCount()
+    {
+        using var key = Registry.LocalMachine.OpenSubKey(MachineBlockedPath, writable: false);
+        return key?.GetValueNames().Length ?? 0;
+    }
+
+    private static int GetUserBlockedCount(string userSid)
+    {
+        using var key = Registry.Users.OpenSubKey($@"{userSid}\{UserBlockedPathSuffix}", writable: false);
+        return key?.GetValueNames().Length ?? 0;
     }
 
     private static void DeleteGuidValue(RegistryKey key, string normalizedClsid)

@@ -24,22 +24,28 @@ public sealed class FileTypeSceneMenuService
 
     public Task<IReadOnlyList<FileTypeAnalysisResult>> AnalyzeAsync(FileTypeAnalysisRequest request, CancellationToken cancellationToken)
     {
-        var path = Environment.ExpandEnvironmentVariables(request.Path.Trim());
+        var inputPath = request.Path.Trim();
+        var path = Environment.ExpandEnvironmentVariables(inputPath);
         var results = new List<FileTypeAnalysisResult>();
+        _logger.LogFireAndForget($"FileTypeAnalyzeStart: InputPath={inputPath}, ExpandedPath={path}.");
 
         if (File.Exists(path))
         {
+            _logger.LogFireAndForget($"FileTypeAnalyzePathKind: ExpandedPath={path}, Kind=File.");
             AnalyzeFile(path, results, includeLnkScene: true);
         }
         else if (Directory.Exists(path))
         {
+            _logger.LogFireAndForget($"FileTypeAnalyzePathKind: ExpandedPath={path}, Kind=Directory.");
             AnalyzeDirectory(path, results);
         }
         else
         {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"FileTypeAnalyzePathKind: ExpandedPath={path}, Kind=Missing.");
             throw new FileNotFoundException("The selected file or folder does not exist.", path);
         }
 
+        _logger.LogFireAndForget($"FileTypeAnalyzeEnd: InputPath={inputPath}, ExpandedPath={path}, ResultCount={results.Count}, Results={string.Join(";", results.Select(static item => $"{item.SceneKind}:{item.ScopeValue}"))}.");
         return Task.FromResult<IReadOnlyList<FileTypeAnalysisResult>>(results);
     }
 
@@ -51,6 +57,7 @@ public sealed class FileTypeSceneMenuService
         try
         {
             var relativeRoot = ResolveSceneRoot(request.SceneKind, request.ScopeValue);
+            await _logger.LogAsync($"CreateSceneMenuItemStart: SceneKind={request.SceneKind}, ScopeValue={request.ScopeValue}, ResolvedRelativeRoot={relativeRoot}, ItemKind={request.ItemKind}, KeyName={request.KeyName}.", cancellationToken);
             if (string.IsNullOrWhiteSpace(relativeRoot))
             {
                 return new PipeResponse
@@ -88,6 +95,7 @@ public sealed class FileTypeSceneMenuService
                     string.Empty,
                     guid.ToString("B"),
                     RegistryValueKind.String);
+                await _logger.LogAsync(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateSceneShellExHandler", $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}", null, RegistryValueKind.String, guid.ToString("B"), writable: true, result: "SetValue Success"), cancellationToken);
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
@@ -98,6 +106,7 @@ public sealed class FileTypeSceneMenuService
             if (created is not null)
             {
                 await SuppressDetectionAsync(created, cancellationToken);
+                await _logger.LogAsync($"CreateSceneMenuItemSuppressDetection: CreatedItemId={created.Id}, RegistryPath={created.RegistryPath}, Result=Success.", cancellationToken);
             }
 
             await _logger.LogAsync($"Created scene menu item. Scene={request.SceneKind}, Scope={request.ScopeValue}, KeyName={keyName}.", cancellationToken);
@@ -111,7 +120,7 @@ public sealed class FileTypeSceneMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create scene menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create scene menu item: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -271,17 +280,19 @@ public sealed class FileTypeSceneMenuService
         await _stateStore.SaveAsync(states, cancellationToken);
     }
 
-    private static void WriteShellVerb(string relativeRoot, string keyName, CreateSceneMenuItemRequest request)
+    private void WriteShellVerb(string relativeRoot, string keyName, CreateSceneMenuItemRequest request)
     {
         var path = $@"HKEY_CLASSES_ROOT\{relativeRoot}\shell\{keyName}";
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
         {
             Registry.SetValue(path, "MUIVerb", request.DisplayName, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("WriteShellVerb", path, "MUIVerb", RegistryValueKind.String, request.DisplayName, writable: true, result: "SetValue Success"));
         }
 
         if (!string.IsNullOrWhiteSpace(request.Icon))
         {
             Registry.SetValue(path, "Icon", request.Icon, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("WriteShellVerb", path, "Icon", RegistryValueKind.String, request.Icon, writable: true, result: "SetValue Success"));
         }
 
         SetFlag(path, "Extended", request.Extended);
@@ -290,13 +301,19 @@ public sealed class FileTypeSceneMenuService
         SetFlag(path, "NeverDefault", request.NeverDefault);
         SetFlag(path, "ShowAsDisabledIfHidden", request.ShowAsDisabledIfHidden);
         Registry.SetValue($@"{path}\command", string.Empty, request.Command ?? string.Empty, RegistryValueKind.String);
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("WriteShellVerb", $@"{path}\command", null, RegistryValueKind.String, request.Command ?? string.Empty, writable: true, result: "SetValue Success"));
     }
 
-    private static void SetFlag(string path, string valueName, bool enabled)
+    private void SetFlag(string path, string valueName, bool enabled)
     {
         if (enabled)
         {
             Registry.SetValue(path, valueName, string.Empty, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("SetFlag", path, valueName, RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
+        }
+        else
+        {
+            _logger.LogFireAndForget($"SetFlag: Path={path}, ValueName={valueName}, Enabled=false, Operation=Skipped.");
         }
     }
 

@@ -46,9 +46,9 @@ public sealed class BackendRuntime : IDisposable
     {
         TryMigrateLegacyRuntimeFiles();
         var logger = new FileLogger(RuntimePaths.BackendLogPath);
-        var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath);
-        var protectionSettingsStore = new BackendProtectionSettingsStore(Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"));
-        var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory);
+        var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath, logger);
+        var protectionSettingsStore = new BackendProtectionSettingsStore(Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"), logger);
+        var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory, logger);
         var catalog = new ContextMenuRegistryCatalog(logger, stateStore, backupService, protectionSettingsStore);
         var specialMenuService = new SpecialMenuService(logger);
         var windows11BlocksService = new Windows11BlocksService(logger);

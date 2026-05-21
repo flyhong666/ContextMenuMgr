@@ -1,4 +1,5 @@
 ﻿﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.AccessControl;
@@ -88,6 +89,7 @@ public sealed class NamedPipeBackendServer
 
                 await server.WaitForConnectionAsync(cancellationToken);
                 server.ReadMode = PipeTransmissionMode.Byte;
+                await _logger.LogAsync($"PipeConnectionAccepted: PipeName={PipeConstants.PipeName}, Timestamp={DateTimeOffset.UtcNow:O}.", cancellationToken);
                 _ = ObserveClientTaskAsync(server, cancellationToken);
             }
             catch (OperationCanceledException)
@@ -98,7 +100,7 @@ public sealed class NamedPipeBackendServer
             catch (Exception ex)
             {
                 server?.Dispose();
-                await _logger.LogAsync(RuntimeLogLevel.Error, $"Named pipe accept loop failed: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Error, $"Named pipe accept loop failed: {ex}", cancellationToken);
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             }
         }
@@ -158,6 +160,7 @@ public sealed class NamedPipeBackendServer
     {
         var connection = new PipeClientConnection(stream);
         _clients[connection.Id] = connection;
+        await _logger.LogAsync($"PipeClientConnected: ConnectionId={connection.Id}, Timestamp={DateTimeOffset.UtcNow:O}.", cancellationToken);
 
         try
         {
@@ -179,16 +182,18 @@ public sealed class NamedPipeBackendServer
                 if (envelope.Request.Command == PipeCommand.SubscribeNotifications)
                 {
                     connection.IsNotificationSubscriber = true;
-                    await _logger.LogAsync($"Connection {connection.Id} marked as frontend notification subscriber.", cancellationToken);
+                    await _logger.LogAsync($"SubscribeNotifications: ConnectionId={connection.Id}, CorrelationId={envelope.CorrelationId}, ClientOperationId={envelope.Request.ClientOperationId}, Timestamp={DateTimeOffset.UtcNow:O}.", cancellationToken);
                 }
 
                 if (envelope.Request.Command == PipeCommand.SubscribeTrayHost)
                 {
                     connection.IsNotificationSubscriber = true;
-                    await _logger.LogAsync($"Connection {connection.Id} marked as tray-host subscriber.", cancellationToken);
+                    await _logger.LogAsync($"SubscribeTrayHost: ConnectionId={connection.Id}, CorrelationId={envelope.CorrelationId}, ClientOperationId={envelope.Request.ClientOperationId}, Timestamp={DateTimeOffset.UtcNow:O}.", cancellationToken);
                 }
 
                 PipeResponse response;
+                var stopwatch = Stopwatch.StartNew();
+                await _logger.LogAsync(BuildRequestStartLog(connection.Id, envelope.CorrelationId, envelope.Request), cancellationToken);
                 try
                 {
                     // Request handlers are allowed to fail independently; the pipe
@@ -199,7 +204,7 @@ public sealed class NamedPipeBackendServer
                 {
                     await _logger.LogAsync(
                         RuntimeLogLevel.Error,
-                        $"Pipe request {envelope.Request.Command} failed for {connection.Id}: {ex.Message}",
+                        $"PipeRequestException: ConnectionId={connection.Id}, CorrelationId={envelope.CorrelationId}, Command={envelope.Request.Command}, ClientOperationId={envelope.Request.ClientOperationId}, Exception={ex}",
                         cancellationToken);
                     response = new PipeResponse
                     {
@@ -207,6 +212,12 @@ public sealed class NamedPipeBackendServer
                         Message = ex.Message
                     };
                 }
+                finally
+                {
+                    stopwatch.Stop();
+                }
+
+                await _logger.LogAsync(BuildRequestEndLog(connection.Id, envelope.CorrelationId, envelope.Request, response, stopwatch.ElapsedMilliseconds), cancellationToken);
 
                 await connection.SendAsync(
                     new PipeEnvelope
@@ -261,13 +272,14 @@ public sealed class NamedPipeBackendServer
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Pipe client error: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Pipe client error: ConnectionId={connection.Id}, Exception={ex}", cancellationToken);
         }
         finally
         {
             var wasSubscriber = connection.IsNotificationSubscriber;
             _clients.TryRemove(connection.Id, out _);
             connection.Dispose();
+            await _logger.LogAsync($"PipeClientDisconnected: ConnectionId={connection.Id}, WasSubscriber={wasSubscriber}, Timestamp={DateTimeOffset.UtcNow:O}.", CancellationToken.None);
             if (wasSubscriber)
             {
                 await _logger.LogAsync($"Pipe subscriber disconnected: {connection.Id}", CancellationToken.None);
@@ -735,7 +747,13 @@ public sealed class NamedPipeBackendServer
             Notification = notification
         };
 
-        foreach (var connection in _clients.Values.Where(static connection => connection.IsNotificationSubscriber).ToList())
+        var subscribers = _clients.Values.Where(static connection => connection.IsNotificationSubscriber).ToList();
+        var removedDeadSubscribers = 0;
+        await _logger.LogAsync(
+            $"BroadcastNotificationStart: Kind={notification.Kind}, ClientOperationId={notification.ClientOperationId}, SubscriberCount={subscribers.Count}, Timestamp={DateTimeOffset.UtcNow:O}.",
+            cancellationToken);
+
+        foreach (var connection in subscribers)
         {
             try
             {
@@ -745,8 +763,13 @@ public sealed class NamedPipeBackendServer
             {
                 _clients.TryRemove(connection.Id, out _);
                 connection.Dispose();
+                removedDeadSubscribers++;
             }
         }
+
+        await _logger.LogAsync(
+            $"BroadcastNotificationEnd: Kind={notification.Kind}, SubscriberCount={subscribers.Count}, RemovedDeadSubscribers={removedDeadSubscribers}, Timestamp={DateTimeOffset.UtcNow:O}.",
+            cancellationToken);
     }
 
     /// <summary>
@@ -803,6 +826,12 @@ public sealed class NamedPipeBackendServer
             Message = "Cannot restart explorer: user context is not available in the isolated ShellNew pipeline."
         };
     }
+
+    private static string BuildRequestStartLog(Guid connectionId, Guid correlationId, PipeRequest request)
+        => $"PipeRequestStart: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, AutoStartEnabled={request.AutoStartEnabled}, ShellNewLock={request.ShellNewLock?.Lock}, Timestamp={DateTimeOffset.UtcNow:O}.";
+
+    private static string BuildRequestEndLog(Guid connectionId, Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
+        => $"PipeRequestEnd: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, Message={DiagnosticLogFormatter.FormatRegistryValueData(response.Message)}, ElapsedMs={elapsedMs}, HasItem={response.Item is not null}, HasSpecialItem={response.SpecialItem is not null}, ItemId={response.Item?.Id}, SpecialItemId={response.SpecialItem?.Id}.";
 
     private sealed class PipeClientConnection : IDisposable
     {

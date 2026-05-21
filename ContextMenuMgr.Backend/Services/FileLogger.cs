@@ -82,12 +82,27 @@ public sealed class FileLogger
         }
     }
 
+    public Task LogInformationAsync(string message, CancellationToken cancellationToken = default)
+        => LogAsync(RuntimeLogLevel.Information, message, cancellationToken);
+
+    public Task LogWarningAsync(string message, CancellationToken cancellationToken = default)
+        => LogAsync(RuntimeLogLevel.Warning, message, cancellationToken);
+
+    public Task LogErrorAsync(string message, CancellationToken cancellationToken = default)
+        => LogAsync(RuntimeLogLevel.Error, message, cancellationToken);
+
+    public Task LogErrorAsync(string message, Exception exception, CancellationToken cancellationToken = default)
+        => LogAsync(RuntimeLogLevel.Error, $"{message}{Environment.NewLine}{exception}", cancellationToken);
+
     /// <summary>
     /// Executes log Fire And Forget.
     /// </summary>
     public void LogFireAndForget(string message) => _ = LogAsync(message);
 
     public void LogFireAndForget(RuntimeLogLevel level, string message) => _ = LogAsync(level, message);
+
+    public void LogFireAndForget(RuntimeLogLevel level, string message, Exception exception)
+        => _ = LogAsync(level, $"{message}{Environment.NewLine}{exception}");
 
     private static RuntimeLogLevel TryLoadPersistedLogLevel()
     {

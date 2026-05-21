@@ -35,6 +35,7 @@ public sealed class SpecialMenuService
 
     public Task<IReadOnlyList<SpecialMenuEntry>> GetSnapshotAsync(SpecialMenuKind kind, BackendUserContext? userContext, CancellationToken cancellationToken)
     {
+        var requiresUserContext = kind is SpecialMenuKind.ShellNew or SpecialMenuKind.SendTo or SpecialMenuKind.WinX;
         IReadOnlyList<SpecialMenuEntry> items = kind switch
         {
             SpecialMenuKind.ShellNew => GetShellNewItems(RequireUserContext(userContext)),
@@ -47,6 +48,7 @@ public sealed class SpecialMenuService
             _ => []
         };
 
+        _logger.LogFireAndForget($"SpecialMenuGetSnapshot: Kind={kind}, RequiresUserContext={requiresUserContext}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, Count={items.Count}.");
         return Task.FromResult(items);
     }
 
@@ -54,6 +56,7 @@ public sealed class SpecialMenuService
     {
         try
         {
+            await _logger.LogAsync($"SpecialMenuSetEnabledStart: Kind={item.Kind}, Id={item.Id}, Enabled={enabled}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             SpecialMenuEntry updated;
             try
             {
@@ -71,7 +74,7 @@ public sealed class SpecialMenuService
             }
             catch (UnauthorizedAccessException ex)
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied when toggling {item.Kind} item {item.Id}: {ex}", cancellationToken);
 
                 if (item.Kind == SpecialMenuKind.DragDrop)
                 {
@@ -86,17 +89,17 @@ public sealed class SpecialMenuService
             }
             catch (SecurityException ex)
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when toggling {item.Kind} item {item.Id}: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security exception when toggling {item.Kind} item {item.Id}: {ex}", cancellationToken);
                 return Failure($"Security error: {ex.Message}. This operation may require elevated privileges.", operationId);
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Set special menu item enabled. Kind={item.Kind}, Id={item.Id}, Enabled={enabled}.", cancellationToken);
+            await _logger.LogAsync($"Set special menu item enabled. Kind={item.Kind}, Id={item.Id}, Enabled={enabled}, ResultId={updated.Id}, RegistryPath={updated.RegistryPath}, Path={updated.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             return Success("Special menu item updated.", updated, operationId);
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to toggle special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to toggle special menu item {item.Id}: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -105,6 +108,7 @@ public sealed class SpecialMenuService
     {
         try
         {
+            await _logger.LogAsync($"SpecialMenuCreateStart: Kind={request.SpecialKind}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, ShellNewExtension={request.ShellNewCreate?.Extension}, SendToName={request.SendToCreate?.DisplayName}, WinXGroup={request.WinXCreateGroup?.GroupName}, WinXEntry={request.WinXCreateEntry?.DisplayName}.", cancellationToken);
             var item = request.SpecialKind switch
             {
                 SpecialMenuKind.ShellNew when request.ShellNewCreate is not null => CreateShellNew(request.ShellNewCreate, RequireUserContext(userContext)),
@@ -119,12 +123,12 @@ public sealed class SpecialMenuService
             };
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Created special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
+            await _logger.LogAsync($"Created special menu item. Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             return Success("Special menu item created.", item, request.ClientOperationId);
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create special menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create special menu item: {ex}", cancellationToken);
             return Failure(ex.Message, request.ClientOperationId);
         }
     }
@@ -133,6 +137,7 @@ public sealed class SpecialMenuService
     {
         try
         {
+            await _logger.LogAsync($"SpecialMenuUpdateStart: Kind={request.SpecialKind}, TargetId={request.ShellNewUpdate?.Id ?? request.SpecialItem?.Id}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, ChangedFields=ShellNew(DisplayName={request.ShellNewUpdate?.DisplayName is not null}, IconPath={request.ShellNewUpdate?.IconPath is not null}, Command={request.ShellNewUpdate?.Command is not null}, DataText={request.ShellNewUpdate?.DataText is not null}, BeforeSeparator={request.ShellNewUpdate?.BeforeSeparator is not null}).", cancellationToken);
             var item = request.SpecialKind switch
             {
                 SpecialMenuKind.ShellNew when request.ShellNewUpdate is not null => UpdateShellNew(request.ShellNewUpdate, RequireUserContext(userContext)),
@@ -145,12 +150,12 @@ public sealed class SpecialMenuService
             };
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Updated special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
+            await _logger.LogAsync($"Updated special menu item. Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             return Success("Special menu item updated.", item, request.ClientOperationId);
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update special menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update special menu item: {ex}", cancellationToken);
             return Failure(ex.Message, request.ClientOperationId);
         }
     }
@@ -159,6 +164,7 @@ public sealed class SpecialMenuService
     {
         try
         {
+            await _logger.LogAsync($"SpecialMenuDeleteStart: Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             string? deletedPath = null;
             var deletedAt = DateTime.Now.ToString("o");
             var metadata = new Dictionary<string, string>(item.Metadata) { ["IsDeleted"] = "true", ["DeletedAt"] = deletedAt };
@@ -166,45 +172,45 @@ public sealed class SpecialMenuService
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath);
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, logger: _logger);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        SoftDeleteRegistryTree(ieDisabledPath);
+                        SoftDeleteRegistryTree(ieDisabledPath, logger: _logger);
                     }
 
                     break;
                 case SpecialMenuKind.ShellNew:
-                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, RequireUserContext(userContext), _logger);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath))
                     {
-                        SoftDeleteRegistryTree(disabledPath, RequireUserContext(userContext));
+                        SoftDeleteRegistryTree(disabledPath, RequireUserContext(userContext), _logger);
                     }
 
                     break;
                 case SpecialMenuKind.DragDrop:
                 case SpecialMenuKind.CommandStore:
-                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath);
+                    deletedPath = SoftDeleteRegistryTree(item.RegistryPath, logger: _logger);
                     break;
                 case SpecialMenuKind.GuidBlock:
-                    DeleteRegistryValue(Registry.LocalMachine, GuidBlockedPath, item.KeyName);
+                    DeleteRegistryValue(Registry.LocalMachine, GuidBlockedPath, item.KeyName, _logger);
                     break;
                 case SpecialMenuKind.SendTo:
-                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
+                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), _logger);
                     break;
                 case SpecialMenuKind.WinX:
-                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
+                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), _logger);
                     break;
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}, DeletedPath={deletedPath}.", cancellationToken);
+            await _logger.LogAsync($"Soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}, SourcePath={item.RegistryPath ?? item.Path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
 
             var deletedItem = item with { Metadata = metadata };
             return Success("Special menu item deleted.", deletedItem, operationId);
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete special menu item {item.Id}: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -213,38 +219,39 @@ public sealed class SpecialMenuService
     {
         try
         {
+            await _logger.LogAsync($"SpecialMenuUndoDeleteStart: Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    RestoreSoftDeletedRegistryTree(item.RegistryPath);
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath, logger: _logger);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        RestoreSoftDeletedRegistryTree(ieDisabledPath);
+                        RestoreSoftDeletedRegistryTree(ieDisabledPath, logger: _logger);
                     }
 
                     break;
                 case SpecialMenuKind.ShellNew:
-                    RestoreSoftDeletedRegistryTree(item.RegistryPath, RequireUserContext(userContext));
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath, RequireUserContext(userContext), _logger);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath))
                     {
-                        RestoreSoftDeletedRegistryTree(disabledPath, RequireUserContext(userContext));
+                        RestoreSoftDeletedRegistryTree(disabledPath, RequireUserContext(userContext), _logger);
                     }
 
                     break;
                 case SpecialMenuKind.DragDrop:
                 case SpecialMenuKind.CommandStore:
-                    RestoreSoftDeletedRegistryTree(item.RegistryPath);
+                    RestoreSoftDeletedRegistryTree(item.RegistryPath, logger: _logger);
                     break;
                 case SpecialMenuKind.SendTo:
-                    RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
+                    RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), _logger);
                     break;
                 case SpecialMenuKind.WinX:
-                    RestoreSoftDeletedFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
+                    RestoreSoftDeletedFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), _logger);
                     break;
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Restored soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
+            await _logger.LogAsync($"Restored soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}, RestoredPath={item.RegistryPath ?? item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
 
             var metadata = new Dictionary<string, string>(item.Metadata);
             metadata.Remove("IsDeleted");
@@ -254,7 +261,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore special menu item {item.Id}: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -263,27 +270,28 @@ public sealed class SpecialMenuService
     {
         try
         {
+            await _logger.LogAsync($"SpecialMenuPurgeDeletedStart: Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
-                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix);
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, logger: _logger);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var ieDisabledPath))
                     {
-                        DeleteRegistryTree(ieDisabledPath + DeletedSuffix);
+                        DeleteRegistryTree(ieDisabledPath + DeletedSuffix, logger: _logger);
                     }
 
                     break;
                 case SpecialMenuKind.ShellNew:
-                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, RequireUserContext(userContext));
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, RequireUserContext(userContext), _logger);
                     if (item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath))
                     {
-                        DeleteRegistryTree(disabledPath + DeletedSuffix, RequireUserContext(userContext));
+                        DeleteRegistryTree(disabledPath + DeletedSuffix, RequireUserContext(userContext), _logger);
                     }
 
                     break;
                 case SpecialMenuKind.DragDrop:
                 case SpecialMenuKind.CommandStore:
-                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix);
+                    DeleteRegistryTree(item.RegistryPath + DeletedSuffix, logger: _logger);
                     break;
                 case SpecialMenuKind.SendTo:
                     DeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
@@ -294,17 +302,17 @@ public sealed class SpecialMenuService
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Permanently deleted special menu item. Kind={item.Kind}, Id={item.Id}.", cancellationToken);
+            await _logger.LogAsync($"Permanently deleted special menu item. Kind={item.Kind}, Id={item.Id}, PurgedPath={item.RegistryPath ?? item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             return Success("Special menu item permanently deleted.", null, operationId);
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently delete special menu item {item.Id}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently delete special menu item {item.Id}: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
 
-    private static string? SoftDeleteRegistryTree(string? path, BackendUserContext? context = null)
+    private static string? SoftDeleteRegistryTree(string? path, BackendUserContext? context = null, FileLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -314,9 +322,11 @@ public sealed class SpecialMenuService
         try
         {
             var deletedPath = path + DeletedSuffix;
+            logger?.LogFireAndForget($"SoftDeleteRegistryTreeStart: Path={path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}.");
             using var sourceKey = OpenRegistryKey(path, writable: true, context);
             if (sourceKey is null)
             {
+                logger?.LogFireAndForget($"SoftDeleteRegistryTreeSkipped: Path={path}, Reason=MissingSource, Sid={DiagnosticLogFormatter.FormatSid(context)}.");
                 return null;
             }
 
@@ -328,15 +338,17 @@ public sealed class SpecialMenuService
 
             CopyRegistryKey(sourceKey, targetKey);
             DeleteRegistryTree(path, context);
+            logger?.LogFireAndForget($"SoftDeleteRegistryTreeEnd: Path={path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Result=Success.");
             return deletedPath;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"SoftDeleteRegistryTreeFailed: Path={path}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Exception={ex}");
             return null;
         }
     }
 
-    private static void RestoreSoftDeletedRegistryTree(string? path, BackendUserContext? context = null)
+    private static void RestoreSoftDeletedRegistryTree(string? path, BackendUserContext? context = null, FileLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -344,9 +356,11 @@ public sealed class SpecialMenuService
         }
 
         var deletedPath = path + DeletedSuffix;
+        logger?.LogFireAndForget($"RestoreSoftDeletedRegistryTreeStart: Path={path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}.");
         using var sourceKey = OpenRegistryKey(deletedPath, writable: true, context);
         if (sourceKey is null)
         {
+            logger?.LogFireAndForget($"RestoreSoftDeletedRegistryTreeSkipped: Path={path}, DeletedPath={deletedPath}, Reason=MissingDeletedSource, Sid={DiagnosticLogFormatter.FormatSid(context)}.");
             return;
         }
 
@@ -358,9 +372,10 @@ public sealed class SpecialMenuService
 
         CopyRegistryKey(sourceKey, targetKey);
         DeleteRegistryTree(deletedPath, context);
+        logger?.LogFireAndForget($"RestoreSoftDeletedRegistryTreeEnd: Path={path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Result=Success.");
     }
 
-    private static string? SoftDeleteFileSystemItem(string? path, string basePath)
+    private static string? SoftDeleteFileSystemItem(string? path, string basePath, FileLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -369,6 +384,7 @@ public sealed class SpecialMenuService
 
         try
         {
+            logger?.LogFireAndForget($"SoftDeleteFileSystemItemStart: Path={path}, BasePath={basePath}.");
             var deletedFolder = Path.Combine(basePath, DeletedFolderName);
             Directory.CreateDirectory(deletedFolder);
 
@@ -384,15 +400,17 @@ public sealed class SpecialMenuService
                 Directory.Move(path, GetUniqueDirectoryPath(deletedPath));
             }
 
+            logger?.LogFireAndForget($"SoftDeleteFileSystemItemEnd: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Result=Success.");
             return deletedPath;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"SoftDeleteFileSystemItemFailed: Path={path}, BasePath={basePath}, Exception={ex}");
             return null;
         }
     }
 
-    private static void RestoreSoftDeletedFileSystemItem(string? path, string basePath)
+    private static void RestoreSoftDeletedFileSystemItem(string? path, string basePath, FileLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -401,12 +419,14 @@ public sealed class SpecialMenuService
 
         try
         {
+            logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemStart: Path={path}, BasePath={basePath}.");
             var deletedFolder = Path.Combine(basePath, DeletedFolderName);
             var fileName = Path.GetFileName(path);
             var deletedPath = Path.Combine(deletedFolder, fileName);
 
             if (!File.Exists(deletedPath) && !Directory.Exists(deletedPath))
             {
+                logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemSkipped: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Reason=MissingDeletedItem.");
                 return;
             }
 
@@ -420,9 +440,11 @@ public sealed class SpecialMenuService
                 var targetPath = Path.Combine(basePath, fileName);
                 Directory.Move(deletedPath, GetUniqueDirectoryPath(targetPath));
             }
+            logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemEnd: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Result=Success.");
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"RestoreSoftDeletedFileSystemItemFailed: Path={path}, BasePath={basePath}, Exception={ex}");
         }
     }
 
@@ -450,7 +472,7 @@ public sealed class SpecialMenuService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to move special menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to move special menu item: {ex}", cancellationToken);
             return Failure(ex.Message, request.ClientOperationId);
         }
     }
@@ -461,17 +483,21 @@ public sealed class SpecialMenuService
         {
             if (kind == SpecialMenuKind.SendTo)
             {
-                RestoreDirectory(DefaultSendToPath, GetSendToPath(RequireUserContext(userContext)));
+                var destination = GetSendToPath(RequireUserContext(userContext));
+                await _logger.LogAsync($"RestoreDefaultsStart: Kind={kind}, Source={DefaultSendToPath}, Destination={destination}, GroupName={groupName}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+                RestoreDirectory(DefaultSendToPath, destination);
             }
             else if (kind == SpecialMenuKind.WinX)
             {
                 var source = string.IsNullOrWhiteSpace(groupName) ? DefaultWinXPath : Path.Combine(DefaultWinXPath, groupName);
                 var winXPath = GetWinXPath(RequireUserContext(userContext));
                 var destination = string.IsNullOrWhiteSpace(groupName) ? winXPath : Path.Combine(winXPath, groupName);
+                await _logger.LogAsync($"RestoreDefaultsStart: Kind={kind}, Source={source}, Destination={destination}, GroupName={groupName}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
                 EnsurePathUnder(destination, winXPath);
                 RestoreDirectory(source, destination);
                 foreach (var lnkPath in Directory.GetFiles(destination, "*.lnk", SearchOption.AllDirectories))
                 {
+                    await _logger.LogAsync($"WinXHashLnk: Path={lnkPath}.", cancellationToken);
                     WinXHasher.HashLnk(lnkPath);
                 }
             }
@@ -481,12 +507,12 @@ public sealed class SpecialMenuService
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"Restored defaults for {kind}.", cancellationToken);
+            await _logger.LogAsync($"Restored defaults for {kind}. GroupName={groupName}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
             return new PipeResponse { Success = true, Message = "Defaults restored.", ClientOperationId = operationId };
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore defaults for {kind}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore defaults for {kind}: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -713,7 +739,7 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static SpecialMenuEntry CreateShellNew(ShellNewCreateRequest request, BackendUserContext context)
+    private SpecialMenuEntry CreateShellNew(ShellNewCreateRequest request, BackendUserContext context)
     {
         var extension = NormalizeExtension(request.Extension);
         if (extension == ".")
@@ -726,6 +752,7 @@ public sealed class SpecialMenuService
             .FirstOrDefault(key => key is not null)
             ?? throw new InvalidOperationException($"The extension {extension} does not exist. Set its default app first.");
         var existingProgId = existingExtensionKey.GetValue(null)?.ToString();
+        _logger.LogFireAndForget($"CreateShellNewStart: Sid={context.Sid}, Extension={extension}, ExistingProgId={existingProgId}, UserClassesPath={DiagnosticLogFormatter.FormatUserHivePath(context, UserClassesPath)}.");
         if (string.IsNullOrWhiteSpace(existingProgId) || Registry.ClassesRoot.OpenSubKey(existingProgId) is null)
         {
             throw new InvalidOperationException($"The extension {extension} does not have a valid ProgId/default app.");
@@ -746,18 +773,23 @@ public sealed class SpecialMenuService
             ?? throw new InvalidOperationException("Unable to create ShellNew key.");
         if (!string.IsNullOrEmpty(request.DataText))
         {
-            shellNewKey.SetValue("Data", Encoding.UTF8.GetBytes(request.DataText), RegistryValueKind.Binary);
+            var data = Encoding.UTF8.GetBytes(request.DataText);
+            shellNewKey.SetValue("Data", data, RegistryValueKind.Binary);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}\ShellNew", "Data", RegistryValueKind.Binary, data, writable: true, result: "SetValue Success"));
         }
         else
         {
             shellNewKey.SetValue("NullFile", string.Empty, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}\ShellNew", "NullFile", RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
         }
 
         var spec = GetUserClassesRootSpec(context);
-        return EnumerateShellNewForExtension(spec, extension).First();
+        var item = EnumerateShellNewForExtension(spec, extension).First();
+        _logger.LogFireAndForget($"CreateShellNewEnd: Sid={context.Sid}, Extension={extension}, CreatedKeyPath={item.RegistryPath}, ResultItemId={item.Id}, ResultPath={item.RegistryPath}.");
+        return item;
     }
 
-    private static SpecialMenuEntry UpdateShellNew(ShellNewUpdateRequest request, BackendUserContext context)
+    private SpecialMenuEntry UpdateShellNew(ShellNewUpdateRequest request, BackendUserContext context)
     {
         var registryPath = DecodeId(request.Id);
         using var key = OpenRegistryKey(registryPath, writable: true, context)
@@ -766,19 +798,26 @@ public sealed class SpecialMenuService
         var spec = GetClassesRootSpecForPath(registryPath, context);
         var extensionKey = spec.Root.OpenSubKey(extension, writable: false);
         var progId = extensionKey?.GetValue(null)?.ToString();
+        _logger.LogFireAndForget($"UpdateShellNewStart: Sid={context.Sid}, RegistryPath={registryPath}, Extension={extension}, ProgId={progId}, TouchFriendlyTypeName={request.DisplayName is not null}, TouchIconPath={request.IconPath is not null}, TouchCommand={request.Command is not null}, TouchData={request.DataText is not null}, TouchBeforeSeparator={request.BeforeSeparator is not null}.");
 
         if (!string.IsNullOrWhiteSpace(request.DisplayName) && !string.IsNullOrWhiteSpace(progId))
         {
             using var progIdKey = spec.Root.CreateSubKey(progId, writable: true);
             progIdKey?.SetValue("FriendlyTypeName", request.DisplayName, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", $@"{spec.RegistryPrefix}\{progId}", "FriendlyTypeName", RegistryValueKind.String, request.DisplayName, writable: true, result: "SetValue Success"));
         }
 
         SetOptionalValue(key, "IconPath", request.IconPath);
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", registryPath, "IconPath", RegistryValueKind.String, request.IconPath, writable: true, result: request.IconPath is null ? "DeleteValue/Skipped" : "SetValue"));
         SetOptionalValue(key, "Command", request.Command);
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", registryPath, "Command", RegistryValueKind.String, request.Command, writable: true, result: request.Command is null ? "DeleteValue/Skipped" : "SetValue"));
         if (request.DataText is not null)
         {
             key.DeleteValue("NullFile", throwOnMissingValue: false);
-            key.SetValue("Data", Encoding.UTF8.GetBytes(request.DataText), RegistryValueKind.Binary);
+            var data = Encoding.UTF8.GetBytes(request.DataText);
+            key.SetValue("Data", data, RegistryValueKind.Binary);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", registryPath, "NullFile", RegistryValueKind.String, null, writable: true, result: "DeleteValue"));
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", registryPath, "Data", RegistryValueKind.Binary, data, writable: true, result: "SetValue"));
         }
 
         if (request.BeforeSeparator is not null)
@@ -789,17 +828,21 @@ public sealed class SpecialMenuService
             if (request.BeforeSeparator.Value)
             {
                 config?.SetValue("BeforeSeparator", string.Empty, RegistryValueKind.String);
+                _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", $@"{registryPath}\Config", "BeforeSeparator", RegistryValueKind.String, string.Empty, writable: true, result: "SetValue"));
             }
             else
             {
                 config?.DeleteValue("BeforeSeparator", throwOnMissingValue: false);
+                _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("UpdateShellNew", $@"{registryPath}\Config", "BeforeSeparator", RegistryValueKind.String, null, writable: true, result: "DeleteValue"));
             }
         }
 
-        return EnumerateShellNewForExtension(spec, extension).First();
+        var item = EnumerateShellNewForExtension(spec, extension).First();
+        _logger.LogFireAndForget($"UpdateShellNewEnd: Sid={context.Sid}, RegistryPath={registryPath}, ResultId={item.Id}, ResultPath={item.RegistryPath}.");
+        return item;
     }
 
-    private static SpecialMenuEntry SetShellNewEnabled(SpecialMenuEntry item, bool enabled, BackendUserContext context)
+    private SpecialMenuEntry SetShellNewEnabled(SpecialMenuEntry item, bool enabled, BackendUserContext context)
     {
         var source = item.RegistryPath ?? DecodeId(item.Id);
         var target = item.Metadata.TryGetValue("DisabledRegistryPath", out var disabledPath)
@@ -810,7 +853,9 @@ public sealed class SpecialMenuService
             return item with { IsEnabled = enabled };
         }
 
-        MoveRegistryKey(source, target, context);
+        _logger.LogFireAndForget($"SetShellNewEnabledMoveStart: Sid={context.Sid}, Enabled={enabled}, SourcePath={source}, TargetPath={target}.");
+        MoveRegistryKey(source, target, context, _logger);
+        _logger.LogFireAndForget($"SetShellNewEnabledMoveEnd: Sid={context.Sid}, Enabled={enabled}, SourcePath={source}, TargetPath={target}, Result=Success.");
         return item with
         {
             Id = EncodeId(SpecialMenuKind.ShellNew, target),
@@ -830,6 +875,9 @@ public sealed class SpecialMenuService
         var extension = registryPath.Split('\\').FirstOrDefault(static part => part.StartsWith('.')) ?? string.Empty;
         var allRealItems = GetShellNewItems(context).Where(IsRealShellNewEntry).ToList();
         var movableItems = allRealItems.Where(static item => item.CanMove).ToList();
+        await _logger.LogAsync(
+            $"MoveShellNewStart: Sid={context.Sid}, OrderLocked=true, RequestId={request.Id}, Extension={extension}, MoveUp={request.MoveUp}, AllRealItemsBefore={JoinShellNewOrder(allRealItems)}, MovableItemsBefore={JoinShellNewOrder(movableItems)}.",
+            cancellationToken);
         var index = movableItems.FindIndex(item => string.Equals(item.KeyName, extension, StringComparison.OrdinalIgnoreCase));
         var target = request.MoveUp ? index - 1 : index + 1;
         if (index < 0 || target < 0 || target >= movableItems.Count)
@@ -844,33 +892,41 @@ public sealed class SpecialMenuService
             throw new InvalidOperationException("ShellNew item was not found.");
         }
 
+        await _logger.LogAsync($"MoveShellNewSwap: Sid={context.Sid}, SourceIndex={index}, TargetIndex={target}, SourceAllIndex={sourceAllIndex}, TargetAllIndex={targetAllIndex}.", cancellationToken);
         (allRealItems[sourceAllIndex], allRealItems[targetAllIndex]) = (allRealItems[targetAllIndex], allRealItems[sourceAllIndex]);
         var movedItem = allRealItems[targetAllIndex];
 
         try
         {
             var unlock = RemoveShellNewOrderLock(context);
-            await _logger.LogAsync($"ShellNew move unlocked order key. {unlock.Message}", cancellationToken);
+            await _logger.LogAsync($"ShellNew move unlocked order key. UnlockResult={unlock.Message}", cancellationToken);
             try
             {
                 WriteShellNewOrderClasses(context, allRealItems);
+                await _logger.LogAsync($"ShellNew move write Classes result. Result=Success, FinalClasses={JoinShellNewOrder(allRealItems)}.", cancellationToken);
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or InvalidOperationException)
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"ShellNew order write failed after unlock; retrying after ACL reset. Error={ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"ShellNew order write failed after unlock; retrying after ACL reset. Error={ex}", cancellationToken);
                 var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
                 await _logger.LogAsync($"ShellNew move retry ACL reset. {reset.Message}", cancellationToken);
                 WriteShellNewOrderClasses(context, allRealItems);
+                await _logger.LogAsync($"ShellNew move retry write Classes result. Result=Success, FinalClasses={JoinShellNewOrder(allRealItems)}.", cancellationToken);
             }
         }
         finally
         {
             var relock = ApplyShellNewOrderLock(context);
-            await _logger.LogAsync($"ShellNew move relocked order key. KeyCreated={relock.KeyCreated}. Reset={relock.Reset.Message}. Verification={relock.VerificationMessage}", cancellationToken);
+            await _logger.LogAsync($"ShellNew move relocked order key. RelockResult=Success, KeyCreated={relock.KeyCreated}. Reset={relock.Reset.Message}. Verification={relock.VerificationMessage}", cancellationToken);
         }
+
+        await _logger.LogAsync($"MoveShellNewEnd: Sid={context.Sid}, Extension={extension}, FinalClasses={JoinShellNewOrder(allRealItems)}, MovedItemId={movedItem.Id}.", cancellationToken);
 
         return movedItem;
     }
+
+    private static string JoinShellNewOrder(IEnumerable<SpecialMenuEntry> items)
+        => string.Join(";", items.Select(static item => item.KeyName));
 
     private static IReadOnlyList<SpecialMenuEntry> GetSendToItems(BackendUserContext context)
     {
@@ -2145,16 +2201,26 @@ public sealed class SpecialMenuService
     private static bool IsRealShellNewEntry(SpecialMenuEntry item) =>
         !string.Equals(item.Metadata.GetValueOrDefault("EntryType"), "Separator", StringComparison.OrdinalIgnoreCase);
 
-    private static void WriteShellNewOrderClasses(BackendUserContext context, IReadOnlyList<SpecialMenuEntry> allRealItems)
+    private void WriteShellNewOrderClasses(BackendUserContext context, IReadOnlyList<SpecialMenuEntry> allRealItems)
     {
         using var userRoot = GetUserRegistryRoot(context, writable: true);
         using var orderKey = userRoot.CreateSubKey(ShellNewOrderPath, writable: true)
             ?? throw new InvalidOperationException("Unable to open ShellNew order key.");
 
+        var classes = allRealItems.Select(static item => item.KeyName).ToArray();
         orderKey.SetValue(
             "Classes",
-            allRealItems.Select(static item => item.KeyName).ToArray(),
+            classes,
             RegistryValueKind.MultiString);
+        _logger.LogFireAndForget(
+            DiagnosticLogFormatter.BuildRegistryOperationLog(
+                "WriteShellNewOrderClasses",
+                DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath),
+                "Classes",
+                RegistryValueKind.MultiString,
+                classes,
+                writable: true,
+                result: $"Success, Count={classes.Length}, Classes={string.Join(";", classes)}"));
     }
 
     private static bool ShellNewOrderKeyExists(BackendUserContext context)
@@ -2178,50 +2244,72 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static bool CreateShellNewOrderKeyIfMissing(BackendUserContext context)
+    private bool CreateShellNewOrderKeyIfMissing(BackendUserContext context)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
         if (ShellNewOrderKeyExists(context))
         {
+            _logger.LogFireAndForget($"CreateShellNewOrderKeyIfMissing: FullPath={fullPath}, Exists=True, Created=False.");
             return false;
         }
 
         using var userRoot = GetUserRegistryRoot(context, writable: true);
         using var key = userRoot.CreateSubKey(ShellNewOrderPath, writable: true);
-        return key is not null;
+        var created = key is not null;
+        _logger.LogFireAndForget($"CreateShellNewOrderKeyIfMissing: FullPath={fullPath}, Exists=False, Created={created}.");
+        return created;
     }
 
-    private static RegistryKey? OpenShellNewOrderKeyForAclWrite(BackendUserContext context)
+    private RegistryKey? OpenShellNewOrderKeyForAclWrite(BackendUserContext context)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+        const RegistryRights rights = RegistryRights.ChangePermissions;
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclWrite", fullPath, rights, "PermissionCheck=ReadWriteSubTree"));
         using var userRoot = GetUserRegistryRoot(context, writable: false);
-        return userRoot.OpenSubKey(
+        var key = userRoot.OpenSubKey(
             ShellNewOrderPath,
             RegistryKeyPermissionCheck.ReadWriteSubTree,
-            RegistryRights.ChangePermissions);
+            rights);
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclWrite", fullPath, rights, key is null ? "Missing" : "Success"));
+        return key;
     }
 
-    private static RegistryKey? OpenShellNewOrderKeyForAclRead(BackendUserContext context)
+    private RegistryKey? OpenShellNewOrderKeyForAclRead(BackendUserContext context)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+        const RegistryRights rights = RegistryRights.ReadPermissions;
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclRead", fullPath, rights, "PermissionCheck=ReadSubTree"));
         using var userRoot = GetUserRegistryRoot(context, writable: false);
-        return userRoot.OpenSubKey(
+        var key = userRoot.OpenSubKey(
             ShellNewOrderPath,
             RegistryKeyPermissionCheck.ReadSubTree,
-            RegistryRights.ReadPermissions);
+            rights);
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclRead", fullPath, rights, key is null ? "Missing" : "Success"));
+        return key;
     }
 
-    private static RegistryKey? OpenShellNewOrderKeyForTakeOwnership(BackendUserContext context)
+    private RegistryKey? OpenShellNewOrderKeyForTakeOwnership(BackendUserContext context)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+        const RegistryRights rights = RegistryRights.TakeOwnership;
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForTakeOwnership", fullPath, rights, "PermissionCheck=ReadWriteSubTree"));
         using var userRoot = GetUserRegistryRoot(context, writable: false);
-        return userRoot.OpenSubKey(
+        var key = userRoot.OpenSubKey(
             ShellNewOrderPath,
             RegistryKeyPermissionCheck.ReadWriteSubTree,
-            RegistryRights.TakeOwnership);
+            rights);
+        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForTakeOwnership", fullPath, rights, key is null ? "Missing" : "Success"));
+        return key;
     }
 
-    private static ShellNewAclResetResult ResetShellNewOrderAcl(BackendUserContext context, bool createIfMissing)
+    private ShellNewAclResetResult ResetShellNewOrderAcl(BackendUserContext context, bool createIfMissing)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+        _logger.LogFireAndForget($"ResetShellNewOrderAclStart: Sid={context.Sid}, FullPath={fullPath}, CreateIfMissing={createIfMissing}, Privileges=Security|TakeOwnership|Restore.");
         EnableSecurityPrivilege();
         EnableTakeOwnershipPrivilege();
         EnableRestorePrivilege();
+        _logger.LogFireAndForget($"ResetShellNewOrderAclPrivilegesEnabled: Sid={context.Sid}, Security=True, TakeOwnership=True, Restore=True.");
 
         if (createIfMissing)
         {
@@ -2231,21 +2319,27 @@ public sealed class SpecialMenuService
         Exception? normalFailure = null;
         try
         {
+            _logger.LogFireAndForget($"ResetShellNewOrderAclNormalStageStart: FullPath={fullPath}.");
             using var key = OpenShellNewOrderKeyForAclWrite(context);
             if (key is null)
             {
+                _logger.LogFireAndForget($"ResetShellNewOrderAclNormalStageEnd: FullPath={fullPath}, Result=KeyMissing.");
                 return new ShellNewAclResetResult(KeyMissing: true, UsedOwnershipFallback: false, Message: "ShellNew order key is missing.");
             }
 
-            return ResetShellNewOrderAclCore(context, key, usedOwnershipFallback: false);
+            var result = ResetShellNewOrderAclCore(context, key, usedOwnershipFallback: false);
+            _logger.LogFireAndForget($"ResetShellNewOrderAclNormalStageEnd: FullPath={fullPath}, Result={result.Message}.");
+            return result;
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or InvalidOperationException)
         {
             normalFailure = ex;
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ResetShellNewOrderAclNormalStageFailure: FullPath={fullPath}, Exception={ex}");
         }
 
         try
         {
+            _logger.LogFireAndForget($"ResetShellNewOrderAclOwnershipFallbackStart: FullPath={fullPath}.");
             using (var ownerKey = OpenShellNewOrderKeyForTakeOwnership(context))
             {
                 if (ownerKey is null)
@@ -2260,18 +2354,22 @@ public sealed class SpecialMenuService
 
             using var aclKey = OpenShellNewOrderKeyForAclWrite(context)
                 ?? throw new InvalidOperationException("Unable to reopen ShellNew order key for ACL write after taking ownership.");
-            return ResetShellNewOrderAclCore(context, aclKey, usedOwnershipFallback: true);
+            var result = ResetShellNewOrderAclCore(context, aclKey, usedOwnershipFallback: true);
+            _logger.LogFireAndForget($"ResetShellNewOrderAclOwnershipFallbackEnd: FullPath={fullPath}, Result={result.Message}.");
+            return result;
         }
         catch (Exception fallbackEx) when (fallbackEx is UnauthorizedAccessException or SecurityException or InvalidOperationException)
         {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ResetShellNewOrderAclOwnershipFallbackFailure: FullPath={fullPath}, NormalException={normalFailure}, FallbackException={fallbackEx}");
             throw new InvalidOperationException(
                 $"Failed to reset ShellNew order ACL. Normal={normalFailure?.Message}; Fallback={fallbackEx.Message}",
                 fallbackEx);
         }
     }
 
-    private static ShellNewAclResetResult ResetShellNewOrderAclCore(BackendUserContext context, RegistryKey key, bool usedOwnershipFallback)
+    private ShellNewAclResetResult ResetShellNewOrderAclCore(BackendUserContext context, RegistryKey key, bool usedOwnershipFallback)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
         RegistrySecurity security;
         var oldDaclRead = true;
         try
@@ -2282,10 +2380,18 @@ public sealed class SpecialMenuService
         {
             oldDaclRead = false;
             security = CreateUnlockedShellNewOrderSecurity(context);
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ResetShellNewOrderAclCoreOldDaclReadFailure: FullPath={fullPath}, ReplacementDaclFallback=True, Exception={ex}");
         }
 
+        _logger.LogFireAndForget($"ResetShellNewOrderAclCore: FullPath={fullPath}, OldDaclRead={oldDaclRead}, ReplacementDaclFallback={!oldDaclRead}, UsedOwnershipFallback={usedOwnershipFallback}, AreAccessRulesProtected={security.AreAccessRulesProtected}.");
         if (oldDaclRead)
         {
+            var beforeRules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().ToArray();
+            foreach (var rule in beforeRules.Where(static rule => !rule.IsInherited))
+            {
+                _logger.LogFireAndForget($"ResetShellNewOrderAclBeforeAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
+            }
+
             foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().ToArray())
             {
                 if (!ShouldRemoveShellNewDenyRule(existing, context))
@@ -2293,6 +2399,7 @@ public sealed class SpecialMenuService
                     continue;
                 }
 
+                _logger.LogFireAndForget($"ResetShellNewOrderAclRemovedAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(existing)}.");
                 try
                 {
                     security.RemoveAccessRuleSpecific(existing);
@@ -2308,10 +2415,15 @@ public sealed class SpecialMenuService
         }
 
         key.SetAccessControl(security);
+        _logger.LogFireAndForget($"ResetShellNewOrderAclSetAccessControl: FullPath={fullPath}, Success=True.");
 
         try
         {
             var verifySecurity = key.GetAccessControl(AccessControlSections.Access);
+            foreach (var rule in verifySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().Where(static rule => !rule.IsInherited))
+            {
+                _logger.LogFireAndForget($"ResetShellNewOrderAclAfterAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
+            }
             var hasBadDeny = verifySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
                 .Cast<RegistryAccessRule>()
                 .Any(rule => ShouldRemoveShellNewDenyRule(rule, context));
@@ -2364,10 +2476,12 @@ public sealed class SpecialMenuService
         return security;
     }
 
-    private static ShellNewLockChangeResult ApplyShellNewOrderLock(BackendUserContext context)
+    private ShellNewLockChangeResult ApplyShellNewOrderLock(BackendUserContext context)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
         var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
         var keyCreated = CreateShellNewOrderKeyIfMissing(context);
+        _logger.LogFireAndForget($"ApplyShellNewOrderLockResetResult: Sid={context.Sid}, FullPath={fullPath}, Reset={reset.Message}, KeyCreated={keyCreated}.");
 
         RegistrySecurity security;
         try
@@ -2384,25 +2498,30 @@ public sealed class SpecialMenuService
         using var key = OpenShellNewOrderKeyForAclWrite(context)
             ?? throw new InvalidOperationException("Unable to open ShellNew order key for ACL write.");
 
-        security.AddAccessRule(new RegistryAccessRule(
+        var denyRule = new RegistryAccessRule(
             new SecurityIdentifier(WellKnownSidType.WorldSid, null),
             RegistryRights.Delete | RegistryRights.WriteKey,
             InheritanceFlags.None,
             PropagationFlags.None,
-            AccessControlType.Deny));
+            AccessControlType.Deny);
+        security.AddAccessRule(denyRule);
+        _logger.LogFireAndForget($"ApplyShellNewOrderLockAddedAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(denyRule)}.");
 
         key.SetAccessControl(security);
+        _logger.LogFireAndForget($"ApplyShellNewOrderLockSetAccessControl: FullPath={fullPath}, Success=True.");
 
         if (!TryVerifyShellNewOrderLocked(context, out var verificationMessage))
         {
             throw new InvalidOperationException($"ShellNew order lock ACL did not contain expected Everyone deny rule after SetAccessControl. {verificationMessage}");
         }
 
+        _logger.LogFireAndForget($"ApplyShellNewOrderLockVerification: FullPath={fullPath}, Verification={verificationMessage}.");
         return new ShellNewLockChangeResult(keyCreated, reset, $"OpenRights=ChangePermissions only. Applied Everyone Deny Delete|WriteKey. SetAccessControl=True. {verificationMessage}");
     }
 
-    private static ShellNewAclResetResult RemoveShellNewOrderLock(BackendUserContext context)
+    private ShellNewAclResetResult RemoveShellNewOrderLock(BackendUserContext context)
     {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
         var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
         var verificationMessage = "KeyMissing.";
 
@@ -2411,6 +2530,7 @@ public sealed class SpecialMenuService
             throw new InvalidOperationException($"Failed to verify ShellNew order unlock after ACL reset. {verificationMessage}");
         }
 
+        _logger.LogFireAndForget($"RemoveShellNewOrderLockVerification: FullPath={fullPath}, Reset={reset.Message}, Verification={verificationMessage}.");
         return reset with { Message = $"{reset.Message} FinalState={verificationMessage}" };
     }
 
@@ -2466,7 +2586,7 @@ public sealed class SpecialMenuService
 
     private static bool IsShellNewOrderLocked(BackendUserContext context)
     {
-        if (TryReadShellNewOrderLockState(context, out var locked, out _))
+        if (TryReadShellNewOrderLockStateStatic(context, out var locked, out _))
         {
             return locked;
         }
@@ -2474,47 +2594,15 @@ public sealed class SpecialMenuService
         return locked;
     }
 
-    private static bool TryVerifyShellNewOrderLocked(BackendUserContext context, out string message)
-    {
-        if (TryReadShellNewOrderLockState(context, out var locked, out message))
-        {
-            if (locked)
-            {
-                message = "Verification=ReadableFoundEveryoneDeny.";
-                return true;
-            }
-
-            message = "Verification=ReadableNoEveryoneDeny.";
-            return false;
-        }
-
-        message = "Verification=UnreadableAfterLockTreatingAsLocked.";
-        return locked;
-    }
-
-    private static bool TryVerifyShellNewOrderUnlocked(BackendUserContext context, out string message)
-    {
-        if (TryReadShellNewOrderLockState(context, out var locked, out message))
-        {
-            if (!locked)
-            {
-                message = "ReadableUnlocked.";
-                return true;
-            }
-
-            message = "ReadableStillLocked.";
-            return false;
-        }
-
-        message = "UnreadableAfterReset.";
-        return false;
-    }
-
-    private static bool TryReadShellNewOrderLockState(BackendUserContext context, out bool locked, out string message)
+    private static bool TryReadShellNewOrderLockStateStatic(BackendUserContext context, out bool locked, out string message)
     {
         try
         {
-            using var key = OpenShellNewOrderKeyForAclRead(context);
+            using var userRoot = GetUserRegistryRoot(context, writable: false);
+            using var key = userRoot.OpenSubKey(
+                ShellNewOrderPath,
+                RegistryKeyPermissionCheck.ReadSubTree,
+                RegistryRights.ReadPermissions);
             if (key is null)
             {
                 locked = false;
@@ -2534,9 +2622,100 @@ public sealed class SpecialMenuService
         }
         catch (SecurityException ex)
         {
+            locked = true;
+            message = $"UnreadableSecurityException={ex.Message}";
+            return false;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            locked = true;
+            message = $"UnreadableUnauthorizedAccessException={ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            locked = false;
+            message = $"UnexpectedAclReadFailure={ex.Message}";
+            return false;
+        }
+    }
+
+    private bool TryVerifyShellNewOrderLocked(BackendUserContext context, out string message)
+    {
+        if (TryReadShellNewOrderLockState(context, out var locked, out message))
+        {
+            if (locked)
+            {
+                message = "Verification=ReadableFoundEveryoneDeny.";
+                return true;
+            }
+
+            message = "Verification=ReadableNoEveryoneDeny.";
+            return false;
+        }
+
+        message = "Verification=UnreadableAfterLockTreatingAsLocked.";
+        return locked;
+    }
+
+    private bool TryVerifyShellNewOrderUnlocked(BackendUserContext context, out string message)
+    {
+        if (TryReadShellNewOrderLockState(context, out var locked, out message))
+        {
+            if (!locked)
+            {
+                message = "ReadableUnlocked.";
+                return true;
+            }
+
+            message = "ReadableStillLocked.";
+            return false;
+        }
+
+        message = "UnreadableAfterReset.";
+        return false;
+    }
+
+    private bool TryReadShellNewOrderLockState(BackendUserContext context, out bool locked, out string message)
+    {
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+        _logger.LogFireAndForget($"TryReadShellNewOrderLockStateStart: FullPath={fullPath}, ReadPermissionsAttempt=True.");
+        try
+        {
+            using var key = OpenShellNewOrderKeyForAclRead(context);
+            if (key is null)
+            {
+                locked = false;
+                message = "ShellNew order key is missing.";
+                return true;
+            }
+
+            var security = key.GetAccessControl(AccessControlSections.Access);
+            var explicitDenyRules = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<RegistryAccessRule>()
+                .Where(static rule => !rule.IsInherited && rule.AccessControlType == AccessControlType.Deny)
+                .ToArray();
+            locked = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+                .Cast<RegistryAccessRule>()
+                .Any(rule => rule.AccessControlType == AccessControlType.Deny
+                    && IsWorldSid(rule.IdentityReference)
+                    && rule.RegistryRights.HasFlag(RegistryRights.Delete)
+                    && rule.RegistryRights.HasFlag(RegistryRights.WriteKey));
+            message = locked ? "ReadableFoundEveryoneDeny." : "ReadableNoEveryoneDeny.";
+            foreach (var rule in explicitDenyRules)
+            {
+                _logger.LogFireAndForget($"TryReadShellNewOrderLockStateExplicitDenyAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
+            }
+
+            _logger.LogFireAndForget($"TryReadShellNewOrderLockStateEnd: FullPath={fullPath}, Result={message}");
+            return true;
+        }
+        catch (SecurityException ex)
+        {
             Debug.WriteLine($"[IsShellNewOrderLocked] SecurityException when reading ACL: {ex.Message}");
             locked = true;
             message = $"UnreadableSecurityException={ex.Message}";
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"TryReadShellNewOrderLockStateEnd: FullPath={fullPath}, Result=UnreadableSecurityException, Exception={ex}");
             return false;
         }
         catch (UnauthorizedAccessException ex)
@@ -2544,6 +2723,7 @@ public sealed class SpecialMenuService
             Debug.WriteLine($"[IsShellNewOrderLocked] UnauthorizedAccessException when reading ACL: {ex.Message}");
             locked = true;
             message = $"UnreadableUnauthorizedAccessException={ex.Message}";
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"TryReadShellNewOrderLockStateEnd: FullPath={fullPath}, Result=UnreadableUnauthorizedAccessException, Exception={ex}");
             return false;
         }
         catch (Exception ex)
@@ -2551,6 +2731,7 @@ public sealed class SpecialMenuService
             Debug.WriteLine($"[IsShellNewOrderLocked] Unexpected exception when reading ACL: {ex.Message}");
             locked = false;
             message = $"UnexpectedAclReadFailure={ex.Message}";
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"TryReadShellNewOrderLockStateEnd: FullPath={fullPath}, Result=UnexpectedAclReadFailure, Exception={ex}");
             return false;
         }
     }
@@ -2820,39 +3001,49 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static void MoveRegistryKey(string sourcePath, string targetPath, BackendUserContext? context = null)
+    private static void MoveRegistryKey(string sourcePath, string targetPath, BackendUserContext? context = null, FileLogger? logger = null)
     {
+        logger?.LogFireAndForget($"MoveRegistryKeyStart: SourcePath={sourcePath}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}.");
         if (string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase))
         {
+            logger?.LogFireAndForget($"MoveRegistryKeySkipped: SourcePath={sourcePath}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Reason=SamePath.");
             return;
         }
 
         try
         {
-            MoveRegistryKeyCore(sourcePath, targetPath, context);
+            MoveRegistryKeyCore(sourcePath, targetPath, context, logger);
+            logger?.LogFireAndForget($"MoveRegistryKeyEnd: SourcePath={sourcePath}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Result=Success.");
         }
         catch (UnauthorizedAccessException)
         {
             EnableSecurityPrivilege();
-            MoveRegistryKeyCore(sourcePath, targetPath, context);
+            logger?.LogFireAndForget($"MoveRegistryKeyRetryWithSecurityPrivilege: SourcePath={sourcePath}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}.");
+            MoveRegistryKeyCore(sourcePath, targetPath, context, logger);
+            logger?.LogFireAndForget($"MoveRegistryKeyEnd: SourcePath={sourcePath}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Result=SuccessAfterPrivilege.");
         }
     }
 
-    private static void MoveRegistryKeyCore(string sourcePath, string targetPath, BackendUserContext? context = null)
+    private static void MoveRegistryKeyCore(string sourcePath, string targetPath, BackendUserContext? context = null, FileLogger? logger = null)
     {
+        var (sourceRoot, sourceSubPath) = SplitRegistryPath(sourcePath, context);
+        var (targetRoot, targetSubPath) = SplitRegistryPath(targetPath, context);
+        logger?.LogFireAndForget($"MoveRegistryKeyCore: SourcePath={sourcePath}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, SourceRoot={sourceRoot.Name}, SourceSubPath={sourceSubPath}, TargetRoot={targetRoot.Name}, TargetSubPath={targetSubPath}.");
         using var source = OpenRegistryKey(sourcePath, writable: false, context)
             ?? throw new InvalidOperationException($"Unable to open {sourcePath}.");
-        CreateRegistryKeyCopy(source, targetPath, context);
-        DeleteRegistryTree(sourcePath, context);
+        CreateRegistryKeyCopy(source, targetPath, context, logger);
+        DeleteRegistryTree(sourcePath, context, logger);
     }
 
-    private static void CreateRegistryKeyCopy(RegistryKey source, string targetPath, BackendUserContext? context = null)
+    private static void CreateRegistryKeyCopy(RegistryKey source, string targetPath, BackendUserContext? context = null, FileLogger? logger = null)
     {
         using var target = CreateRegistryKey(targetPath, context)
             ?? throw new InvalidOperationException($"Unable to create {targetPath}.");
+        logger?.LogFireAndForget($"CreateRegistryKeyCopy: SourceName={source.Name}, TargetPath={targetPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, ValueCount={source.GetValueNames().Length}, SubKeyCount={source.GetSubKeyNames().Length}.");
         foreach (var valueName in source.GetValueNames())
         {
             target.SetValue(valueName, source.GetValue(valueName)!, source.GetValueKind(valueName));
+            logger?.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateRegistryKeyCopySetValue", targetPath, valueName, source.GetValueKind(valueName), source.GetValue(valueName), writable: true, result: "Success"));
         }
 
         foreach (var subKeyName in source.GetSubKeyNames())
@@ -2860,12 +3051,12 @@ public sealed class SpecialMenuService
             using var subKey = source.OpenSubKey(subKeyName, writable: false);
             if (subKey is not null)
             {
-                CreateRegistryKeyCopy(subKey, $@"{targetPath}\{subKeyName}", context);
+                CreateRegistryKeyCopy(subKey, $@"{targetPath}\{subKeyName}", context, logger);
             }
         }
     }
 
-    private static void DeleteRegistryTree(string? fullPath, BackendUserContext? context = null)
+    private static void DeleteRegistryTree(string? fullPath, BackendUserContext? context = null, FileLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(fullPath))
         {
@@ -2873,16 +3064,19 @@ public sealed class SpecialMenuService
         }
 
         var (root, subPath) = SplitRegistryPath(fullPath, context);
+        logger?.LogFireAndForget($"DeleteRegistryTreeStart: FullPath={fullPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Root={root.Name}, SubPath={subPath}.");
         var parentPath = subPath.Contains('\\') ? subPath[..subPath.LastIndexOf('\\')] : string.Empty;
         var keyName = subPath.Contains('\\') ? subPath[(subPath.LastIndexOf('\\') + 1)..] : subPath;
         using var parent = root.OpenSubKey(parentPath, writable: true);
         parent?.DeleteSubKeyTree(keyName, throwOnMissingSubKey: false);
+        logger?.LogFireAndForget($"DeleteRegistryTreeEnd: FullPath={fullPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Root={root.Name}, SubPath={subPath}, Result=Success.");
     }
 
-    private static void DeleteRegistryValue(RegistryKey root, string subPath, string valueName)
+    private static void DeleteRegistryValue(RegistryKey root, string subPath, string valueName, FileLogger? logger = null)
     {
         using var key = root.OpenSubKey(subPath, writable: true);
         key?.DeleteValue(valueName, throwOnMissingValue: false);
+        logger?.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("DeleteRegistryValue", $@"{root.Name}\{subPath}", valueName, null, null, writable: true, result: key is null ? "MissingKey" : "Success"));
     }
 
     private static RegistryKey? OpenRegistryKey(string? fullPath, bool writable, BackendUserContext? context = null)

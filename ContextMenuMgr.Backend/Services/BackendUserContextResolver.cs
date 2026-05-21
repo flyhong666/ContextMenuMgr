@@ -23,6 +23,7 @@ public sealed class BackendUserContextResolver
 
     public BackendUserContext? TryResolveFromPipeClient(NamedPipeServerStream stream)
     {
+        _logger.LogFireAndForget("UserContextResolveStart: Source=PipeClient.");
         try
         {
             string? sid = null;
@@ -34,26 +35,35 @@ public sealed class BackendUserContextResolver
                 userName = identity.Name;
             });
 
-            return string.IsNullOrWhiteSpace(sid)
+            var context = string.IsNullOrWhiteSpace(sid)
                 ? null
                 : CreateContext(sid, userName ?? sid, sessionId: null);
+            _logger.LogFireAndForget(
+                context is null
+                    ? "UserContextResolveFailure: Source=PipeClient, Reason=MissingSid."
+                    : $"UserContextResolveSuccess: Source=PipeClient, Sid={context.Sid}, UserName={context.UserName}, ProfilePath={context.ProfilePath}, SessionId=<null>.");
+            return context;
         }
         catch (Exception ex)
         {
-            _ = _logger.LogAsync(RuntimeLogLevel.Warning, $"Unable to resolve pipe client user context: {ex.Message}", CancellationToken.None);
+            _ = _logger.LogAsync(RuntimeLogLevel.Warning, $"Unable to resolve pipe client user context: {ex}", CancellationToken.None);
             return null;
         }
     }
 
     public BackendUserContext? TryResolveInteractiveUserFallback()
     {
-        if (TryResolveSession(unchecked((int)NativeMethods.WTSGetActiveConsoleSessionId()), out var context))
+        var activeConsoleSessionId = unchecked((int)NativeMethods.WTSGetActiveConsoleSessionId());
+        _logger.LogFireAndForget($"UserContextResolveStart: Source=InteractiveFallback, ActiveConsoleSessionId={activeConsoleSessionId}.");
+        if (TryResolveSession(activeConsoleSessionId, out var context))
         {
+            _logger.LogFireAndForget($"UserContextResolveSuccess: Source=ActiveConsole, Sid={context!.Sid}, UserName={context.UserName}, ProfilePath={context.ProfilePath}, SessionId={context.SessionId}.");
             return context;
         }
 
         if (!NativeMethods.WTSEnumerateSessionsW(IntPtr.Zero, 0, 1, out var sessionInfoPtr, out var count))
         {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"UserContextResolveFailure: Source=WTSEnumerateSessions, LastWin32Error={Marshal.GetLastWin32Error()}.");
             return null;
         }
 
@@ -65,6 +75,7 @@ public sealed class BackendUserContextResolver
             {
                 var current = IntPtr.Add(sessionInfoPtr, index * dataSize);
                 var sessionInfo = Marshal.PtrToStructure<NativeMethods.WTS_SESSION_INFO>(current);
+                _logger.LogFireAndForget($"UserContextSessionCandidate: SessionId={sessionInfo.SessionID}, State={sessionInfo.State}.");
                 if (!TryResolveSession(sessionInfo.SessionID, out var userContext))
                 {
                     continue;
@@ -72,6 +83,7 @@ public sealed class BackendUserContextResolver
 
                 if (sessionInfo.State == NativeMethods.WTS_CONNECTSTATE_CLASS.WTSActive)
                 {
+                    _logger.LogFireAndForget($"UserContextResolveSuccess: Source=WTSEnumerate Active, Sid={userContext!.Sid}, UserName={userContext.UserName}, ProfilePath={userContext.ProfilePath}, SessionId={userContext.SessionId}.");
                     return userContext;
                 }
 
@@ -79,6 +91,15 @@ public sealed class BackendUserContextResolver
                 {
                     connected = userContext;
                 }
+            }
+
+            if (connected is not null)
+            {
+                _logger.LogFireAndForget($"UserContextResolveSuccess: Source=WTSEnumerate Connected, Sid={connected.Sid}, UserName={connected.UserName}, ProfilePath={connected.ProfilePath}, SessionId={connected.SessionId}.");
+            }
+            else
+            {
+                _logger.LogFireAndForget(RuntimeLogLevel.Warning, "UserContextResolveFailure: Source=InteractiveFallback, Reason=NoActiveOrConnectedUserToken.");
             }
 
             return connected;
@@ -94,6 +115,7 @@ public sealed class BackendUserContextResolver
         context = null;
         if (sessionId < 0 || !NativeMethods.WTSQueryUserToken(sessionId, out var tokenHandle))
         {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"UserContextSessionTokenFailure: SessionId={sessionId}, LastWin32Error={Marshal.GetLastWin32Error()}.");
             return false;
         }
 
@@ -104,14 +126,16 @@ public sealed class BackendUserContextResolver
             var sid = identity.User?.Value;
             if (string.IsNullOrWhiteSpace(sid))
             {
+                _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"UserContextSessionFailure: SessionId={sessionId}, Reason=MissingSid.");
                 return false;
             }
 
             context = CreateContext(sid, identity.Name, sessionId);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"UserContextSessionFailure: SessionId={sessionId}, Exception={ex}");
             return false;
         }
     }
@@ -121,6 +145,7 @@ public sealed class BackendUserContextResolver
         var profilePath = GetProfilePath(sid);
         if (string.IsNullOrWhiteSpace(profilePath) || !Directory.Exists(profilePath))
         {
+            // This exception is logged by the caller with the attempted session/source.
             throw new InvalidOperationException($"Unable to resolve profile path for {sid}.");
         }
 

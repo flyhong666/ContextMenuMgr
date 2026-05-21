@@ -2,6 +2,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -11,13 +12,15 @@ namespace ContextMenuMgr.Backend.Services;
 public sealed class RegistryBackupService
 {
     private readonly string _backupDirectory;
+    private readonly FileLogger? _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RegistryBackupService"/> class.
     /// </summary>
-    public RegistryBackupService(string backupDirectory)
+    public RegistryBackupService(string backupDirectory, FileLogger? logger = null)
     {
         _backupDirectory = backupDirectory;
+        _logger = logger;
         Directory.CreateDirectory(_backupDirectory);
     }
 
@@ -27,7 +30,12 @@ public sealed class RegistryBackupService
     public async Task<string> ExportKeyAsync(string registryPath, CancellationToken cancellationToken)
     {
         var backupPath = Path.Combine(_backupDirectory, $"{GetSafeFileName(registryPath)}.reg");
-        await RunRegAsync($"export \"{registryPath}\" \"{backupPath}\" /y", cancellationToken);
+        await RunRegAsync(
+            action: "RegistryBackupExport",
+            arguments: $"export \"{registryPath}\" \"{backupPath}\" /y",
+            registryPath: registryPath,
+            backupPath: backupPath,
+            cancellationToken: cancellationToken);
         return backupPath;
     }
 
@@ -36,7 +44,12 @@ public sealed class RegistryBackupService
     /// </summary>
     public async Task RestoreBackupAsync(string backupFilePath, CancellationToken cancellationToken)
     {
-        await RunRegAsync($"import \"{backupFilePath}\"", cancellationToken);
+        await RunRegAsync(
+            action: "RegistryBackupImport",
+            arguments: $"import \"{backupFilePath}\"",
+            registryPath: null,
+            backupPath: backupFilePath,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -44,14 +57,28 @@ public sealed class RegistryBackupService
     /// </summary>
     public void DeleteBackupFile(string? backupFilePath)
     {
-        if (!string.IsNullOrWhiteSpace(backupFilePath) && File.Exists(backupFilePath))
+        if (string.IsNullOrWhiteSpace(backupFilePath))
+        {
+            return;
+        }
+
+        var existsBefore = File.Exists(backupFilePath);
+        if (existsBefore)
         {
             File.Delete(backupFilePath);
         }
+
+        _logger?.LogFireAndForget($"RegistryBackupDelete: BackupFilePath={backupFilePath}, ExistsBefore={existsBefore}, Result={(existsBefore ? "Deleted" : "Skipped")}.");
     }
 
-    private static async Task RunRegAsync(string arguments, CancellationToken cancellationToken)
+    private async Task RunRegAsync(
+        string action,
+        string arguments,
+        string? registryPath,
+        string backupPath,
+        CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
         var startInfo = new ProcessStartInfo
         {
             FileName = "reg.exe",
@@ -66,9 +93,15 @@ public sealed class RegistryBackupService
             ?? throw new InvalidOperationException("Unable to start reg.exe.");
 
         await process.WaitForExitAsync(cancellationToken);
+        stopwatch.Stop();
 
         var standardOutput = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         var standardError = await process.StandardError.ReadToEndAsync(cancellationToken);
+
+        await (_logger?.LogAsync(
+            process.ExitCode == 0 ? RuntimeLogLevel.Information : RuntimeLogLevel.Warning,
+            $"{action}: RegistryPath={DiagnosticLogFormatter.FormatRegistryPath(registryPath)}, BackupPath={backupPath}, RegExeArguments={arguments}, ExitCode={process.ExitCode}, ElapsedMs={stopwatch.ElapsedMilliseconds}{(process.ExitCode == 0 ? string.Empty : $", Stdout={DiagnosticLogFormatter.FormatRegistryValueData(standardOutput)}, Stderr={DiagnosticLogFormatter.FormatRegistryValueData(standardError)}")}.",
+            cancellationToken) ?? Task.CompletedTask);
 
         if (process.ExitCode != 0)
         {

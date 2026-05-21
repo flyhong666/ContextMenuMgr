@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Text.Json;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -14,14 +15,16 @@ public sealed class ContextMenuStateStore
     };
 
     private readonly string _storagePath;
+    private readonly FileLogger? _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ContextMenuStateStore"/> class.
     /// </summary>
-    public ContextMenuStateStore(string storagePath)
+    public ContextMenuStateStore(string storagePath, FileLogger? logger = null)
     {
         _storagePath = storagePath;
+        _logger = logger;
         var directory = Path.GetDirectoryName(storagePath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
@@ -65,11 +68,13 @@ public sealed class ContextMenuStateStore
     {
         if (!File.Exists(_storagePath))
         {
+            _logger?.LogFireAndForget($"ContextMenuStateStoreLoad: Path={_storagePath}, Exists=false, PersistedStateCount=0.");
             return new Dictionary<string, PersistedContextMenuState>(StringComparer.OrdinalIgnoreCase);
         }
 
         await using var stream = File.OpenRead(_storagePath);
         var states = await JsonSerializer.DeserializeAsync<Dictionary<string, PersistedContextMenuState>>(stream, JsonOptions, cancellationToken);
+        _logger?.LogFireAndForget($"ContextMenuStateStoreLoad: Path={_storagePath}, Exists=true, PersistedStateCount={states?.Count ?? 0}.");
         return states is null
             ? new Dictionary<string, PersistedContextMenuState>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, PersistedContextMenuState>(states, StringComparer.OrdinalIgnoreCase);
@@ -77,7 +82,16 @@ public sealed class ContextMenuStateStore
 
     private async Task SaveCoreAsync(Dictionary<string, PersistedContextMenuState> states, CancellationToken cancellationToken)
     {
-        await using var stream = File.Create(_storagePath);
-        await JsonSerializer.SerializeAsync(stream, states, JsonOptions, cancellationToken);
+        try
+        {
+            await using var stream = File.Create(_storagePath);
+            await JsonSerializer.SerializeAsync(stream, states, JsonOptions, cancellationToken);
+            _logger?.LogFireAndForget($"ContextMenuStateStoreSave: Path={_storagePath}, PersistedStateCount={states.Count}, Result=Success.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"ContextMenuStateStoreSaveFailed: Path={_storagePath}, PersistedStateCount={states.Count}, Exception={ex}");
+            throw;
+        }
     }
 }

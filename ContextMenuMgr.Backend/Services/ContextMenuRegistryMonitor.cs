@@ -46,6 +46,7 @@ public sealed class ContextMenuRegistryMonitor
     /// </summary>
     public void Start(CancellationToken cancellationToken)
     {
+        _logger.LogFireAndForget($"RegistryMonitorStart: PollIntervalMs={_pollInterval.TotalMilliseconds}.");
         _monitorTask ??= Task.Run(() => MonitorLoopAsync(cancellationToken), cancellationToken);
     }
 
@@ -54,16 +55,22 @@ public sealed class ContextMenuRegistryMonitor
         var knownItems = (await _catalog.GetSnapshotAsync(cancellationToken))
             .Where(static item => item.IsPresentInRegistry && !item.IsDeleted)
             .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        await _logger.LogAsync($"RegistryMonitorBaseline: VisibleItemCount={knownItems.Count}.", cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
+                await _logger.LogAsync($"RegistryMonitorDebounceWait: DelayMs={_pollInterval.TotalMilliseconds}.", cancellationToken);
                 await Task.Delay(_pollInterval, cancellationToken);
 
                 var currentSnapshot = (await _catalog.GetSnapshotAsync(cancellationToken))
                     .Where(static item => item.IsPresentInRegistry && !item.IsDeleted)
                     .ToList();
+                var newIds = currentSnapshot.Count(item => !knownItems.ContainsKey(item.Id));
+                var deletedIds = knownItems.Keys.Except(currentSnapshot.Select(item => item.Id), StringComparer.OrdinalIgnoreCase).Count();
+                var modifiedIds = currentSnapshot.Count(item => knownItems.TryGetValue(item.Id, out var previous) && RequiresApprovalForExternalReenable(previous, item));
+                await _logger.LogAsync($"RegistryMonitorSnapshotComparison: PreviousCount={knownItems.Count}, CurrentCount={currentSnapshot.Count}, NewItemIds={newIds}, ModifiedItemIds={modifiedIds}, DeletedItemIds={deletedIds}.", cancellationToken);
 
                 if (_interactiveBaselineResetRequested)
                 {
@@ -99,7 +106,7 @@ public sealed class ContextMenuRegistryMonitor
                         continue;
                     }
 
-                    await _logger.LogAsync($"Detected new menu item: {item.DisplayName}", cancellationToken);
+                    await _logger.LogAsync($"RegistryMonitorChangeDetected: Kind=New, ItemId={item.Id}, DisplayName={item.DisplayName}, Root={item.SourceRootPath}, Path={item.RegistryPath}.", cancellationToken);
                     ItemDetected?.Invoke(this, item);
                 }
 
@@ -112,7 +119,7 @@ public sealed class ContextMenuRegistryMonitor
 
                     if (RequiresApprovalForExternalReenable(previous, item))
                     {
-                        await _logger.LogAsync($"Detected externally re-enabled menu item: {item.DisplayName}", cancellationToken);
+                        await _logger.LogAsync($"RegistryMonitorChangeDetected: Kind=Modified, ItemId={item.Id}, DisplayName={item.DisplayName}, Root={item.SourceRootPath}, Path={item.RegistryPath}.", cancellationToken);
                         ItemDetected?.Invoke(this, item);
                         continue;
                     }
@@ -122,16 +129,18 @@ public sealed class ContextMenuRegistryMonitor
 
                 foreach (var removedId in knownItems.Keys.Except(currentSnapshot.Select(item => item.Id), StringComparer.OrdinalIgnoreCase).ToList())
                 {
+                    await _logger.LogAsync($"RegistryMonitorChangeDetected: Kind=Deleted, ItemId={removedId}.", cancellationToken);
                     knownItems.Remove(removedId);
                 }
             }
             catch (OperationCanceledException)
             {
+                await _logger.LogAsync("RegistryMonitorStop: Reason=CancellationRequested.", CancellationToken.None);
                 break;
             }
             catch (Exception ex)
             {
-                await _logger.LogAsync($"Registry monitor error: {ex.Message}", cancellationToken);
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Registry monitor error: {ex}", cancellationToken);
             }
         }
     }

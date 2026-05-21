@@ -55,6 +55,7 @@ public sealed class BackendServiceManager : IBackendServiceManager
     {
         var stopwatch = Stopwatch.StartNew();
         FrontendDebugLog.Info("BackendServiceManager", "InstallOrRepairServiceAsync started.");
+        FrontendDebugLog.Info("BackendServiceManager", $"Current frontend SID: {GetCurrentUserSid() ?? "<null>"}");
         var backendExePath = ResolveBackendExecutablePath();
         if (backendExePath is null)
         {
@@ -68,9 +69,11 @@ public sealed class BackendServiceManager : IBackendServiceManager
             $"ContextMenuMgr-bootstrap-{Guid.NewGuid():N}.json");
         try
         {
+            var bootstrapArguments = AppendUserSidArgument($"--service-bootstrap install-or-repair --result-file \"{resultFilePath}\"");
+            FrontendDebugLog.Info("BackendServiceManager", $"Install bootstrap arguments: {bootstrapArguments}, HasUserSid={bootstrapArguments.Contains("--user-sid", StringComparison.OrdinalIgnoreCase)}");
             using var process = Process.Start(CreateElevatedBackendStartInfo(
                 backendExePath,
-                AppendUserSidArgument($"--service-bootstrap install-or-repair --result-file \"{resultFilePath}\"")));
+                bootstrapArguments));
             if (process is null)
             {
                 FrontendDebugLog.Info("BackendServiceManager", "Failed to start elevated bootstrap process.");
@@ -96,19 +99,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
-            FrontendDebugLog.Error("BackendServiceManager", ex, "User cancelled UAC elevation.");
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UAC cancelled during install. Elapsed={stopwatch.ElapsedMilliseconds} ms.");
             return new BackendServiceBootstrapResult(false, true, "ELEVATION_CANCELLED", string.Empty);
         }
         catch (Exception ex)
         {
-            FrontendDebugLog.Error("BackendServiceManager", ex, "InstallOrRepairServiceAsync threw.");
-            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.Message);
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"InstallOrRepairServiceAsync threw. Exception={ex}, Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.ToString());
         }
         finally
         {
             try
             {
-                if (File.Exists(resultFilePath))
+                var exists = File.Exists(resultFilePath);
+                FrontendDebugLog.Info("BackendServiceManager", $"Install result file exists before deletion: {exists}, Path={resultFilePath}");
+                if (exists)
                 {
                     File.Delete(resultFilePath);
                 }
@@ -124,6 +129,8 @@ public sealed class BackendServiceManager : IBackendServiceManager
     /// </summary>
     public async Task<BackendServiceBootstrapResult> UninstallServiceAsync(CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        FrontendDebugLog.Info("BackendServiceManager", "UninstallServiceAsync started.");
         var backendExePath = ResolveBackendExecutablePath();
         if (backendExePath is null)
         {
@@ -136,16 +143,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
 
         try
         {
+            var bootstrapArguments = $"--service-bootstrap uninstall --result-file \"{resultFilePath}\"";
+            FrontendDebugLog.Info("BackendServiceManager", $"Uninstall bootstrap arguments: {bootstrapArguments}, HasUserSid={bootstrapArguments.Contains("--user-sid", StringComparison.OrdinalIgnoreCase)}, ResultFile={resultFilePath}");
             using var process = Process.Start(CreateElevatedBackendStartInfo(
                 backendExePath,
-                $"--service-bootstrap uninstall --result-file \"{resultFilePath}\""));
+                bootstrapArguments));
             if (process is null)
             {
                 return new BackendServiceBootstrapResult(false, false, "FAILED_TO_START_ELEVATED_PROCESS", string.Empty);
             }
 
+            FrontendDebugLog.Info("BackendServiceManager", $"Uninstall bootstrap process started. PID={process.Id}");
             await process.WaitForExitAsync(cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Uninstall bootstrap process exited. ExitCode={process.ExitCode}, Elapsed={stopwatch.ElapsedMilliseconds} ms");
             var scriptResult = await TryReadScriptResultAsync(resultFilePath, cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Uninstall parsed result: Success={scriptResult?.Success}, Code={scriptResult?.Code}, Detail={scriptResult?.Detail}");
 
             if (process.ExitCode == 0 && scriptResult?.Success == true)
             {
@@ -160,17 +172,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UAC cancelled during uninstall. Elapsed={stopwatch.ElapsedMilliseconds} ms.");
             return new BackendServiceBootstrapResult(false, true, "ELEVATION_CANCELLED", string.Empty);
         }
         catch (Exception ex)
         {
-            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.Message);
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UninstallServiceAsync threw. Exception={ex}, Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.ToString());
         }
         finally
         {
             try
             {
-                if (File.Exists(resultFilePath))
+                var exists = File.Exists(resultFilePath);
+                FrontendDebugLog.Info("BackendServiceManager", $"Uninstall result file exists before deletion: {exists}, Path={resultFilePath}");
+                if (exists)
                 {
                     File.Delete(resultFilePath);
                 }
@@ -186,6 +202,8 @@ public sealed class BackendServiceManager : IBackendServiceManager
     /// </summary>
     public async Task<BackendServiceBootstrapResult> StopServiceAsync(CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        FrontendDebugLog.Info("BackendServiceManager", "StopServiceAsync started.");
         var backendExePath = ResolveBackendExecutablePath();
         if (backendExePath is null)
         {
@@ -198,16 +216,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
 
         try
         {
+            var bootstrapArguments = $"--service-bootstrap stop --result-file \"{resultFilePath}\"";
+            FrontendDebugLog.Info("BackendServiceManager", $"Stop bootstrap arguments: {bootstrapArguments}, HasUserSid={bootstrapArguments.Contains("--user-sid", StringComparison.OrdinalIgnoreCase)}, ResultFile={resultFilePath}");
             using var process = Process.Start(CreateElevatedBackendStartInfo(
                 backendExePath,
-                $"--service-bootstrap stop --result-file \"{resultFilePath}\""));
+                bootstrapArguments));
             if (process is null)
             {
                 return new BackendServiceBootstrapResult(false, false, "FAILED_TO_START_ELEVATED_PROCESS", string.Empty);
             }
 
+            FrontendDebugLog.Info("BackendServiceManager", $"Stop bootstrap process started. PID={process.Id}");
             await process.WaitForExitAsync(cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Stop bootstrap process exited. ExitCode={process.ExitCode}, Elapsed={stopwatch.ElapsedMilliseconds} ms");
             var scriptResult = await TryReadScriptResultAsync(resultFilePath, cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Stop parsed result: Success={scriptResult?.Success}, Code={scriptResult?.Code}, Detail={scriptResult?.Detail}");
 
             if (process.ExitCode == 0 && scriptResult?.Success == true)
             {
@@ -222,17 +245,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UAC cancelled during stop. Elapsed={stopwatch.ElapsedMilliseconds} ms.");
             return new BackendServiceBootstrapResult(false, true, "ELEVATION_CANCELLED", string.Empty);
         }
         catch (Exception ex)
         {
-            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.Message);
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"StopServiceAsync threw. Exception={ex}, Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.ToString());
         }
         finally
         {
             try
             {
-                if (File.Exists(resultFilePath))
+                var exists = File.Exists(resultFilePath);
+                FrontendDebugLog.Info("BackendServiceManager", $"Stop result file exists before deletion: {exists}, Path={resultFilePath}");
+                if (exists)
                 {
                     File.Delete(resultFilePath);
                 }
@@ -248,6 +275,8 @@ public sealed class BackendServiceManager : IBackendServiceManager
     /// </summary>
     public async Task<BackendServiceBootstrapResult> SetServiceAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        FrontendDebugLog.Info("BackendServiceManager", $"SetServiceAutoStartEnabledAsync started. Enabled={enabled}, CurrentSid={GetCurrentUserSid() ?? "<null>"}");
         var backendExePath = ResolveBackendExecutablePath();
         if (backendExePath is null)
         {
@@ -260,16 +289,24 @@ public sealed class BackendServiceManager : IBackendServiceManager
 
         try
         {
+            FrontendDebugLog.Info("BackendServiceManager", $"Resolved backend executable path: {backendExePath}");
+            FrontendDebugLog.Info("BackendServiceManager", $"Startup mode result file path: {resultFilePath}");
+            var bootstrapArguments = AppendUserSidArgument($"--service-bootstrap set-startup-mode --enabled {(enabled ? "1" : "0")} --result-file \"{resultFilePath}\"");
+            FrontendDebugLog.Info("BackendServiceManager", $"Startup mode bootstrap arguments: {bootstrapArguments}, HasUserSid={bootstrapArguments.Contains("--user-sid", StringComparison.OrdinalIgnoreCase)}");
             using var process = Process.Start(CreateElevatedBackendStartInfo(
                 backendExePath,
-                AppendUserSidArgument($"--service-bootstrap set-startup-mode --enabled {(enabled ? "1" : "0")} --result-file \"{resultFilePath}\"")));
+                bootstrapArguments));
             if (process is null)
             {
+                FrontendDebugLog.Info("BackendServiceManager", "Failed to start elevated startup mode bootstrap process.");
                 return new BackendServiceBootstrapResult(false, false, "FAILED_TO_START_ELEVATED_PROCESS", string.Empty);
             }
 
+            FrontendDebugLog.Info("BackendServiceManager", $"Startup mode bootstrap process started. PID={process.Id}");
             await process.WaitForExitAsync(cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Startup mode bootstrap process exited. ExitCode={process.ExitCode}, Elapsed={stopwatch.ElapsedMilliseconds} ms");
             var scriptResult = await TryReadScriptResultAsync(resultFilePath, cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Startup mode parsed result: Success={scriptResult?.Success}, Code={scriptResult?.Code}, Detail={scriptResult?.Detail}");
 
             if (process.ExitCode == 0 && scriptResult?.Success == true)
             {
@@ -284,17 +321,21 @@ public sealed class BackendServiceManager : IBackendServiceManager
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UAC cancelled during startup mode change. Elapsed={stopwatch.ElapsedMilliseconds} ms.");
             return new BackendServiceBootstrapResult(false, true, "ELEVATION_CANCELLED", string.Empty);
         }
         catch (Exception ex)
         {
-            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.Message);
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"SetServiceAutoStartEnabledAsync threw. Exception={ex}, Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.ToString());
         }
         finally
         {
             try
             {
-                if (File.Exists(resultFilePath))
+                var exists = File.Exists(resultFilePath);
+                FrontendDebugLog.Info("BackendServiceManager", $"Startup mode result file exists before deletion: {exists}, Path={resultFilePath}");
+                if (exists)
                 {
                     File.Delete(resultFilePath);
                 }
@@ -345,8 +386,9 @@ public sealed class BackendServiceManager : IBackendServiceManager
             return null;
         }
 
-        await using var stream = File.OpenRead(resultFilePath);
-        return await JsonSerializer.DeserializeAsync<BootstrapScriptResult>(stream, JsonOptions, cancellationToken);
+        var rawContent = await File.ReadAllTextAsync(resultFilePath, cancellationToken);
+        FrontendDebugLog.Info("BackendServiceManager", $"Bootstrap result raw content: {rawContent}");
+        return JsonSerializer.Deserialize<BootstrapScriptResult>(rawContent, JsonOptions);
     }
 
     private static ProcessStartInfo CreateElevatedBackendStartInfo(string backendExePath, string arguments)
@@ -380,9 +422,11 @@ public sealed class BackendServiceManager : IBackendServiceManager
         var sid = GetCurrentUserSid();
         if (string.IsNullOrWhiteSpace(sid))
         {
+            FrontendDebugLog.Info("BackendServiceManager", "AppendUserSidArgument: current SID missing; --user-sid omitted.");
             return arguments;
         }
 
+        FrontendDebugLog.Info("BackendServiceManager", $"AppendUserSidArgument: --user-sid present for SID={sid}.");
         return $"{arguments} --user-sid \"{sid}\"";
     }
 

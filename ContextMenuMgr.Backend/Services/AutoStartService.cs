@@ -37,6 +37,8 @@ public sealed class AutoStartService
                 return Failure("User context is required for auto-start configuration.", operationId);
             }
 
+            var policyFullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, PolicyKeyPath);
+            var runFullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, RunKeyPath);
             using var userBaseKey = OpenUserRegistryRoot(userContext, writable: true);
 
             using var policyKey = userBaseKey.OpenSubKey(PolicyKeyPath, writable: true)
@@ -44,13 +46,34 @@ public sealed class AutoStartService
             if (policyKey is not null)
             {
                 policyKey.SetValue(PolicyValueName, enabled ? 1 : 0, RegistryValueKind.DWord);
+                await _logger.LogAsync(
+                    DiagnosticLogFormatter.BuildRegistryOperationLog(
+                        "AutoStartPolicySetValue",
+                        policyFullPath,
+                        PolicyValueName,
+                        RegistryValueKind.DWord,
+                        enabled ? 1 : 0,
+                        writable: true,
+                        result: "Success"),
+                    cancellationToken);
             }
 
             // Clear Run key (we don't auto-add to Run key anymore)
             using var runKey = userBaseKey.OpenSubKey(RunKeyPath, writable: true);
+            var runValueExisted = runKey?.GetValue(RunValueName) is not null;
             runKey?.DeleteValue(RunValueName, throwOnMissingValue: false);
+            await _logger.LogAsync(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "AutoStartRunDeleteValue",
+                    runFullPath,
+                    RunValueName,
+                    null,
+                    null,
+                    writable: true,
+                    result: runValueExisted ? "Deleted" : "SkippedMissing"),
+                cancellationToken);
 
-            await _logger.LogAsync($"Auto-start set to {enabled} for {userContext.Sid}.", cancellationToken);
+            await _logger.LogAsync($"Auto-start set to {enabled} for {userContext.Sid}. PolicyPath={policyFullPath}, PolicyValueName={PolicyValueName}, PolicyValueKind={RegistryValueKind.DWord}, PolicyValueData={(enabled ? 1 : 0)}, RunKeyPath={runFullPath}, DeletedRunValueName={RunValueName}.", cancellationToken);
             return new PipeResponse
             {
                 Success = true,
@@ -61,7 +84,7 @@ public sealed class AutoStartService
         }
         catch (UnauthorizedAccessException ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied setting auto-start: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied setting auto-start: {ex}", cancellationToken);
             return Failure(
                 "Cannot write to the registry key. The backend service may not have sufficient permissions. " +
                 "Please ensure the backend service is running with adequate privileges or run as administrator.",
@@ -69,7 +92,7 @@ public sealed class AutoStartService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set auto-start: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set auto-start: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -97,11 +120,17 @@ public sealed class AutoStartService
 
             bool isEnabled = false;
 
+            var policyFullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, PolicyKeyPath);
+            var runFullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, RunKeyPath);
             using var userBaseKey = OpenUserRegistryRoot(userContext, writable: false);
 
             // Check policy key first
             using var policyKey = userBaseKey.OpenSubKey(PolicyKeyPath, writable: false);
-            if (policyKey?.GetValue(PolicyValueName) is int intValue)
+            var rawPolicyValue = policyKey?.GetValue(PolicyValueName);
+            await _logger.LogAsync(
+                $"AutoStartPolicyRead: Sid={userContext.Sid}, Path={policyFullPath}, ValueName={PolicyValueName}, RawPolicyValue={DiagnosticLogFormatter.FormatRegistryValueData(rawPolicyValue)}, ValueKind={(rawPolicyValue is null ? "<null>" : policyKey?.GetValueKind(PolicyValueName).ToString())}.",
+                cancellationToken);
+            if (rawPolicyValue is int intValue)
             {
                 isEnabled = intValue != 0;
             }
@@ -110,11 +139,15 @@ public sealed class AutoStartService
             if (!isEnabled)
             {
                 using var runKey = userBaseKey.OpenSubKey(RunKeyPath, writable: false);
-                isEnabled = runKey?.GetValue(RunValueName) is string command
+                var rawRunValue = runKey?.GetValue(RunValueName);
+                isEnabled = rawRunValue is string command
                             && !string.IsNullOrWhiteSpace(command);
+                await _logger.LogAsync(
+                    $"AutoStartRunFallbackRead: Sid={userContext.Sid}, Path={runFullPath}, ValueName={RunValueName}, RawRunValueExists={rawRunValue is not null}, RawRunValue={DiagnosticLogFormatter.FormatRegistryValueData(rawRunValue)}.",
+                    cancellationToken);
             }
 
-            await _logger.LogAsync($"Auto-start status retrieved: {isEnabled} for {userContext.Sid}.", cancellationToken);
+            await _logger.LogAsync($"Auto-start status retrieved: {isEnabled} for {userContext.Sid}. PolicyPath={policyFullPath}, RunKeyFallbackPath={runFullPath}, FinalResult={isEnabled}.", cancellationToken);
             
             return new PipeResponse
             {
@@ -126,7 +159,7 @@ public sealed class AutoStartService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get auto-start status: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get auto-start status: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -138,14 +171,24 @@ public sealed class AutoStartService
         ClientOperationId = operationId
     };
 
-    private static RegistryKey OpenUserRegistryRoot(BackendUserContext userContext, bool writable)
+    private RegistryKey OpenUserRegistryRoot(BackendUserContext userContext, bool writable)
     {
         if (string.IsNullOrWhiteSpace(userContext.Sid))
         {
             throw new InvalidOperationException("The frontend user SID is not available.");
         }
 
-        return Registry.Users.OpenSubKey(userContext.Sid, writable)
-            ?? throw new InvalidOperationException($"The registry hive for user {userContext.Sid} is not loaded.");
+        try
+        {
+            var root = Registry.Users.OpenSubKey(userContext.Sid, writable)
+                ?? throw new InvalidOperationException($"The registry hive for user {userContext.Sid} is not loaded.");
+            _logger.LogFireAndForget($"OpenUserRegistryRoot: Sid={userContext.Sid}, Writable={writable}, Result=Success.");
+            return root;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"OpenUserRegistryRoot: Sid={userContext.Sid}, Writable={writable}, Result=Failure, Exception={ex}");
+            throw;
+        }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Text.Json;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -14,14 +15,16 @@ public sealed class BackendProtectionSettingsStore
     };
 
     private readonly string _storagePath;
+    private readonly FileLogger? _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BackendProtectionSettingsStore"/> class.
     /// </summary>
-    public BackendProtectionSettingsStore(string storagePath)
+    public BackendProtectionSettingsStore(string storagePath, FileLogger? logger = null)
     {
         _storagePath = storagePath;
+        _logger = logger;
         var directory = Path.GetDirectoryName(storagePath);
         if (!string.IsNullOrWhiteSpace(directory))
         {
@@ -39,12 +42,15 @@ public sealed class BackendProtectionSettingsStore
         {
             if (!File.Exists(_storagePath))
             {
+                _logger?.LogFireAndForget($"BackendProtectionSettingsStoreLoad: Path={_storagePath}, Exists=false.");
                 return new BackendProtectionSettings();
             }
 
             await using var stream = File.OpenRead(_storagePath);
-            return await JsonSerializer.DeserializeAsync<BackendProtectionSettings>(stream, JsonOptions, cancellationToken)
+            var settings = await JsonSerializer.DeserializeAsync<BackendProtectionSettings>(stream, JsonOptions, cancellationToken)
                 ?? new BackendProtectionSettings();
+            _logger?.LogFireAndForget($"BackendProtectionSettingsStoreLoad: Path={_storagePath}, Exists=true, LockNewContextMenuItems={settings.LockNewContextMenuItems}.");
+            return settings;
         }
         finally
         {
@@ -60,8 +66,17 @@ public sealed class BackendProtectionSettingsStore
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            await using var stream = File.Create(_storagePath);
-            await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken);
+            try
+            {
+                await using var stream = File.Create(_storagePath);
+                await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken);
+                _logger?.LogFireAndForget($"BackendProtectionSettingsStoreSave: Path={_storagePath}, LockNewContextMenuItems={settings.LockNewContextMenuItems}, Result=Success.");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"BackendProtectionSettingsStoreSaveFailed: Path={_storagePath}, Exception={ex}");
+                throw;
+            }
         }
         finally
         {

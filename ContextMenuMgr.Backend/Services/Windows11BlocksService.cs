@@ -80,7 +80,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to block Win11 item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to block Win11 item: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -142,7 +142,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to unblock Win11 item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to unblock Win11 item: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -183,7 +183,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get Win11 blocked items: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get Win11 blocked items: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }
@@ -192,36 +192,60 @@ public sealed class Windows11BlocksService
 
     private async Task AddToMachineBlockedListAsync(string clsid, string displayName, CancellationToken cancellationToken)
     {
+        const string fullPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
         using var key = Registry.LocalMachine.CreateSubKey(MachineBlockedPath, writable: true);
         if (key is not null)
         {
             var regName = NormalizeGuid(clsid);
             key.SetValue(regName, displayName, RegistryValueKind.String);
-            await _logger.LogAsync($"Added {regName} to machine blocked list.", cancellationToken);
+            await _logger.LogAsync(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "Win11MachineBlockedSetValue",
+                    fullPath,
+                    regName,
+                    RegistryValueKind.String,
+                    displayName,
+                    writable: true,
+                    result: "Success"),
+                cancellationToken);
         }
     }
 
     private async Task RemoveFromMachineBlockedListAsync(string clsid, CancellationToken cancellationToken)
     {
+        const string fullPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
         using var key = Registry.LocalMachine.OpenSubKey(MachineBlockedPath, writable: true);
         if (key is not null)
         {
             var regName = NormalizeGuid(clsid);
-            DeleteGuidValue(key, regName);
-            await _logger.LogAsync($"Removed {regName} from machine blocked list.", cancellationToken);
+            DeleteGuidValue(key, regName, fullPath, cancellationToken);
+            await _logger.LogAsync(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "Win11MachineBlockedDeleteValue",
+                    fullPath,
+                    regName,
+                    null,
+                    null,
+                    writable: true,
+                    result: "Success"),
+                cancellationToken);
         }
     }
 
     private IReadOnlyList<Win11BlockedItem> GetMachineBlockedItems()
     {
         var items = new List<Win11BlockedItem>();
+        const string fullPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
         using var key = Registry.LocalMachine.OpenSubKey(MachineBlockedPath, writable: false);
         if (key is null)
         {
+            _logger.LogFireAndForget($"Win11MachineBlockedRead: Path={fullPath}, Count=0, Result=MissingKey.");
             return items;
         }
 
-        foreach (var valueName in key.GetValueNames())
+        var valueNames = key.GetValueNames();
+        _logger.LogFireAndForget($"Win11MachineBlockedRead: Path={fullPath}, Count={valueNames.Length}, ValueNames={string.Join(";", valueNames)}.");
+        foreach (var valueName in valueNames)
         {
             var displayName = key.GetValue(valueName)?.ToString() ?? string.Empty;
             items.Add(new Win11BlockedItem
@@ -244,13 +268,23 @@ public sealed class Windows11BlocksService
         try
         {
             using var key = OpenUserBlockedKey(userContext, writable: true, create: true);
+            var fullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, UserBlockedPathSuffix);
             
             if (key is not null)
             {
                 // Format GUID with braces like reference project does
                 var regName = NormalizeGuid(clsid);
                 key.SetValue(regName, displayName, RegistryValueKind.String);
-                await _logger.LogAsync($"Added {regName} to user blocked list for {userContext.Sid}.", cancellationToken);
+                await _logger.LogAsync(
+                    DiagnosticLogFormatter.BuildRegistryOperationLog(
+                        "Win11UserBlockedSetValue",
+                        fullPath,
+                        regName,
+                        RegistryValueKind.String,
+                        displayName,
+                        writable: true,
+                        result: $"Success, Sid={userContext.Sid}"),
+                    cancellationToken);
             }
             else
             {
@@ -259,7 +293,7 @@ public sealed class Windows11BlocksService
         }
         catch (UnauthorizedAccessException ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied adding to user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied adding to user blocked list: {ex}", cancellationToken);
             throw new InvalidOperationException(
                 "Cannot write to the registry key. The backend service may not have sufficient permissions to modify the current user's registry. " +
                 "Please ensure the backend service is running with adequate privileges or run the application as administrator.",
@@ -267,7 +301,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to add to user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to add to user blocked list: {ex}", cancellationToken);
             throw;
         }
     }
@@ -277,16 +311,26 @@ public sealed class Windows11BlocksService
         try
         {
             using var key = OpenUserBlockedKey(userContext, writable: true, create: false);
+            var fullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, UserBlockedPathSuffix);
             if (key is not null)
             {
                 var regName = NormalizeGuid(clsid);
-                DeleteGuidValue(key, regName);
-                await _logger.LogAsync($"Removed {regName} from user blocked list for {userContext.Sid}.", cancellationToken);
+                DeleteGuidValue(key, regName, fullPath, cancellationToken);
+                await _logger.LogAsync(
+                    DiagnosticLogFormatter.BuildRegistryOperationLog(
+                        "Win11UserBlockedDeleteValue",
+                        fullPath,
+                        regName,
+                        null,
+                        null,
+                        writable: true,
+                        result: $"Success, Sid={userContext.Sid}"),
+                    cancellationToken);
             }
         }
         catch (UnauthorizedAccessException ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied removing from user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied removing from user blocked list: {ex}", cancellationToken);
             throw new InvalidOperationException(
                 "Cannot write to the registry key. The backend service may not have sufficient permissions to modify the current user's registry. " +
                 "Please ensure the backend service is running with adequate privileges or run the application as administrator.",
@@ -294,7 +338,7 @@ public sealed class Windows11BlocksService
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to remove from user blocked list: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to remove from user blocked list: {ex}", cancellationToken);
             throw;
         }
     }
@@ -306,9 +350,12 @@ public sealed class Windows11BlocksService
         try
         {
             using var key = OpenUserBlockedKey(userContext, writable: false, create: false);
+            var fullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, UserBlockedPathSuffix);
             if (key is not null)
             {
-                foreach (var valueName in key.GetValueNames())
+                var valueNames = key.GetValueNames();
+                _logger.LogFireAndForget($"Win11UserBlockedRead: Path={fullPath}, Sid={userContext.Sid}, Count={valueNames.Length}, ValueNames={string.Join(";", valueNames)}.");
+                foreach (var valueName in valueNames)
                 {
                     var dn = key.GetValue(valueName)?.ToString() ?? string.Empty;
                     items.Add(new Win11BlockedItem
@@ -319,10 +366,14 @@ public sealed class Windows11BlocksService
                     });
                 }
             }
+            else
+            {
+                _logger.LogFireAndForget($"Win11UserBlockedRead: Path={DiagnosticLogFormatter.FormatUserHivePath(userContext, UserBlockedPathSuffix)}, Sid={userContext.Sid}, Count=0, Result=MissingKey.");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogAsync(RuntimeLogLevel.Warning, $"Error reading user blocked items for {userContext.Sid}: {ex.Message}, returning empty list.", CancellationToken.None).GetAwaiter().GetResult();
+            _logger.LogAsync(RuntimeLogLevel.Warning, $"Error reading user blocked items for {userContext.Sid}: {ex}, returning empty list.", CancellationToken.None).GetAwaiter().GetResult();
         }
 
         return items;
@@ -344,9 +395,10 @@ public sealed class Windows11BlocksService
         return string.IsNullOrWhiteSpace(userContext?.Sid) ? "<null>" : userContext.Sid;
     }
 
-    private static void DeleteGuidValue(RegistryKey key, string normalizedClsid)
+    private void DeleteGuidValue(RegistryKey key, string normalizedClsid, string fullPath, CancellationToken cancellationToken)
     {
         key.DeleteValue(normalizedClsid, throwOnMissingValue: false);
+        _logger.LogFireAndForget($"Win11DeleteGuidValue: Path={fullPath}, ValueName={normalizedClsid}, Variant=Requested, Operation=DeleteValue.");
 
         // ContextMenuMgr writes {GUID} values; remove matching manual entries without braces too.
         foreach (var valueName in key.GetValueNames())
@@ -354,11 +406,12 @@ public sealed class Windows11BlocksService
             if (string.Equals(NormalizeGuid(valueName), normalizedClsid, StringComparison.OrdinalIgnoreCase))
             {
                 key.DeleteValue(valueName, throwOnMissingValue: false);
+                _logger.LogFireAndForget($"Win11DeleteGuidValue: Path={fullPath}, ValueName={valueName}, Variant=BraceOrNoBraceMatch, Operation=DeleteValue.");
             }
         }
     }
 
-    private static RegistryKey? OpenUserBlockedKey(BackendUserContext userContext, bool writable, bool create)
+    private RegistryKey? OpenUserBlockedKey(BackendUserContext userContext, bool writable, bool create)
     {
         if (string.IsNullOrWhiteSpace(userContext.Sid))
         {
@@ -366,9 +419,20 @@ public sealed class Windows11BlocksService
         }
 
         var path = $@"{userContext.Sid}\{UserBlockedPathSuffix}";
-        return create
-            ? Registry.Users.CreateSubKey(path, writable)
-            : Registry.Users.OpenSubKey(path, writable);
+        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, UserBlockedPathSuffix);
+        try
+        {
+            var key = create
+                ? Registry.Users.CreateSubKey(path, writable)
+                : Registry.Users.OpenSubKey(path, writable);
+            _logger.LogFireAndForget($"OpenUserBlockedKey: Path={fullPath}, Writable={writable}, Create={create}, Result={(key is null ? "Missing" : "Success")}.");
+            return key;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"OpenUserBlockedKey: Path={fullPath}, Writable={writable}, Create={create}, Result=Failure, Exception={ex}");
+            throw;
+        }
     }
 
     private static PipeResponse Failure(string message, Guid? operationId) => new()

@@ -9,6 +9,7 @@ using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -86,7 +87,7 @@ public sealed class ContextMenuRegistryCatalog
         _stateStore = stateStore;
         _backupService = backupService;
         _protectionSettingsStore = protectionSettingsStore;
-        _windows11Catalog = new Windows11ContextMenuCatalog();
+        _windows11Catalog = new Windows11ContextMenuCatalog(logger);
     }
 
     /// <summary>
@@ -379,6 +380,16 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure($"Menu item '{item.DisplayName}' is deleted. Undo the deletion before changing its state.");
         }
 
+        var stopwatch = Stopwatch.StartNew();
+        await _logger.LogAsync(
+            "ApplyDesiredStateStart: "
+            + $"ItemId={item.Id}, DisplayName={item.DisplayName}, EntryKind={item.EntryKind}, "
+            + $"IsWindows11ContextMenu={item.IsWindows11ContextMenu}, Enable={enable}, "
+            + $"RegistryPath={item.RegistryPath}, BackendRegistryPath={item.BackendRegistryPath}, "
+            + $"SourceRootPath={item.SourceRootPath}, HandlerClsid={item.HandlerClsid}, "
+            + $"UserSid={DiagnosticLogFormatter.FormatSid(userContext)}.",
+            cancellationToken);
+
         try
         {
             if (item.IsWindows11ContextMenu)
@@ -433,6 +444,10 @@ public sealed class ContextMenuRegistryCatalog
             var refreshed = (await GetSnapshotAsync(cancellationToken))
                 .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
                 ?? item with { IsEnabled = enable };
+            stopwatch.Stop();
+            await _logger.LogAsync(
+                $"ApplyDesiredStateEnd: ItemId={item.Id}, DisplayName={item.DisplayName}, Enable={enable}, Result=Success, RefreshedIsEnabled={refreshed.IsEnabled}, ElapsedMs={stopwatch.ElapsedMilliseconds}.",
+                cancellationToken);
 
             return new PipeResponse
             {
@@ -443,7 +458,8 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update {item.DisplayName}: {ex.Message}", cancellationToken);
+            stopwatch.Stop();
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update {item.DisplayName}: {ex}, ElapsedMs={stopwatch.ElapsedMilliseconds}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -605,7 +621,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set {attribute} for {item.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set {attribute} for {item.DisplayName}: {ex}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -657,7 +673,18 @@ public sealed class ContextMenuRegistryCatalog
         {
             using var menuKey = OpenRegistryKey(item.BackendRegistryPath, writable: true)
                 ?? throw new InvalidOperationException($"Unable to open {item.RegistryPath} for writing.");
+            var oldValue = menuKey.GetValue("MUIVerb");
             menuKey.SetValue("MUIVerb", textValue, RegistryValueKind.String);
+            await _logger.LogAsync(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "ApplyDisplayText",
+                    item.BackendRegistryPath,
+                    "MUIVerb",
+                    RegistryValueKind.String,
+                    textValue,
+                    writable: true,
+                    result: $"Success, OldValue={DiagnosticLogFormatter.FormatRegistryValueData(oldValue)}"),
+                cancellationToken);
 
             var states = await _stateStore.LoadAsync(cancellationToken);
             var state = GetOrCreateState(states, item);
@@ -681,7 +708,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update display text for {item.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update display text for {item.DisplayName}: {ex}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -757,7 +784,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update enhance menu item: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update enhance menu item: {ex}", cancellationToken);
             return CreateFailure(ex.Message);
         }
     }
@@ -794,6 +821,9 @@ public sealed class ContextMenuRegistryCatalog
         {
             if (string.Equals(storageKind, "Registry", StringComparison.OrdinalIgnoreCase))
             {
+                await _logger.LogAsync(
+                    $"DetailedEditRegistryWriteStart: StorageKind={storageKind}, RawPath={path}, NormalizedPath={path.Replace('/', '\\').Trim()}, UserSid={userSid ?? "<null>"}, ValueName={DiagnosticLogFormatter.FormatRegistryValue(keyName)}, ValueKind={valueKind ?? RegistryValueKind.String.ToString()}, Operation={(value is null ? "DeleteValue" : "SetValue")}, ValueData={DiagnosticLogFormatter.FormatRegistryValueData(value)}.",
+                    cancellationToken);
                 WriteDetailedEditRegistryValue(path, keyName, valueKind, value, userSid);
             }
             else
@@ -802,7 +832,7 @@ public sealed class ContextMenuRegistryCatalog
             }
 
             await _logger.LogAsync(
-                $"Updated detailed edit rule value. Path={path}, KeyName={keyName}, ValueKind={valueKind}, Value={(value is null ? "<delete>" : value)}.",
+                $"Updated detailed edit rule value. Path={path}, KeyName={keyName}, ValueKind={valueKind}, Value={DiagnosticLogFormatter.FormatRegistryValueData(value)}.",
                 cancellationToken);
 
             return new PipeResponse
@@ -813,7 +843,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update detailed edit rule value {path}\\{keyName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update detailed edit rule value {path}\\{keyName}: {ex}", cancellationToken);
             return CreateFailure(ex.Message);
         }
     }
@@ -1055,7 +1085,9 @@ public sealed class ContextMenuRegistryCatalog
             string backupFilePath;
             try
             {
+                await _logger.LogAsync($"DeleteItemBackupStart: ItemId={itemId}, RegistryPath={backendRegistryPath}.", cancellationToken);
                 backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
+                await _logger.LogAsync($"DeleteItemBackupEnd: ItemId={itemId}, RegistryPath={backendRegistryPath}, BackupPath={backupFilePath}, Result=Success.", cancellationToken);
             }
             catch (InvalidOperationException ex) when (IsRegistryKeyMissingExportError(ex.Message))
             {
@@ -1066,7 +1098,9 @@ public sealed class ContextMenuRegistryCatalog
                     cancellationToken);
             }
 
+            await _logger.LogAsync($"DeleteRegistryKeyStart: ItemId={itemId}, BackendRegistryPath={backendRegistryPath}.", cancellationToken);
             DeleteRegistryKey(backendRegistryPath);
+            await _logger.LogAsync($"DeleteRegistryKeyEnd: ItemId={itemId}, BackendRegistryPath={backendRegistryPath}, Result=Success.", cancellationToken);
 
             var state = GetOrCreateState(states, item ?? CreateMinimalEntry(itemId, persistedState!));
             state.DesiredEnabled = null;
@@ -1076,7 +1110,9 @@ public sealed class ContextMenuRegistryCatalog
             state.DeletedAtUtc = DateTimeOffset.UtcNow;
             state.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await _stateStore.SaveAsync(states, cancellationToken);
+            await _logger.LogAsync($"DeleteItemStateSaved: ItemId={itemId}, BackupPath={backupFilePath}, IsDeleted=true.", cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
+            await _logger.LogAsync($"ShellChangeNotifierCalled: Action=DeleteItem, ItemId={itemId}.", cancellationToken);
 
             await _logger.LogAsync($"Deleted {state.DisplayName} with backup {backupFilePath}.", cancellationToken);
 
@@ -1096,7 +1132,7 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             var displayName = item?.DisplayName ?? persistedState?.DisplayName ?? itemId;
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete {displayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete {displayName}: {ex}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -1207,7 +1243,9 @@ public sealed class ContextMenuRegistryCatalog
 
         try
         {
+            await _logger.LogAsync($"UndoDeleteRestoreStart: ItemId={itemId}, BackupPath={state.BackupFilePath}.", cancellationToken);
             await _backupService.RestoreBackupAsync(state.BackupFilePath, cancellationToken);
+            await _logger.LogAsync($"UndoDeleteRestoreEnd: ItemId={itemId}, BackupPath={state.BackupFilePath}, Result=Success.", cancellationToken);
             _backupService.DeleteBackupFile(state.BackupFilePath);
 
             state.IsDeleted = false;
@@ -1219,7 +1257,9 @@ public sealed class ContextMenuRegistryCatalog
             state.DesiredEnabled = null;
             PruneTransientStates(states);
             await _stateStore.SaveAsync(states, cancellationToken);
+            await _logger.LogAsync($"UndoDeleteStateSaved: ItemId={itemId}, IsDeleted=false.", cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
+            await _logger.LogAsync($"ShellChangeNotifierCalled: Action=UndoDelete, ItemId={itemId}.", cancellationToken);
 
             await _logger.LogAsync($"Restored deleted item {state.DisplayName}.", cancellationToken);
 
@@ -1237,7 +1277,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore {state.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore {state.DisplayName}: {ex}", cancellationToken);
             return CreateFailure(ex.Message, state.ToDeletedEntry());
         }
     }
@@ -1255,9 +1295,12 @@ public sealed class ContextMenuRegistryCatalog
 
         try
         {
+            await _logger.LogAsync($"PurgeDeletedBackupStart: ItemId={itemId}, BackupPath={state.BackupFilePath}.", cancellationToken);
             _backupService.DeleteBackupFile(state.BackupFilePath);
+            await _logger.LogAsync($"PurgeDeletedBackupEnd: ItemId={itemId}, BackupPath={state.BackupFilePath}, Result=Success.", cancellationToken);
             states.Remove(itemId);
             await _stateStore.SaveAsync(states, cancellationToken);
+            await _logger.LogAsync($"PurgeDeletedStateSaved: ItemId={itemId}, RemovedState=true.", cancellationToken);
             await _logger.LogAsync($"Permanently removed backup for {state.DisplayName}.", cancellationToken);
 
             return new PipeResponse
@@ -1268,7 +1311,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently remove {state.DisplayName}: {ex.Message}", cancellationToken);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently remove {state.DisplayName}: {ex}", cancellationToken);
             return CreateFailure(ex.Message, state.ToDeletedEntry());
         }
     }
@@ -1368,21 +1411,27 @@ public sealed class ContextMenuRegistryCatalog
 
     private async Task<IReadOnlyList<ContextMenuEntry>> EnumerateActualEntriesAsync(CancellationToken cancellationToken)
     {
+        await _logger.LogAsync($"EnumerateActualEntriesStart: MonitoredRootCount={MonitoredRoots.Length}, Win11Supported={_windows11Catalog.IsSupported}.", cancellationToken);
         var results = new List<ContextMenuEntry>();
         foreach (var item in EnumerateEntries(MonitoredRoots))
         {
             results.Add(item);
         }
 
+        var classicCount = results.Count;
+        var win11Count = 0;
         if (_windows11Catalog.IsSupported)
         {
             await _logger.LogAsync(
                 RuntimeLogLevel.Warning,
                 "Enumerating Win11 context menu entries without frontend user context; user-level blocked state may be incomplete in this compatibility snapshot path.",
                 cancellationToken);
-            results.AddRange(await _windows11Catalog.EnumerateEntriesAsync(cancellationToken));
+            var win11Entries = await _windows11Catalog.EnumerateEntriesAsync(cancellationToken);
+            win11Count = win11Entries.Count;
+            results.AddRange(win11Entries);
         }
 
+        await _logger.LogAsync($"EnumerateActualEntriesEnd: MonitoredRootCount={MonitoredRoots.Length}, RegistryEntriesFound={classicCount}, Win11EntriesAdded={win11Count}, TotalEntries={results.Count}.", cancellationToken);
         return results;
     }
 
@@ -2176,7 +2225,7 @@ public sealed class ContextMenuRegistryCatalog
         return blockedKey?.GetValue(handlerClsid) is not null;
     }
 
-    private static void SetShellVerbEnabled(string registryPath, bool enable)
+    private void SetShellVerbEnabled(string registryPath, bool enable)
     {
         using var menuKey = OpenRegistryKey(registryPath, writable: true)
             ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
@@ -2184,14 +2233,32 @@ public sealed class ContextMenuRegistryCatalog
         if (enable)
         {
             menuKey.DeleteValue("LegacyDisable", throwOnMissingValue: false);
+            _logger.LogFireAndForget(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "SetShellVerbEnabled",
+                    registryPath,
+                    "LegacyDisable",
+                    RegistryValueKind.String,
+                    null,
+                    writable: true,
+                    result: "DeleteValue Success, Enable=true"));
         }
         else
         {
             menuKey.SetValue("LegacyDisable", string.Empty, RegistryValueKind.String);
+            _logger.LogFireAndForget(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "SetShellVerbEnabled",
+                    registryPath,
+                    "LegacyDisable",
+                    RegistryValueKind.String,
+                    string.Empty,
+                    writable: true,
+                    result: "SetValue Success, Enable=false"));
         }
     }
 
-    private static void SetShellVerbAttribute(string registryPath, ContextMenuShellAttribute attribute, bool enable)
+    private void SetShellVerbAttribute(string registryPath, ContextMenuShellAttribute attribute, bool enable)
     {
         using var menuKey = OpenRegistryKey(registryPath, writable: true)
             ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
@@ -2209,14 +2276,16 @@ public sealed class ContextMenuRegistryCatalog
         if (enable)
         {
             menuKey.SetValue(valueName, string.Empty, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog($"SetShellVerbAttribute:{attribute}", registryPath, valueName, RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
         }
         else
         {
             menuKey.DeleteValue(valueName, throwOnMissingValue: false);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog($"SetShellVerbAttribute:{attribute}", registryPath, valueName, RegistryValueKind.String, null, writable: true, result: "DeleteValue Success"));
         }
     }
 
-    private static void SetShellExtensionEnabled(ContextMenuEntry item, bool enable)
+    private void SetShellExtensionEnabled(ContextMenuEntry item, bool enable)
     {
         if (string.IsNullOrWhiteSpace(item.HandlerClsid))
         {
@@ -2229,10 +2298,12 @@ public sealed class ContextMenuRegistryCatalog
         if (enable)
         {
             blockedKey.DeleteValue(item.HandlerClsid, throwOnMissingValue: false);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("SetShellExtensionEnabled", @"HKEY_LOCAL_MACHINE\" + BlockedShellExtensionsPath, item.HandlerClsid, RegistryValueKind.String, null, writable: true, result: "DeleteValue Success, Enable=true"));
         }
         else
         {
             blockedKey.SetValue(item.HandlerClsid, item.DisplayName, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("SetShellExtensionEnabled", @"HKEY_LOCAL_MACHINE\" + BlockedShellExtensionsPath, item.HandlerClsid, RegistryValueKind.String, item.DisplayName, writable: true, result: "SetValue Success, Enable=false"));
         }
     }
 
@@ -2905,24 +2976,29 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private static void ApplyRegistryWriteProtection(RegistryHive hive, string relativePath, bool enable, List<string> errors)
+    private void ApplyRegistryWriteProtection(RegistryHive hive, string relativePath, bool enable, List<string> errors)
     {
+        var fullPath = $@"{hive}\Software\Classes\{relativePath}";
+        var requestedRights = RegistryRights.ChangePermissions | RegistryRights.ReadKey;
         try
         {
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("RegistryWriteProtectionOpen", fullPath, requestedRights, $"Enable={enable}"));
             using var classesRoot = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
             using var key = classesRoot.OpenSubKey(
                 $@"Software\Classes\{relativePath}",
                 RegistryKeyPermissionCheck.ReadWriteSubTree,
-                RegistryRights.ChangePermissions | RegistryRights.ReadKey);
+                requestedRights);
 
             if (key is null)
             {
+                _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("RegistryWriteProtectionSkipped", fullPath, requestedRights, "MissingKey"));
                 return;
             }
 
             var security = key.GetAccessControl(AccessControlSections.Access);
             foreach (var rule in CreateProtectionRules())
             {
+                _logger.LogFireAndForget($"RegistryWriteProtectionRule: Hive={hive}, Path={fullPath}, Enable={enable}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
                 if (enable)
                 {
                     security.AddAccessRule(rule);
@@ -2934,9 +3010,11 @@ public sealed class ContextMenuRegistryCatalog
             }
 
             key.SetAccessControl(security);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("RegistryWriteProtectionSetAccessControl", fullPath, requestedRights, $"Success, Enable={enable}"));
         }
         catch (Exception ex)
         {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"RegistryWriteProtectionFailure: Hive={hive}, Path={fullPath}, Enable={enable}, Rights={DiagnosticLogFormatter.FormatRegistryRights(requestedRights)}, Exception={ex}");
             errors.Add($"{hive}\\Software\\Classes\\{relativePath}: {ex.Message}");
         }
     }
@@ -3212,7 +3290,7 @@ public sealed class ContextMenuRegistryCatalog
             .OrderBy(static sid => sid, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static void WriteDetailedEditRegistryValue(
+    private void WriteDetailedEditRegistryValue(
         string fullPath,
         string keyName,
         string? valueKind,
@@ -3227,6 +3305,15 @@ public sealed class ContextMenuRegistryCatalog
         if (value is null)
         {
             key.DeleteValue(keyName, throwOnMissingValue: false);
+            _logger.LogFireAndForget(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "WriteDetailedEditRegistryValue",
+                    fullPath,
+                    keyName,
+                    kind,
+                    null,
+                    writable: true,
+                    result: $"DeleteValue Success, NormalizedSubPath={subPath}, UserSid={userSid ?? "<null>"}"));
             return;
         }
 
@@ -3240,6 +3327,15 @@ public sealed class ContextMenuRegistryCatalog
         };
 
         key.SetValue(keyName, boxedValue, kind);
+        _logger.LogFireAndForget(
+            DiagnosticLogFormatter.BuildRegistryOperationLog(
+                "WriteDetailedEditRegistryValue",
+                fullPath,
+                keyName,
+                kind,
+                boxedValue,
+                writable: true,
+                result: $"SetValue Success, NormalizedSubPath={subPath}, UserSid={userSid ?? "<null>"}"));
     }
 
     private static RegistryValueKind ParseDetailedEditRegistryValueKind(string? valueKind)
