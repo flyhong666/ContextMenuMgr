@@ -164,10 +164,10 @@ internal static class BackendServiceBootstrapper
         using (var service = new ServiceController(ServiceMetadata.ServiceName))
         {
             var initialStatus = service.Status;
-            log($"ServiceStartCheck: InitialStatus={initialStatus}.");
+            log($"ServiceStartCheck: ServiceName={ServiceMetadata.ServiceName}, InitialStatus={initialStatus}.");
             if (initialStatus != ServiceControllerStatus.Running)
             {
-                log("ServiceStart: Calling Start().");
+                log("ServiceStart: Calling Start.");
                 service.Start();
                 log("ServiceStart: WaitForStatus Running started, Timeout=15s.");
                 try
@@ -179,16 +179,16 @@ internal static class BackendServiceBootstrapper
                 catch (System.ServiceProcess.TimeoutException ex)
                 {
                     var finalStatus = TryGetServiceControllerStatusText(service);
-                    log($"ServiceStart: WaitForStatus failed, Status={finalStatus}, Exception={ex}.");
+                    log($"ServiceStart: WaitForStatus timeout/failure, FinalStatus={finalStatus}, Exception={ex}.");
                     return (
                         false,
                         "SERVICE_START_TIMEOUT",
-                        $"InitialStatus={initialStatus}, FinalStatus={finalStatus}, Exception={ex}, Hint=Check backend.log and Windows Event Viewer for service startup exception.");
+                        $"InitialStatus={initialStatus}, FinalStatus={finalStatus}, Exception={ex}, ServiceName={ServiceMetadata.ServiceName}, ServiceExePath={serviceExePath}, Hint=Check %ProgramData%\\ContextMenuMgr\\Logs\\service-startup.log and backend.log.");
                 }
                 catch (Exception ex)
                 {
                     var finalStatus = TryGetServiceControllerStatusText(service);
-                    log($"ServiceStart: WaitForStatus failed, Status={finalStatus}, Exception={ex}.");
+                    log($"ServiceStart: WaitForStatus timeout/failure, FinalStatus={finalStatus}, Exception={ex}.");
                     throw;
                 }
             }

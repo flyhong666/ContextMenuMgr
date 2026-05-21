@@ -35,18 +35,37 @@ public sealed class BackendWindowsService : ServiceBase
 
     protected override void OnStart(string[] args)
     {
+        BackendEmergencyLogger.Log($"OnStart entered. Args={string.Join(' ', args)}, PID={Environment.ProcessId}, ServiceName={ServiceName}.");
         _serviceCts = new CancellationTokenSource();
         _runtime.StopRequested += OnRuntimeStopRequested;
-        _ = StartRuntimeAsync(_serviceCts.Token);
+        BackendEmergencyLogger.Log("OnStart: scheduling StartRuntimeAsync.");
+        var startupTask = StartRuntimeAsync(_serviceCts.Token);
+        _ = startupTask;
+        BackendEmergencyLogger.Log("OnStart: StartRuntimeAsync scheduled.");
     }
 
     protected override void OnStop()
     {
-        _runtime.StopRequested -= OnRuntimeStopRequested;
-        _serviceCts?.Cancel();
-        _runtime.StopAsync().GetAwaiter().GetResult();
-        _serviceCts?.Dispose();
-        _serviceCts = null;
+        BackendEmergencyLogger.Log($"OnStop entered. ServiceName={ServiceName}, PID={Environment.ProcessId}.");
+        try
+        {
+            _runtime.StopRequested -= OnRuntimeStopRequested;
+            _serviceCts?.Cancel();
+            BackendEmergencyLogger.Log("OnStop: cancellation requested.");
+            BackendEmergencyLogger.Log("OnStop: StopAsync started.");
+            _runtime.StopAsync().GetAwaiter().GetResult();
+            BackendEmergencyLogger.Log("OnStop: StopAsync completed.");
+        }
+        catch (Exception ex)
+        {
+            BackendEmergencyLogger.Log(ex, "OnStop failed.");
+            throw;
+        }
+        finally
+        {
+            _serviceCts?.Dispose();
+            _serviceCts = null;
+        }
     }
 
     private void OnRuntimeStopRequested(object? sender, EventArgs e)
@@ -57,31 +76,44 @@ public sealed class BackendWindowsService : ServiceBase
             {
                 Stop();
             }
-            catch
+            catch (Exception ex)
             {
+                BackendEmergencyLogger.Log(ex, "Runtime requested service stop, but Stop() failed.");
             }
         });
     }
 
     private async Task StartRuntimeAsync(CancellationToken cancellationToken)
     {
+        BackendEmergencyLogger.Log($"StartRuntimeAsync entered. CancellationRequested={cancellationToken.IsCancellationRequested}.");
         try
         {
             // Keep the SCM startup path fast. The frontend/bootstrapper performs
             // the stricter "wait until pipe is ready" check separately.
             await _runtime.StartAsync(cancellationToken, ensureTrayHostOnStartup: true);
+            BackendEmergencyLogger.Log("StartRuntimeAsync completed.");
         }
         catch (Exception ex)
         {
-            await _runtime.LogServiceStartupFailureAsync(ex, cancellationToken.IsCancellationRequested);
+            BackendEmergencyLogger.Log(ex, "Windows service runtime startup failed.");
+            try
+            {
+                await _runtime.LogServiceStartupFailureAsync(ex, cancellationToken.IsCancellationRequested);
+            }
+            catch (Exception logException)
+            {
+                BackendEmergencyLogger.Log(logException, "FileLogger service startup failure logging failed.");
+            }
+
             TryWriteStartupFailureEventLog(ex, cancellationToken.IsCancellationRequested);
 
             try
             {
                 Stop();
             }
-            catch
+            catch (Exception stopException)
             {
+                BackendEmergencyLogger.Log(stopException, "Stop() after Windows service runtime startup failure failed.");
             }
         }
     }

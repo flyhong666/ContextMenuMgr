@@ -45,20 +45,61 @@ public sealed class BackendRuntime : IDisposable
     /// </summary>
     public static BackendRuntime CreateDefault()
     {
+        BackendEmergencyLogger.Log("CreateDefault: TryMigrateLegacyRuntimeFiles started.");
         TryMigrateLegacyRuntimeFiles();
+        BackendEmergencyLogger.Log("CreateDefault: TryMigrateLegacyRuntimeFiles completed.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating FileLogger.");
         var logger = new FileLogger(RuntimePaths.BackendLogPath);
+        BackendEmergencyLogger.Log("CreateDefault: FileLogger created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuStateStore.");
         var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath, logger);
+        BackendEmergencyLogger.Log("CreateDefault: ContextMenuStateStore created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating BackendProtectionSettingsStore.");
         var protectionSettingsStore = new BackendProtectionSettingsStore(Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"), logger);
+        BackendEmergencyLogger.Log("CreateDefault: BackendProtectionSettingsStore created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating RegistryBackupService.");
         var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory, logger);
+        BackendEmergencyLogger.Log("CreateDefault: RegistryBackupService created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuRegistryCatalog.");
         var catalog = new ContextMenuRegistryCatalog(logger, stateStore, backupService, protectionSettingsStore);
+        BackendEmergencyLogger.Log("CreateDefault: ContextMenuRegistryCatalog created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating SpecialMenuService.");
         var specialMenuService = new SpecialMenuService(logger);
+        BackendEmergencyLogger.Log("CreateDefault: SpecialMenuService created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating Windows11BlocksService.");
         var windows11BlocksService = new Windows11BlocksService(logger);
+        BackendEmergencyLogger.Log("CreateDefault: Windows11BlocksService created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating AutoStartService.");
         var autoStartService = new AutoStartService(logger);
+        BackendEmergencyLogger.Log("CreateDefault: AutoStartService created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating FileTypeSceneMenuService.");
         var fileTypeSceneMenuService = new FileTypeSceneMenuService(catalog, stateStore, logger);
+        BackendEmergencyLogger.Log("CreateDefault: FileTypeSceneMenuService created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating ExplorerRestartService.");
         var explorerRestartService = new ExplorerRestartService();
+        BackendEmergencyLogger.Log("CreateDefault: ExplorerRestartService created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuRegistryMonitor.");
         var monitor = new ContextMenuRegistryMonitor(catalog, logger);
+        BackendEmergencyLogger.Log("CreateDefault: ContextMenuRegistryMonitor created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating NamedPipeBackendServer.");
         var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, windows11BlocksService, autoStartService, fileTypeSceneMenuService, explorerRestartService, logger);
+        BackendEmergencyLogger.Log("CreateDefault: NamedPipeBackendServer created.");
+
+        BackendEmergencyLogger.Log("CreateDefault: creating FrontendAutostartLauncher.");
         var frontendAutostartLauncher = new FrontendAutostartLauncher(AppContext.BaseDirectory);
+        BackendEmergencyLogger.Log("CreateDefault: FrontendAutostartLauncher created.");
 
         return new BackendRuntime(logger, monitor, pipeServer, frontendAutostartLauncher);
     }
@@ -142,6 +183,7 @@ public sealed class BackendRuntime : IDisposable
         CancellationToken cancellationToken,
         bool ensureTrayHostOnStartup = false)
     {
+        BackendEmergencyLogger.Log($"StartAsync entered. EnsureTrayHostOnStartup={ensureTrayHostOnStartup}, CancellationRequested={cancellationToken.IsCancellationRequested}.");
         _ensureTrayHostOnStartup = ensureTrayHostOnStartup;
         _shutdownFrontendOnStop = true;
         var stage = "Initialize";
@@ -151,9 +193,11 @@ public sealed class BackendRuntime : IDisposable
             stage = "FileLogger";
             await _logger.LogAsync("========== Backend start ==========", cancellationToken);
             await _logger.LogAsync($"BackendStartStage=FileLogger initialized. CurrentLevel={_logger.CurrentLevel}.", cancellationToken);
+            BackendEmergencyLogger.Log($"BackendStartStage=FileLogger initialized. CurrentLevel={_logger.CurrentLevel}.");
 
             stage = "BackendStarting";
             await _logger.LogAsync("Backend starting.", cancellationToken);
+            BackendEmergencyLogger.Log("Backend starting.");
 
             stage = "LogConsistencySummary";
             await LogConsistencySummaryForStartupAsync(cancellationToken);
@@ -164,38 +208,55 @@ public sealed class BackendRuntime : IDisposable
             _pipeServer.BackendShutdownRequested += OnBackendShutdownRequested;
             _pipeServer.EnsureTrayHostRequested += OnEnsureTrayHostRequested;
             await _logger.LogAsync("BackendStartStage=MonitorEventSubscription completed.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=MonitorEventSubscription completed.");
 
             stage = "MonitorStart";
             await _logger.LogAsync("BackendStartStage=MonitorStart started.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=MonitorStart started.");
             _monitor.Start(cancellationToken);
             await _logger.LogAsync("BackendStartStage=MonitorStart completed.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=MonitorStart completed.");
 
             stage = "PipeServerStart";
             await _logger.LogAsync("BackendStartStage=PipeServerStart started.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=PipeServerStart started.");
             _pipeServer.Start(cancellationToken);
             await _logger.LogAsync("BackendStartStage=PipeServerStart completed.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=PipeServerStart completed.");
 
             stage = "BackendStarted";
             await _logger.LogAsync("Backend started.", cancellationToken);
             await _logger.LogAsync("BackendStartStage=BackendStarted completed.", cancellationToken);
             await _logger.LogAsync("========== Backend started ==========", cancellationToken);
+            BackendEmergencyLogger.Log("Backend started.");
+            BackendEmergencyLogger.Log("BackendStartStage=BackendStarted completed.");
 
             if (_ensureTrayHostOnStartup)
             {
                 stage = "TryEnsureTrayHost";
                 await _logger.LogAsync("BackendStartStage=TryEnsureTrayHost started.", cancellationToken);
+                BackendEmergencyLogger.Log("BackendStartStage=TryEnsureTrayHost started.");
                 // Service startup performs one best-effort tray launch. Follow-up
                 // attempts are then driven by session events and explicit pipe requests.
                 TryEnsureTrayHost(null, requireAutostartPolicy: true);
                 await _logger.LogAsync("BackendStartStage=TryEnsureTrayHost completed.", cancellationToken);
+                BackendEmergencyLogger.Log("BackendStartStage=TryEnsureTrayHost completed.");
             }
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(
-                RuntimeLogLevel.Error,
-                $"BackendStartStage={stage} failed: {ex}",
-                CancellationToken.None);
+            try
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Error,
+                    $"BackendStartStage={stage} failed: {ex}",
+                    CancellationToken.None);
+            }
+            catch
+            {
+            }
+
+            BackendEmergencyLogger.Log(ex, $"BackendStartStage={stage} failed.");
             throw;
         }
     }
@@ -205,15 +266,25 @@ public sealed class BackendRuntime : IDisposable
         try
         {
             await _logger.LogAsync("BackendStartStage=LogConsistencySummary started.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=LogConsistencySummary started.");
             await _monitor.Catalog.LogConsistencySummaryAsync(cancellationToken);
             await _logger.LogAsync("BackendStartStage=LogConsistencySummary completed.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=LogConsistencySummary completed.");
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            await _logger.LogAsync(
-                RuntimeLogLevel.Warning,
-                "BackendStartStage=LogConsistencySummary failed but backend startup will continue: " + ex,
-                CancellationToken.None);
+            try
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    "LogConsistencySummary failed but startup will continue: " + ex,
+                    CancellationToken.None);
+            }
+            catch
+            {
+            }
+
+            BackendEmergencyLogger.Log(ex, "LogConsistencySummary failed but startup will continue.");
         }
     }
 
