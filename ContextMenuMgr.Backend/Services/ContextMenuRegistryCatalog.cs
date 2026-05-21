@@ -1494,7 +1494,7 @@ public sealed class ContextMenuRegistryCatalog
                 var effectiveRelativePath = $@"{root.RelativePath}\{subKeyName}";
                 var isEnabled = root.EntryKind switch
                 {
-                    ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
+                    ContextMenuEntryKind.ShellVerb => ShellVerbVisibility.IsEnabled(itemKey),
                     ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
                     _ => true
                 };
@@ -1849,7 +1849,7 @@ public sealed class ContextMenuRegistryCatalog
             var effectiveRelativePath = $@"{stableRelativePath}\{keyName}";
             var isEnabled = entryKind switch
             {
-                ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
+                ContextMenuEntryKind.ShellVerb => ShellVerbVisibility.IsEnabled(itemKey),
                 ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
                 _ => true
             };
@@ -2232,29 +2232,31 @@ public sealed class ContextMenuRegistryCatalog
 
         if (enable)
         {
-            menuKey.DeleteValue("LegacyDisable", throwOnMissingValue: false);
+            ShellVerbVisibility.SetEnabled(menuKey, registryPath, enable: true);
             _logger.LogFireAndForget(
                 DiagnosticLogFormatter.BuildRegistryOperationLog(
                     "SetShellVerbEnabled",
                     registryPath,
-                    "LegacyDisable",
+                    "HideBasedOnVelocityId|ProgrammaticAccessOnly|LegacyDisable",
                     RegistryValueKind.String,
                     null,
                     writable: true,
-                    result: "DeleteValue Success, Enable=true"));
+                    result: "DeleteValues Success, Enable=true"));
         }
         else
         {
-            menuKey.SetValue("LegacyDisable", string.Empty, RegistryValueKind.String);
+            var skipLegacyDisable = ShellVerbVisibility.IsOpenInNewWindowVerb(registryPath);
+            ShellVerbVisibility.SetEnabled(menuKey, registryPath, enable: false);
+
             _logger.LogFireAndForget(
                 DiagnosticLogFormatter.BuildRegistryOperationLog(
                     "SetShellVerbEnabled",
                     registryPath,
-                    "LegacyDisable",
+                    "HideBasedOnVelocityId|ProgrammaticAccessOnly|LegacyDisable",
                     RegistryValueKind.String,
                     string.Empty,
                     writable: true,
-                    result: "SetValue Success, Enable=false"));
+                    result: $"SetValues Success, Enable=false, SkipLegacyDisable={skipLegacyDisable}"));
         }
     }
 

@@ -237,6 +237,12 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
         try
         {
+            if (ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+                && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+            {
+                return;
+            }
+
             item.IsBusy = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var updated = await _backendClient.DeleteSpecialMenuItemAsync(item.Entry, Guid.NewGuid(), cts.Token);
@@ -513,6 +519,13 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     {
         try
         {
+            if (!enabled
+                && ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+                && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+            {
+                return false;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var updated = await _backendClient.SetSpecialMenuItemEnabledAsync(item.Entry, enabled, Guid.NewGuid(), cts.Token);
             if (updated is not null)

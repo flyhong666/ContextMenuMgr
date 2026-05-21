@@ -1525,7 +1525,7 @@ public sealed class SpecialMenuService
                     Kind = SpecialMenuKind.CommandStore,
                     DisplayName = displayName,
                     KeyName = name,
-                    IsEnabled = itemKey?.GetValue("LegacyDisable") is null,
+                    IsEnabled = itemKey is null || ShellVerbVisibility.IsEnabled(itemKey),
                     IconPath = icon.Item1,
                     IconIndex = icon.Item2,
                     RegistryPath = $@"HKEY_LOCAL_MACHINE\{CommandStorePath}\{name}",
@@ -1570,16 +1570,9 @@ public sealed class SpecialMenuService
     {
         using var key = OpenRegistryKey(item.RegistryPath ?? DecodeId(item.Id), writable: true)
             ?? throw new InvalidOperationException("Unable to open CommandStore item.");
-        if (enabled)
-        {
-            key.DeleteValue("LegacyDisable", throwOnMissingValue: false);
-        }
-        else
-        {
-            key.SetValue("LegacyDisable", string.Empty, RegistryValueKind.String);
-        }
+        ShellVerbVisibility.SetEnabled(key, item.RegistryPath ?? DecodeId(item.Id), enabled);
 
-        return item with { IsEnabled = enabled };
+        return item with { IsEnabled = ShellVerbVisibility.IsEnabled(key) };
     }
 
     private static IReadOnlyList<SpecialMenuEntry> GetGuidBlockItems()

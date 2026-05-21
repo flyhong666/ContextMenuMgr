@@ -199,7 +199,7 @@
     <value>Service Notes</value>
   </data>
   <data name="ServiceNotesDescription" xml:space="preserve">
-    <value>The backend runs as a Windows Service. Shell verbs are toggled through LegacyDisable, and shell extensions are blocked through the standard Shell Extensions\Blocked registry path.</value>
+    <value>The backend runs as a Windows Service. Shell verbs are toggled through Windows shell visibility flags, and shell extensions are blocked through the standard Shell Extensions\Blocked registry path.</value>
   </data>
   <data name="Allow" xml:space="preserve">
     <value>Allow</value>
@@ -471,6 +471,11 @@
   <data name="Delete" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="ProtectedOpenItemPrompt" xml:space="preserve">
+    <value>This item is the "Open" menu for files or folders.
+Changing it blindly may prevent files or folders from opening.
+Continue anyway? (Not recommended)</value>
+  </data>
   <data name="DeletedAt" xml:space="preserve">
     <value>Deleted at</value>
   </data>
@@ -590,6 +595,12 @@
   </data>
   <data name="DialogConfirm" xml:space="preserve">
     <value>Confirm</value>
+  </data>
+  <data name="DialogYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="DialogNo" xml:space="preserve">
+    <value>No</value>
   </data>
   <data name="DialogCancel" xml:space="preserve">
     <value>Cancel</value>

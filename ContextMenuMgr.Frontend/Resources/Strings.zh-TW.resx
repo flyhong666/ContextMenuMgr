@@ -199,7 +199,7 @@
     <value>服務說明</value>
   </data>
   <data name="ServiceNotesDescription" xml:space="preserve">
-    <value>後端以 Windows 服務方式執行。Shell Verb 透過 LegacyDisable 切換，Shell Extension 透過標準的 Shell Extensions\Blocked 登錄檔路徑進行封鎖。</value>
+    <value>後端以 Windows 服務方式執行。Shell Verb 透過 Windows Shell 可見性標記切換，Shell Extension 透過標準的 Shell Extensions\Blocked 登錄檔路徑進行封鎖。</value>
   </data>
   <data name="Allow" xml:space="preserve">
     <value>允許</value>
@@ -471,6 +471,11 @@
   <data name="Delete" xml:space="preserve">
     <value>刪除</value>
   </data>
+  <data name="ProtectedOpenItemPrompt" xml:space="preserve">
+    <value>該項為檔案或資料夾的「開啟」選單，
+盲目操作可能會導致無法開啟檔案或資料夾，
+請確認是否繼續你的操作？（不建議）</value>
+  </data>
   <data name="DeletedAt" xml:space="preserve">
     <value>刪除於</value>
   </data>
@@ -590,6 +595,12 @@
   </data>
   <data name="DialogConfirm" xml:space="preserve">
     <value>確定</value>
+  </data>
+  <data name="DialogYes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="DialogNo" xml:space="preserve">
+    <value>否</value>
   </data>
   <data name="DialogCancel" xml:space="preserve">
     <value>取消</value>

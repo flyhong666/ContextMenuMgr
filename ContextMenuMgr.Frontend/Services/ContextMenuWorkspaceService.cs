@@ -214,6 +214,13 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
 
         try
         {
+            if (!enable
+                && ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+                && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+            {
+                return false;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var updated = await _backendClient.SetEnabledAsync(item.Id, enable, cts.Token, item.Entry);
             if (updated is not null)
@@ -271,6 +278,13 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     {
         try
         {
+            if (!item.IsDeleted
+                && ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+                && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+            {
+                return;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var updated = item.IsDeleted
                 ? await _backendClient.UndoDeleteAsync(item.Id, cts.Token)
@@ -316,7 +330,16 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     /// Applies decision Async.
     /// </summary>
     public async Task ApplyDecisionAsync(ContextMenuItemViewModel item, ContextMenuDecision decision)
-        => await ApplyDecisionAsync(item.Id, decision);
+    {
+        if (decision is ContextMenuDecision.Deny or ContextMenuDecision.Remove
+            && ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+            && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+        {
+            return;
+        }
+
+        await ApplyDecisionAsync(item.Id, decision);
+    }
 
     /// <summary>
     /// Applies decision Async.
@@ -416,6 +439,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     {
         try
         {
+            if (ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+                && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+            {
+                return false;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var updated = await _backendClient.SetShellAttributeAsync(item.Id, attribute, enable, cts.Token);
             if (updated is not null)
