@@ -590,6 +590,12 @@
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
     <value>會給受監視的 Shell 根路徑加上拒絕寫入權限。即使背景常駐程式結束，一般處理程序也無法繼續往這些位置新增快顯功能表項目。</value>
   </data>
+  <data name="RegistryProtectionWarningTitle" xml:space="preserve">
+    <value>登錄檔權限鎖定警告</value>
+  </data>
+  <data name="RegistryProtectionWarningText" xml:space="preserve">
+    <value>此選項會透過登錄檔 ACL 權限規則鎖定右鍵選單相關位置，以阻止新的右鍵選單項目被加入。部分安裝程式、驅動程式套件或硬體工具可能需要寫入這些位置。啟用後，NVIDIA / AMD / Intel 等顯示卡驅動安裝程式或控制台整合可能安裝失敗或出現異常。如果驅動安裝、修復或系統還原遇到問題，請先關閉此選項後再重試。</value>
+  </data>
   <data name="NavigationToggleToolTip" xml:space="preserve">
     <value>切換導覽窗格</value>
   </data>

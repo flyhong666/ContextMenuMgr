@@ -97,10 +97,44 @@
                     FontSize="20"
                     FontWeight="SemiBold"
                     Text="{Binding ProtectionTitle}" />
-                <ui:ToggleSwitch
-                    Margin="0,12,0,0"
-                    Content="{Binding LockNewContextMenuItemsLabel}"
-                    IsChecked="{Binding LockNewContextMenuItems, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid Margin="0,12,0,0">
+                    <ui:Flyout
+                        IsOpen="{Binding IsRegistryProtectionWarningFlyoutOpen, Mode=TwoWay}"
+                        Placement="Top">
+                        <StackPanel Width="340">
+                            <TextBlock
+                                FontWeight="SemiBold"
+                                Text="{Binding RegistryProtectionWarningTitle}"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Margin="0,8,0,0"
+                                Opacity="0.82"
+                                Text="{Binding RegistryProtectionWarningText}"
+                                TextWrapping="Wrap" />
+                            <StackPanel
+                                Margin="0,12,0,0"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal">
+                                <ui:Button
+                                    Margin="0,0,8,0"
+                                    Appearance="Primary"
+                                    Command="{Binding ConfirmRegistryProtectionWarningCommand}"
+                                    Content="{Binding RegistryProtectionWarningConfirmText}"
+                                    Foreground="#DCEBFF"
+                                    Icon="{ui:SymbolIcon Symbol=Checkmark24}" />
+                                <ui:Button
+                                    Appearance="Secondary"
+                                    Command="{Binding CloseRegistryProtectionWarningFlyoutCommand}"
+                                    Content="{Binding RegistryProtectionWarningCloseText}"
+                                    Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ui:Flyout>
+
+                    <ui:ToggleSwitch
+                        Content="{Binding LockNewContextMenuItemsLabel}"
+                        IsChecked="{Binding LockNewContextMenuItems, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
                 <TextBlock
                     Margin="0,8,0,0"
                     Opacity="0.72"

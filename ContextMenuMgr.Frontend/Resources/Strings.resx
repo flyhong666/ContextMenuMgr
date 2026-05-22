@@ -590,6 +590,12 @@ Continue anyway? (Not recommended)</value>
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
     <value>Adds deny write rules to the monitored shell roots so ordinary processes cannot add new context menu entries even when the backend is not running.</value>
   </data>
+  <data name="RegistryProtectionWarningTitle" xml:space="preserve">
+    <value>Registry-level protection warning</value>
+  </data>
+  <data name="RegistryProtectionWarningText" xml:space="preserve">
+    <value>This option locks context-menu registry locations with ACL rules to prevent new menu items from being added. Some installers, driver packages, or hardware utilities may need to write these locations. Enabling it may cause NVIDIA/AMD/Intel graphics driver installers or control panel integrations to fail or behave abnormally. If driver installation or repair fails, turn this option off and try again.</value>
+  </data>
   <data name="NavigationToggleToolTip" xml:space="preserve">
     <value>Toggle navigation pane</value>
   </data>

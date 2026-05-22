@@ -71,6 +71,7 @@ public sealed class ContextMenuRegistryCatalog
     private readonly RegistryBackupService _backupService;
     private readonly BackendProtectionSettingsStore _protectionSettingsStore;
     private readonly Windows11ContextMenuCatalog _windows11Catalog;
+    private readonly SemaphoreSlim _registryWriteProtectionGate = new(1, 1);
     private volatile bool _interactiveSessionObserved;
     private volatile bool _interactiveSessionSnapshotSettled;
 
@@ -166,6 +167,113 @@ public sealed class ContextMenuRegistryCatalog
                 ConsistencyIssue = null
             })
             .ToArray();
+    }
+
+    public async Task<T> RunWithRegistryWriteProtectionTemporarilyDisabledAsync<T>(
+        IReadOnlyCollection<string> relativeRootPaths,
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        var protectedRoots = NormalizeRegistryWriteProtectionRelativePaths(relativeRootPaths);
+        if (protectedRoots.Count == 0)
+        {
+            return await operation(cancellationToken);
+        }
+
+        var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
+        if (!settings.LockNewContextMenuItems)
+        {
+            return await operation(cancellationToken);
+        }
+
+        var rootsText = string.Join(";", protectedRoots);
+        await _registryWriteProtectionGate.WaitAsync(cancellationToken);
+
+        T? result = default;
+        var operationCompleted = false;
+        InvalidOperationException? unlockFailure = null;
+        string? relockFailureMessage = null;
+
+        try
+        {
+            await _logger.LogAsync($"RegistryWriteProtectionTemporaryUnlockStart: Roots={rootsText}.", cancellationToken);
+            var unlockErrors = ApplyRegistryWriteProtectionToRoots(protectedRoots, enable: false);
+            if (unlockErrors.Count > 0)
+            {
+                var detail = string.Join(Environment.NewLine, unlockErrors);
+                unlockFailure = new InvalidOperationException(
+                    $"Unable to temporarily disable registry write protection for app-owned operation.{Environment.NewLine}{detail}");
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    $"RegistryWriteProtectionTemporaryUnlockEnd: Roots={rootsText}, Result=Failure.{Environment.NewLine}{detail}",
+                    cancellationToken);
+            }
+            else
+            {
+                await _logger.LogAsync($"RegistryWriteProtectionTemporaryUnlockEnd: Roots={rootsText}, Result=Success.", cancellationToken);
+                result = await operation(cancellationToken);
+                operationCompleted = true;
+            }
+        }
+        finally
+        {
+            try
+            {
+                await _logger.LogAsync($"RegistryWriteProtectionTemporaryRelockStart: Roots={rootsText}.", CancellationToken.None);
+                var relockErrors = ApplyRegistryWriteProtectionToRoots(protectedRoots, enable: true);
+                if (relockErrors.Count > 0)
+                {
+                    relockFailureMessage = string.Join(Environment.NewLine, relockErrors);
+                    await _logger.LogAsync(
+                        RuntimeLogLevel.Error,
+                        $"RegistryWriteProtectionTemporaryRelockFailed: Roots={rootsText}.{Environment.NewLine}{relockFailureMessage}",
+                        CancellationToken.None);
+                    await _logger.LogAsync(
+                        RuntimeLogLevel.Error,
+                        $"RegistryWriteProtectionTemporaryRelockEnd: Roots={rootsText}, Result=Failure.",
+                        CancellationToken.None);
+                }
+                else
+                {
+                    await _logger.LogAsync($"RegistryWriteProtectionTemporaryRelockEnd: Roots={rootsText}, Result=Success.", CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                relockFailureMessage = ex.Message;
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Error,
+                    $"RegistryWriteProtectionTemporaryRelockFailed: Roots={rootsText}, Exception={ex}",
+                    CancellationToken.None);
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Error,
+                    $"RegistryWriteProtectionTemporaryRelockEnd: Roots={rootsText}, Result=Failure.",
+                    CancellationToken.None);
+            }
+            finally
+            {
+                _registryWriteProtectionGate.Release();
+            }
+        }
+
+        if (unlockFailure is not null)
+        {
+            throw unlockFailure;
+        }
+
+        if (operationCompleted
+            && !string.IsNullOrWhiteSpace(relockFailureMessage)
+            && result is PipeResponse response)
+        {
+            var warningMessage = string.IsNullOrWhiteSpace(response.Message)
+                ? $"Warning: registry write protection relock failed. {relockFailureMessage}"
+                : $"{response.Message}{Environment.NewLine}Warning: registry write protection relock failed. {relockFailureMessage}";
+            result = (T)(object)(response with { Message = warningMessage });
+        }
+
+        return operationCompleted
+            ? result!
+            : throw new InvalidOperationException("Unable to temporarily disable registry write protection for app-owned operation.");
     }
 
     public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
@@ -743,11 +851,25 @@ public sealed class ContextMenuRegistryCatalog
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
+                await RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
+                    [$@"{relativeGroupPath}\shell"],
+                    _ =>
+                    {
+                        SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
+                        return Task.FromResult(true);
+                    },
+                    cancellationToken);
             }
             else if (itemElement.Element("Guid") is not null)
             {
-                SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable);
+                await RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
+                    [$@"{relativeGroupPath}\shellex\ContextMenuHandlers"],
+                    _ =>
+                    {
+                        SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable);
+                        return Task.FromResult(true);
+                    },
+                    cancellationToken);
             }
             else
             {
@@ -2936,6 +3058,40 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return errors;
+    }
+
+    private List<string> ApplyRegistryWriteProtectionToRoots(IEnumerable<string> relativePaths, bool enable)
+    {
+        var errors = new List<string>();
+
+        foreach (var relativePath in NormalizeRegistryWriteProtectionRelativePaths(relativePaths))
+        {
+            ApplyRegistryWriteProtection(RegistryHive.LocalMachine, relativePath, enable, errors);
+        }
+
+        return errors;
+    }
+
+    private static IReadOnlyList<string> NormalizeRegistryWriteProtectionRelativePaths(IEnumerable<string> relativePaths)
+    {
+        var normalizedPaths = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var relativePath in relativePaths)
+        {
+            var normalized = NormalizeClassesRootRelativePath(relativePath);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                continue;
+            }
+
+            if (seen.Add(normalized))
+            {
+                normalizedPaths.Add(normalized);
+            }
+        }
+
+        return normalizedPaths;
     }
 
     private static void ApplyRegistryWriteProtectionToUserKey(RegistryKey userRoot, string relativePath, bool enable, List<string> errors)

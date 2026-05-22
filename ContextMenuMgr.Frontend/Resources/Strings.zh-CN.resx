@@ -590,6 +590,12 @@
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
     <value>会给受监控的 Shell 根路径加上拒绝写入权限。即使后台守护程序退出，普通进程也无法继续往这些位置新增右键菜单项。</value>
   </data>
+  <data name="RegistryProtectionWarningTitle" xml:space="preserve">
+    <value>注册表权限锁定警告</value>
+  </data>
+  <data name="RegistryProtectionWarningText" xml:space="preserve">
+    <value>此选项会通过注册表 ACL 权限规则锁定右键菜单相关位置，以阻止新的右键菜单项被添加。部分安装程序、驱动程序包或硬件工具可能需要写入这些位置。启用后，NVIDIA / AMD / Intel 等显卡驱动安装程序或控制面板集成可能安装失败或出现异常。如果驱动安装、修复或系统还原遇到问题，请先关闭此选项后再重试。</value>
+  </data>
   <data name="NavigationToggleToolTip" xml:space="preserve">
     <value>切换导航窗格</value>
   </data>

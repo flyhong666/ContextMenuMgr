@@ -81,7 +81,14 @@ public sealed class FileTypeSceneMenuService
                     return Failure("Shell verb items require a command.", operationId);
                 }
 
-                WriteShellVerb(relativeRoot, keyName, request);
+                await _catalog.RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
+                    [$@"{relativeRoot}\shell"],
+                    _ =>
+                    {
+                        WriteShellVerb(relativeRoot, keyName, request);
+                        return Task.FromResult(true);
+                    },
+                    cancellationToken);
             }
             else
             {
@@ -90,11 +97,18 @@ public sealed class FileTypeSceneMenuService
                     return Failure("The GUID format is invalid.", operationId);
                 }
 
-                Registry.SetValue(
-                    $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}",
-                    string.Empty,
-                    guid.ToString("B"),
-                    RegistryValueKind.String);
+                await _catalog.RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
+                    [$@"{relativeRoot}\shellex\ContextMenuHandlers"],
+                    _ =>
+                    {
+                        Registry.SetValue(
+                            $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}",
+                            string.Empty,
+                            guid.ToString("B"),
+                            RegistryValueKind.String);
+                        return Task.FromResult(true);
+                    },
+                    cancellationToken);
                 await _logger.LogAsync(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateSceneShellExHandler", $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}", null, RegistryValueKind.String, guid.ToString("B"), writable: true, result: "SetValue Success"), cancellationToken);
             }
 

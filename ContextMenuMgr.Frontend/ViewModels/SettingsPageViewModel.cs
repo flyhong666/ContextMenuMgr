@@ -25,6 +25,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly ContextMenuItemActionsService _actionsService;
     private bool _suppressProtectionSync;
     private bool _suppressAutoStartSync;
+    private bool _pendingRegistryProtectionEnable;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SettingsPageViewModel"/> class.
@@ -143,6 +144,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public partial bool IsUninstallFlyoutOpen { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether registry protection Warning Flyout Open.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsRegistryProtectionWarningFlyoutOpen { get; set; }
+
+    /// <summary>
     /// Gets or sets the title.
     /// </summary>
     [ObservableProperty]
@@ -177,6 +184,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string LockNewContextMenuItemsLabel => _localization.Translate("LockNewContextMenuItemsLabel");
 
     public string LockNewContextMenuItemsDescription => _localization.Translate("LockNewContextMenuItemsDescription");
+
+    public string RegistryProtectionWarningTitle => _localization.Translate("RegistryProtectionWarningTitle");
+
+    public string RegistryProtectionWarningText => _localization.Translate("RegistryProtectionWarningText");
+
+    public string RegistryProtectionWarningConfirmText => _localization.Translate("DialogConfirm");
+
+    public string RegistryProtectionWarningCloseText => _localization.Translate("DialogCancel");
 
     public string ServiceSettingsTitle => _localization.Translate("ServiceSettingsTitle");
 
@@ -270,7 +285,36 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (_pendingRegistryProtectionEnable && !value)
+        {
+            _pendingRegistryProtectionEnable = false;
+            IsRegistryProtectionWarningFlyoutOpen = false;
+            return;
+        }
+
+        if (value && !_settingsService.Current.LockNewContextMenuItems)
+        {
+            _pendingRegistryProtectionEnable = true;
+            IsRegistryProtectionWarningFlyoutOpen = true;
+            return;
+        }
+
+        _pendingRegistryProtectionEnable = false;
+        IsRegistryProtectionWarningFlyoutOpen = false;
         _ = UpdateRegistryProtectionSettingAsync(value);
+    }
+
+    partial void OnIsRegistryProtectionWarningFlyoutOpenChanged(bool value)
+    {
+        if (value || !_pendingRegistryProtectionEnable)
+        {
+            return;
+        }
+
+        _pendingRegistryProtectionEnable = false;
+        _suppressProtectionSync = true;
+        LockNewContextMenuItems = false;
+        _suppressProtectionSync = false;
     }
 
     [RelayCommand]
@@ -298,6 +342,28 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private void CloseUninstallFlyout()
     {
         IsUninstallFlyoutOpen = false;
+    }
+
+    [RelayCommand]
+    private void CloseRegistryProtectionWarningFlyout()
+    {
+        if (_pendingRegistryProtectionEnable)
+        {
+            _pendingRegistryProtectionEnable = false;
+            _suppressProtectionSync = true;
+            LockNewContextMenuItems = false;
+            _suppressProtectionSync = false;
+        }
+
+        IsRegistryProtectionWarningFlyoutOpen = false;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmRegistryProtectionWarningAsync()
+    {
+        _pendingRegistryProtectionEnable = false;
+        IsRegistryProtectionWarningFlyoutOpen = false;
+        await UpdateRegistryProtectionSettingAsync(true);
     }
 
     [RelayCommand]
@@ -470,6 +536,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(UtilitiesTitle));
         OnPropertyChanged(nameof(LockNewContextMenuItemsLabel));
         OnPropertyChanged(nameof(LockNewContextMenuItemsDescription));
+        OnPropertyChanged(nameof(RegistryProtectionWarningTitle));
+        OnPropertyChanged(nameof(RegistryProtectionWarningText));
+        OnPropertyChanged(nameof(RegistryProtectionWarningConfirmText));
+        OnPropertyChanged(nameof(RegistryProtectionWarningCloseText));
         OnPropertyChanged(nameof(ServiceSettingsTitle));
         OnPropertyChanged(nameof(InstallOrRepairServiceText));
         OnPropertyChanged(nameof(UninstallServiceText));
