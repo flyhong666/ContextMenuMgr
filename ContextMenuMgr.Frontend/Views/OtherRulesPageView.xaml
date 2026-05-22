@@ -5,9 +5,56 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views">
+    <UserControl.Resources>
+        <Style x:Key="OtherRulesTabHostSurfaceStyle" TargetType="Border">
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource LayerFillColorAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorSecondaryBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
+
+        <Style x:Key="OtherRulesTabContentSurfaceStyle" TargetType="Border">
+            <Setter Property="Margin" Value="12" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorSecondaryBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
+
+        <Style x:Key="OtherRulesLeftPanelStyle" BasedOn="{StaticResource CardBorderStyle}" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        </Style>
+
+        <Style x:Key="OtherRulesRightPanelStyle" BasedOn="{StaticResource CardBorderStyle}" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource LayerFillColorAltBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorSecondaryBrush}" />
+        </Style>
+
+        <Style x:Key="OtherRulesScrollViewportStyle" TargetType="Border">
+            <Setter Property="Margin" Value="12,0,12,12" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorQuarternaryBrush}" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+
+        <Style x:Key="OtherRulesItemCardStyle" TargetType="Border">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorSecondaryBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid>
+        <Border Style="{StaticResource OtherRulesTabHostSurfaceStyle}">
         <!-- Named for code-behind tab selection tracking to toggle outer ScrollViewer -->
-        <TabControl x:Name="MainTabControl" Margin="0,8,0,0">
+        <TabControl x:Name="MainTabControl" Background="Transparent">
             <TabItem Tag="EnhanceMenus">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
@@ -16,14 +63,15 @@
                     </StackPanel>
                 </TabItem.Header>
 
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="16" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Background="{DynamicResource LayerFillColorAltBrush}" Style="{StaticResource CardBorderStyle}">
+                    <Border Style="{StaticResource OtherRulesLeftPanelStyle}">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -44,6 +92,7 @@
 
                             <ui:ListView
                                 Grid.Row="1"
+                                Background="Transparent"
                                 BorderThickness="0"
                                 ItemContainerStyle="{StaticResource DisplayOnlyListViewItemStyle}"
                                 ItemsSource="{Binding EnhanceGroups}"
@@ -84,7 +133,7 @@
                             </Style>
                         </Grid.Style>
 
-                        <Border Background="{DynamicResource LayerFillColorAltBrush}" Style="{StaticResource CardBorderStyle}">
+                        <Border Style="{StaticResource OtherRulesRightPanelStyle}">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -106,88 +155,88 @@
                                 <!-- ScrollViewer wrapping ItemsControl for independent right-panel scrolling.
                                      ItemsControl has no built-in ScrollViewer, so we wrap it explicitly.
                                      The outer DynamicScrollViewer is disabled in code-behind for this tab. -->
-                                <ScrollViewer
+                                <Border
                                     Grid.Row="1"
-                                    Margin="12,0,12,12"
-                                    HorizontalScrollBarVisibility="Disabled"
-                                    VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        ItemsSource="{Binding SelectedEnhanceGroup.Items}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type viewModels:EnhanceMenuItemViewModel}">
-                                            <Border
-                                                Margin="0,0,0,10"
-                                                Padding="14"
-                                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                                CornerRadius="10">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
+                                    Style="{StaticResource OtherRulesScrollViewportStyle}">
+                                    <ScrollViewer
+                                        HorizontalScrollBarVisibility="Disabled"
+                                        VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            ItemsSource="{Binding SelectedEnhanceGroup.Items}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type viewModels:EnhanceMenuItemViewModel}">
+                                                    <Border Style="{StaticResource OtherRulesItemCardStyle}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
 
-                                                    <StackPanel Margin="0,0,16,0">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <Border
-                                                                Width="32"
-                                                                Height="32"
-                                                                Margin="0,0,10,0"
-                                                                Background="{DynamicResource ControlFillColorQuarternaryBrush}"
-                                                                CornerRadius="8">
-                                                                <Image
-                                                                    Width="20"
-                                                                    Height="20"
-                                                                    HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center"
-                                                                    Source="{Binding IconSource}" />
-                                                            </Border>
-                                                            <StackPanel VerticalAlignment="Center">
+                                                            <StackPanel Margin="0,0,16,0">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <Border
+                                                                        Width="32"
+                                                                        Height="32"
+                                                                        Margin="0,0,10,0"
+                                                                        Background="{DynamicResource ControlFillColorQuarternaryBrush}"
+                                                                        BorderBrush="{DynamicResource ControlStrokeColorSecondaryBrush}"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="8">
+                                                                        <Image
+                                                                            Width="20"
+                                                                            Height="20"
+                                                                            HorizontalAlignment="Center"
+                                                                            VerticalAlignment="Center"
+                                                                            Source="{Binding IconSource}" />
+                                                                    </Border>
+                                                                    <StackPanel VerticalAlignment="Center">
+                                                                        <TextBlock
+                                                                            FontSize="16"
+                                                                            FontWeight="SemiBold"
+                                                                            Text="{Binding DisplayName}" />
+                                                                        <TextBlock
+                                                                            Margin="0,4,0,0"
+                                                                            FontFamily="Consolas"
+                                                                            FontSize="11"
+                                                                            Opacity="0.68"
+                                                                            Text="{Binding KeyName}" />
+                                                                    </StackPanel>
+                                                                </StackPanel>
+
+                                                                <WrapPanel Margin="0,10,0,0">
+                                                                    <Border
+                                                                        Padding="8,2"
+                                                                        Background="{DynamicResource AccentFillColorSecondaryBrush}"
+                                                                        CornerRadius="4">
+                                                                        <TextBlock FontSize="11" Text="{Binding Kind}" />
+                                                                    </Border>
+                                                                </WrapPanel>
+
                                                                 <TextBlock
-                                                                    FontSize="16"
-                                                                    FontWeight="SemiBold"
-                                                                    Text="{Binding DisplayName}" />
-                                                                <TextBlock
-                                                                    Margin="0,4,0,0"
-                                                                    FontFamily="Consolas"
-                                                                    FontSize="11"
-                                                                    Opacity="0.68"
-                                                                    Text="{Binding KeyName}" />
+                                                                    Margin="0,10,0,0"
+                                                                    Opacity="0.72"
+                                                                    Text="{Binding Tip}"
+                                                                    TextWrapping="Wrap"
+                                                                    Visibility="{Binding HasTip, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                             </StackPanel>
-                                                        </StackPanel>
 
-                                                        <WrapPanel Margin="0,10,0,0">
-                                                            <Border
-                                                                Padding="8,2"
-                                                                Background="{DynamicResource AccentFillColorSecondaryBrush}"
-                                                                CornerRadius="4">
-                                                                <TextBlock FontSize="11" Text="{Binding Kind}" />
-                                                            </Border>
-                                                        </WrapPanel>
-
-                                                        <TextBlock
-                                                            Margin="0,10,0,0"
-                                                            Opacity="0.72"
-                                                            Text="{Binding Tip}"
-                                                            TextWrapping="Wrap"
-                                                            Visibility="{Binding HasTip, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                    </StackPanel>
-
-                                                    <ui:ToggleSwitch
-                                                        Grid.Column="1"
-                                                        Margin="0,4,0,0"
-                                                        HorizontalAlignment="Right"
-                                                        IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                        IsEnabled="{Binding CanToggle}"
-                                                        OffContent="{Binding ToggleOffText}"
-                                                        OnContent="{Binding ToggleOnText}" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                </ScrollViewer>
+                                                            <ui:ToggleSwitch
+                                                                Grid.Column="1"
+                                                                Margin="0,4,0,0"
+                                                                HorizontalAlignment="Right"
+                                                                IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                IsEnabled="{Binding CanToggle}"
+                                                                OffContent="{Binding ToggleOffText}"
+                                                                OnContent="{Binding ToggleOnText}" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
                             </Grid>
                         </Border>
                     </Grid>
@@ -210,6 +259,7 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </Grid>
+                </Border>
             </TabItem>
 
             <TabItem Tag="DetailedEdit">
@@ -220,14 +270,15 @@
                     </StackPanel>
                 </TabItem.Header>
 
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="300" />
                         <ColumnDefinition Width="16" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <Border Background="{DynamicResource LayerFillColorAltBrush}" Style="{StaticResource CardBorderStyle}">
+                    <Border Style="{StaticResource OtherRulesLeftPanelStyle}">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -292,7 +343,7 @@
                             </Style>
                         </Grid.Style>
 
-                        <Border Background="{DynamicResource LayerFillColorAltBrush}" Style="{StaticResource CardBorderStyle}">
+                        <Border Style="{StaticResource OtherRulesRightPanelStyle}">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -321,80 +372,79 @@
                                 <!-- ScrollViewer wrapping ItemsControl for independent right-panel scrolling.
                                      ItemsControl has no built-in ScrollViewer, so we wrap it explicitly.
                                      The outer DynamicScrollViewer is disabled in code-behind for this tab. -->
-                                <ScrollViewer
+                                <Border
                                     Grid.Row="1"
-                                    Margin="12,0,12,12"
-                                    HorizontalScrollBarVisibility="Disabled"
-                                    VerticalScrollBarVisibility="Auto">
-                                    <ItemsControl
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        ItemsSource="{Binding SelectedDetailedEditGroup.Rules}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type viewModels:DetailedEditRuleViewModel}">
-                                            <Border
-                                                Margin="0,0,0,10"
-                                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                                Style="{StaticResource CardBorderStyle}">
-                                                <StackPanel>
-                                                    <TextBlock
-                                                        FontSize="15"
-                                                        FontWeight="SemiBold"
-                                                        Text="{Binding DisplayName}" />
-                                                    <TextBlock
-                                                        Margin="0,6,0,0"
-                                                        Opacity="0.72"
-                                                        Text="{Binding Tip}"
-                                                        TextWrapping="Wrap"
-                                                        Visibility="{Binding Tip, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
-                                                    <Border
-                                                        Margin="0,8,0,0"
-                                                        Padding="8,2"
-                                                        Background="{DynamicResource AccentFillColorSecondaryBrush}"
-                                                        CornerRadius="4"
-                                                        Visibility="{Binding RequiresExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock FontSize="11" Text="{Binding RestartExplorerHint}" />
+                                    Style="{StaticResource OtherRulesScrollViewportStyle}">
+                                    <ScrollViewer
+                                        HorizontalScrollBarVisibility="Disabled"
+                                        VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            ItemsSource="{Binding SelectedDetailedEditGroup.Rules}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type viewModels:DetailedEditRuleViewModel}">
+                                                    <Border Style="{StaticResource OtherRulesItemCardStyle}">
+                                                        <StackPanel>
+                                                            <TextBlock
+                                                                FontSize="15"
+                                                                FontWeight="SemiBold"
+                                                                Text="{Binding DisplayName}" />
+                                                            <TextBlock
+                                                                Margin="0,6,0,0"
+                                                                Opacity="0.72"
+                                                                Text="{Binding Tip}"
+                                                                TextWrapping="Wrap"
+                                                                Visibility="{Binding Tip, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
+                                                            <Border
+                                                                Margin="0,8,0,0"
+                                                                Padding="8,2"
+                                                                Background="{DynamicResource AccentFillColorSecondaryBrush}"
+                                                                CornerRadius="4"
+                                                                Visibility="{Binding RequiresExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBlock FontSize="11" Text="{Binding RestartExplorerHint}" />
+                                                            </Border>
+
+                                                            <ui:ToggleSwitch
+                                                                Margin="0,12,0,0"
+                                                                Content="{Binding DisplayName}"
+                                                                IsChecked="{Binding BoolValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                Visibility="{Binding IsBooleanRule, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                                            <DockPanel Margin="0,12,0,0" Visibility="{Binding IsNumberRule, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBox
+                                                                    MinWidth="140"
+                                                                    Margin="0,0,8,0"
+                                                                    Padding="10,6"
+                                                                    DockPanel.Dock="Left"
+                                                                    Text="{Binding NumberText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                <ui:Button
+                                                                    Padding="14,6"
+                                                                    Command="{Binding ApplyCommand}"
+                                                                    Content="{Binding ApplyText}"
+                                                                    Icon="{ui:SymbolIcon Symbol=Checkmark24}" />
+                                                            </DockPanel>
+
+                                                            <DockPanel Margin="0,12,0,0" Visibility="{Binding IsStringRule, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBox
+                                                                    MinWidth="260"
+                                                                    Margin="0,0,8,0"
+                                                                    Padding="10,6"
+                                                                    DockPanel.Dock="Left"
+                                                                    Text="{Binding StringValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                                <ui:Button
+                                                                    Padding="14,6"
+                                                                    Command="{Binding ApplyCommand}"
+                                                                    Content="{Binding ApplyText}"
+                                                                    Icon="{ui:SymbolIcon Symbol=Checkmark24}" />
+                                                            </DockPanel>
+                                                        </StackPanel>
                                                     </Border>
-
-                                                    <ui:ToggleSwitch
-                                                        Margin="0,12,0,0"
-                                                        Content="{Binding DisplayName}"
-                                                        IsChecked="{Binding BoolValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                        Visibility="{Binding IsBooleanRule, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                                                    <DockPanel Margin="0,12,0,0" Visibility="{Binding IsNumberRule, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBox
-                                                            MinWidth="140"
-                                                            Margin="0,0,8,0"
-                                                            Padding="10,6"
-                                                            DockPanel.Dock="Left"
-                                                            Text="{Binding NumberText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <ui:Button
-                                                            Padding="14,6"
-                                                            Command="{Binding ApplyCommand}"
-                                                            Content="{Binding ApplyText}"
-                                                            Icon="{ui:SymbolIcon Symbol=Checkmark24}" />
-                                                    </DockPanel>
-
-                                                    <DockPanel Margin="0,12,0,0" Visibility="{Binding IsStringRule, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBox
-                                                            MinWidth="260"
-                                                            Margin="0,0,8,0"
-                                                            Padding="10,6"
-                                                            DockPanel.Dock="Left"
-                                                            Text="{Binding StringValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        <ui:Button
-                                                            Padding="14,6"
-                                                            Command="{Binding ApplyCommand}"
-                                                            Content="{Binding ApplyText}"
-                                                            Icon="{ui:SymbolIcon Symbol=Checkmark24}" />
-                                                    </DockPanel>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                </ScrollViewer>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
                             </Grid>
                         </Border>
                     </Grid>
@@ -417,6 +467,7 @@
                         </TextBlock.Style>
                     </TextBlock>
                 </Grid>
+                </Border>
             </TabItem>
 
             <TabItem>
@@ -426,9 +477,9 @@
                         <TextBlock Text="{Binding CustomRegistryPathTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
                     <views:SceneBrowserView DataContext="{Binding CustomRegistryPathTab}" />
-                </Grid>
+                </Border>
             </TabItem>
 
             <TabItem>
@@ -438,9 +489,9 @@
                         <TextBlock Text="{Binding DragDropTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
                     <views:SpecialMenuPageView DataContext="{Binding DragDropTab}" />
-                </Grid>
+                </Border>
             </TabItem>
 
             <TabItem>
@@ -450,9 +501,9 @@
                         <TextBlock Text="{Binding CommandStoreTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
                     <views:SpecialMenuPageView DataContext="{Binding CommandStoreTab}" />
-                </Grid>
+                </Border>
             </TabItem>
 
             <TabItem>
@@ -462,9 +513,9 @@
                         <TextBlock Text="{Binding GuidBlockTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
                     <views:SpecialMenuPageView DataContext="{Binding GuidBlockTab}" />
-                </Grid>
+                </Border>
             </TabItem>
 
             <TabItem>
@@ -474,10 +525,11 @@
                         <TextBlock Text="{Binding IeMenuTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid Margin="12">
+                <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
                     <views:SpecialMenuPageView DataContext="{Binding IeMenuTab}" />
-                </Grid>
+                </Border>
             </TabItem>
         </TabControl>
+        </Border>
     </Grid>
 </UserControl>
