@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
@@ -35,13 +36,14 @@ public sealed class BackendUserContextResolver
                 userName = identity.Name;
             });
 
+            var sessionId = TryResolvePipeClientSessionId(stream);
             var context = string.IsNullOrWhiteSpace(sid)
                 ? null
-                : CreateContext(sid, userName ?? sid, sessionId: null);
+                : CreateContext(sid, userName ?? sid, sessionId);
             _logger.LogFireAndForget(
                 context is null
                     ? "UserContextResolveFailure: Source=PipeClient, Reason=MissingSid."
-                    : $"UserContextResolveSuccess: Source=PipeClient, Sid={context.Sid}, UserName={context.UserName}, ProfilePath={context.ProfilePath}, SessionId=<null>.");
+                    : $"UserContextResolveSuccess: Source=PipeClient, Sid={context.Sid}, UserName={context.UserName}, ProfilePath={context.ProfilePath}, SessionId={context.SessionId?.ToString() ?? "<null>"}.");
             return context;
         }
         catch (Exception ex)
@@ -49,6 +51,30 @@ public sealed class BackendUserContextResolver
             _ = _logger.LogAsync(RuntimeLogLevel.Warning, $"Unable to resolve pipe client user context: {ex}", CancellationToken.None);
             return null;
         }
+    }
+
+    public BackendUserContext? TryResolveFromPipeClientWithSessionFallback(NamedPipeServerStream stream)
+    {
+        var pipeContext = TryResolveFromPipeClient(stream);
+        if (pipeContext?.SessionId is not null)
+        {
+            return pipeContext;
+        }
+
+        var fallbackContext = TryResolveInteractiveUserFallback();
+
+        if (pipeContext is null)
+        {
+            return fallbackContext;
+        }
+
+        if (fallbackContext is not null
+            && string.Equals(fallbackContext.Sid, pipeContext.Sid, StringComparison.OrdinalIgnoreCase))
+        {
+            return fallbackContext;
+        }
+
+        return pipeContext;
     }
 
     public BackendUserContext? TryResolveInteractiveUserFallback()
@@ -107,6 +133,35 @@ public sealed class BackendUserContextResolver
         finally
         {
             NativeMethods.WTSFreeMemory(sessionInfoPtr);
+        }
+    }
+
+    private int? TryResolvePipeClientSessionId(NamedPipeServerStream stream)
+    {
+        try
+        {
+            if (!NativeMethods.GetNamedPipeClientProcessId(stream.SafePipeHandle, out var clientProcessId))
+            {
+                _logger.LogFireAndForget(
+                    RuntimeLogLevel.Warning,
+                    $"UserContextPipeClientProcessFailure: LastWin32Error={Marshal.GetLastWin32Error()}.");
+                return null;
+            }
+
+            using var process = Process.GetProcessById(checked((int)clientProcessId));
+            var sessionId = process.SessionId;
+
+            _logger.LogFireAndForget(
+                $"UserContextPipeClientProcessResolved: ClientProcessId={clientProcessId}, SessionId={sessionId}.");
+
+            return sessionId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogFireAndForget(
+                RuntimeLogLevel.Warning,
+                $"UserContextPipeClientSessionFailure: Exception={ex}");
+            return null;
         }
     }
 
@@ -181,6 +236,12 @@ public sealed class BackendUserContextResolver
     {
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern uint WTSGetActiveConsoleSessionId();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetNamedPipeClientProcessId(
+            SafePipeHandle pipe,
+            out uint clientProcessId);
 
         [DllImport("wtsapi32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

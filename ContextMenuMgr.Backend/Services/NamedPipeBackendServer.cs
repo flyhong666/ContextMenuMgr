@@ -723,6 +723,21 @@ public sealed class NamedPipeBackendServer
         return userContext;
     }
 
+    private async Task<BackendUserContext?> ResolveFrontendUserSessionContextAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
+    {
+        var resolver = new BackendUserContextResolver(_logger);
+        var userContext = resolver.TryResolveFromPipeClientWithSessionFallback(stream);
+        if (userContext?.SessionId is null)
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                "Frontend user session context could not be resolved for session-scoped request.",
+                cancellationToken);
+        }
+
+        return userContext;
+    }
+
     // Resolve only for context-aware special menus (ShellNew / SendTo / WinX).
     // Do not call this from ordinary catalog, Win11, registry protection,
     // auto-start, file-type scene, or restart routes.
@@ -826,7 +841,7 @@ public sealed class NamedPipeBackendServer
             "RestartExplorerRequest: Sid=<null>, SessionId=<null>, Result=Started.",
             cancellationToken);
 
-        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        var userContext = await ResolveFrontendUserSessionContextAsync(stream, cancellationToken);
         if (userContext is null)
         {
             await _logger.LogAsync(
@@ -861,16 +876,18 @@ public sealed class NamedPipeBackendServer
             };
         }
 
-        _explorerRestartService.RestartExplorer(userContext.SessionId);
+        var killedCount = _explorerRestartService.RestartExplorer(userContext.SessionId);
 
         await _logger.LogAsync(
-            $"RestartExplorerRequest: Sid={sid}, SessionId={userContext.SessionId.Value}, Result=Success.",
+            $"RestartExplorerRequest: Sid={sid}, SessionId={userContext.SessionId.Value}, KilledCount={killedCount}, Result=Success.",
             cancellationToken);
 
         return new PipeResponse
         {
             Success = true,
-            Message = "Explorer restart requested."
+            Message = killedCount == 0
+                ? "Explorer restart requested, but no explorer.exe process was found in the frontend user session."
+                : "Explorer restart requested."
         };
     }
 

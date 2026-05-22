@@ -4,27 +4,37 @@ namespace ContextMenuMgr.Backend.Services;
 
 public sealed class ExplorerRestartService
 {
-    public void RestartExplorer(int? sessionId)
+    public int RestartExplorer(int? sessionId)
     {
         if (!sessionId.HasValue)
         {
-            return;
+            return 0;
         }
 
-        var processes = Process.GetProcessesByName("explorer")
-            .Where(p => p.SessionId == sessionId.Value)
-            .ToArray();
+        var killed = 0;
+        var processes = Process.GetProcessesByName("explorer");
 
         foreach (var process in processes)
         {
-            try
+            using (process)
             {
-                process.Kill();
-                process.WaitForExit(5000);
-            }
-            catch
-            {
+                try
+                {
+                    if (process.SessionId != sessionId.Value)
+                    {
+                        continue;
+                    }
+
+                    process.Kill();
+                    process.WaitForExit(5000);
+                    killed++;
+                }
+                catch
+                {
+                }
             }
         }
+
+        return killed;
     }
 }
