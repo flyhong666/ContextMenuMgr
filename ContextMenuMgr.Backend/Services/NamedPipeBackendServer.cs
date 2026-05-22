@@ -441,7 +441,7 @@ public sealed class NamedPipeBackendServer
                     request.ClientOperationId,
                     cancellationToken),
             PipeCommand.RestartExplorer
-                => HandleRestartExplorerRequest(),
+                => await HandleRestartExplorerRequestAsync(stream, cancellationToken),
             PipeCommand.SetWin11BlockedItem when request.ItemId is not null
                 => await HandleSetWin11BlockedItemAsync(request, stream, cancellationToken),
             PipeCommand.RemoveWin11BlockedItem when request.ItemId is not null
@@ -818,12 +818,59 @@ public sealed class NamedPipeBackendServer
         };
     }
 
-    private PipeResponse HandleRestartExplorerRequest()
+    private async Task<PipeResponse> HandleRestartExplorerRequestAsync(
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
     {
+        await _logger.LogAsync(
+            "RestartExplorerRequest: Sid=<null>, SessionId=<null>, Result=Started.",
+            cancellationToken);
+
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        if (userContext is null)
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                "RestartExplorerRequest: Sid=<null>, SessionId=<null>, Result=Failed, Reason=MissingFrontendUserContext.",
+                cancellationToken);
+
+            return new PipeResponse
+            {
+                Success = false,
+                Message = "Cannot restart Explorer: frontend user context is not available."
+            };
+        }
+
+        var sid = string.IsNullOrWhiteSpace(userContext.Sid) ? "<null>" : userContext.Sid;
+        var sessionId = userContext.SessionId?.ToString() ?? "<null>";
+        await _logger.LogAsync(
+            $"RestartExplorerRequest: Sid={sid}, SessionId={sessionId}, Result=ContextResolved.",
+            cancellationToken);
+
+        if (!userContext.SessionId.HasValue)
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                $"RestartExplorerRequest: Sid={sid}, SessionId=<null>, Result=Failed, Reason=MissingFrontendUserSession.",
+                cancellationToken);
+
+            return new PipeResponse
+            {
+                Success = false,
+                Message = "Cannot restart Explorer: frontend user session is not available."
+            };
+        }
+
+        _explorerRestartService.RestartExplorer(userContext.SessionId);
+
+        await _logger.LogAsync(
+            $"RestartExplorerRequest: Sid={sid}, SessionId={userContext.SessionId.Value}, Result=Success.",
+            cancellationToken);
+
         return new PipeResponse
         {
-            Success = false,
-            Message = "Cannot restart explorer: user context is not available in the isolated ShellNew pipeline."
+            Success = true,
+            Message = "Explorer restart requested."
         };
     }
 
