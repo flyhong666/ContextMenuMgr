@@ -106,9 +106,31 @@
                                             <Border
                                                 Margin="8,0,0,0"
                                                 Padding="8,2"
-                                                Background="{DynamicResource AccentFillColorSecondaryBrush}"
                                                 CornerRadius="4">
-                                                <TextBlock FontSize="11" Text="{Binding StateLabel}" />
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                                <Setter Property="Background" Value="{DynamicResource SystemFillColorNeutralBackgroundBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Text="{Binding StateLabel}">
+                                                    <TextBlock.Style>
+                                                        <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
                                             </Border>
                                             <Border
                                                 Margin="6,0,0,0"
@@ -158,23 +180,21 @@
                                     Text="{Binding DetectedChangeText}"
                                     TextWrapping="Wrap"
                                     Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <DockPanel
-                                        Margin="0,6,0,0"
-                                        Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <ui:Button
-                                            Width="22"
+                                <DockPanel Margin="0,6,0,0" Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ui:Button
+                                        Width="22"
                                         Height="22"
-                                            Margin="0,0,6,0"
-                                            Padding="0"
-                                            Appearance="Transparent"
-                                            Command="{Binding DismissDetectedChangeCommand}"
-                                            DockPanel.Dock="Right"
-                                            Icon="{ui:SymbolIcon Symbol=Dismiss24}"
-                                            ToolTip="{Binding DismissAttentionText}"
-                                            Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                        <TextBlock
-                                            Foreground="#C75000"
-                                            Text="{Binding ConsistencyText}"
+                                        Margin="0,0,6,0"
+                                        Padding="0"
+                                        Appearance="Transparent"
+                                        Command="{Binding DismissDetectedChangeCommand}"
+                                        DockPanel.Dock="Right"
+                                        Icon="{ui:SymbolIcon Symbol=Dismiss24}"
+                                        ToolTip="{Binding DismissAttentionText}"
+                                        Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <TextBlock
+                                        Foreground="#C75000"
+                                        Text="{Binding ConsistencyText}"
                                         TextWrapping="Wrap" />
                                 </DockPanel>
                                 <TextBlock
