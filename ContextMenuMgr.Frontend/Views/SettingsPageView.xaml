@@ -120,7 +120,6 @@
                                     Appearance="Primary"
                                     Command="{Binding ConfirmRegistryProtectionWarningCommand}"
                                     Content="{Binding RegistryProtectionWarningConfirmText}"
-                                    Foreground="#DCEBFF"
                                     Icon="{ui:SymbolIcon Symbol=Checkmark24}" />
                                 <ui:Button
                                     Appearance="Secondary"
@@ -179,7 +178,6 @@
                                         Appearance="Primary"
                                         Command="{Binding ConfirmUninstallServiceCommand}"
                                         Content="{Binding ConfirmUninstallText}"
-                                        Foreground="#DCEBFF"
                                         Icon="{ui:SymbolIcon Symbol=Delete24}" />
                                     <ui:Button
                                         Appearance="Secondary"
