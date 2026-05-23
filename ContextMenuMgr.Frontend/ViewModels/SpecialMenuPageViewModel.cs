@@ -753,6 +753,12 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     private void ApplySnapshot(IEnumerable<SpecialMenuEntry> snapshot)
     {
         var entries = snapshot.ToArray();
+        if (Kind == SpecialMenuKind.WinX)
+        {
+            ApplyWinXSnapshotIncrementally(entries);
+            return;
+        }
+
         var existing = new Dictionary<string, SpecialMenuItemViewModel>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in Items)
         {
@@ -778,6 +784,60 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         UpdateShellNewMoveAvailability();
         RebuildWinXGroups();
         ItemsView.Refresh();
+    }
+
+    private void ApplyWinXSnapshotIncrementally(IReadOnlyList<SpecialMenuEntry> entries)
+    {
+        ReconcileItemsIncrementally(entries);
+        UpdatePageStateFromSnapshot(entries);
+        ReconcileWinXGroupsIncrementally();
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            ItemsView.Refresh();
+        }
+    }
+
+    private void ReconcileItemsIncrementally(IReadOnlyList<SpecialMenuEntry> entries)
+    {
+        var existingById = new Dictionary<string, SpecialMenuItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in Items)
+        {
+            existingById[item.Id] = item;
+        }
+
+        var newIds = entries
+            .Select(static entry => entry.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var index = Items.Count - 1; index >= 0; index--)
+        {
+            if (!newIds.Contains(Items[index].Id))
+            {
+                Items.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < entries.Count; targetIndex++)
+        {
+            var entry = entries[targetIndex];
+            if (existingById.TryGetValue(entry.Id, out var item))
+            {
+                item.Update(entry);
+            }
+            else
+            {
+                item = new SpecialMenuItemViewModel(entry, _iconPreviewService, _localization, SetEnabledAsync);
+            }
+
+            var currentIndex = Items.IndexOf(item);
+            if (currentIndex < 0)
+            {
+                Items.Insert(targetIndex, item);
+            }
+            else if (currentIndex != targetIndex)
+            {
+                Items.Move(currentIndex, targetIndex);
+            }
+        }
     }
 
     private void Upsert(SpecialMenuEntry entry)
@@ -959,28 +1019,87 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             return;
         }
 
+        ReconcileWinXGroupsIncrementally();
+    }
+
+    private void ReconcileWinXGroupsIncrementally()
+    {
         foreach (var group in WinXGroups)
         {
             _winXExpandedStates[group.Group.KeyName] = group.IsExpanded;
         }
 
-        WinXGroups.Clear();
-        WinXGroupNodeViewModel? currentGroup = null;
+        var existingGroupsByKey = new Dictionary<string, WinXGroupNodeViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in WinXGroups)
+        {
+            existingGroupsByKey.TryAdd(group.Group.KeyName, group);
+        }
+        var groupSpecs = BuildWinXGroupSpecs();
+        var targetGroupKeys = groupSpecs
+            .Select(static spec => spec.Group.KeyName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = WinXGroups.Count - 1; index >= 0; index--)
+        {
+            if (!targetGroupKeys.Contains(WinXGroups[index].Group.KeyName))
+            {
+                WinXGroups.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < groupSpecs.Count; targetIndex++)
+        {
+            var spec = groupSpecs[targetIndex];
+            if (!existingGroupsByKey.TryGetValue(spec.Group.KeyName, out var group))
+            {
+                group = CreateWinXGroupNode(spec.Group);
+            }
+            else
+            {
+                group.UpdateGroup(spec.Group);
+            }
+
+            if (_winXExpandedStates.TryGetValue(spec.Group.KeyName, out var expanded))
+            {
+                group.IsExpanded = expanded;
+            }
+
+            var currentIndex = WinXGroups.IndexOf(group);
+            if (currentIndex < 0)
+            {
+                WinXGroups.Insert(targetIndex, group);
+            }
+            else if (currentIndex != targetIndex)
+            {
+                WinXGroups.Move(currentIndex, targetIndex);
+            }
+
+            ReconcileWinXGroupItems(group.Items, spec.Items);
+        }
+
+        UpdateWinXMoveAvailability();
+    }
+
+    private List<(SpecialMenuItemViewModel Group, List<SpecialMenuItemViewModel> Items)> BuildWinXGroupSpecs()
+    {
+        var specs = new List<(SpecialMenuItemViewModel Group, List<SpecialMenuItemViewModel> Items)>();
+        SpecialMenuItemViewModel? currentGroup = null;
         foreach (var item in Items)
         {
             if (item.Entry.Metadata.GetValueOrDefault("EntryType") == "Group")
             {
-                currentGroup = CreateWinXGroupNode(item);
-                WinXGroups.Add(currentGroup);
+                currentGroup = item;
+                specs.Add((currentGroup, []));
                 continue;
             }
 
-            if (currentGroup is null || !string.Equals(currentGroup.Group.KeyName, item.Entry.GroupName, StringComparison.OrdinalIgnoreCase))
+            if (currentGroup is null || !string.Equals(currentGroup.KeyName, item.Entry.GroupName, StringComparison.OrdinalIgnoreCase))
             {
-                currentGroup = WinXGroups.FirstOrDefault(group => string.Equals(group.Group.KeyName, item.Entry.GroupName, StringComparison.OrdinalIgnoreCase));
+                var existingSpecIndex = FindWinXGroupSpecIndex(specs, item.Entry.GroupName);
+                currentGroup = existingSpecIndex >= 0 ? specs[existingSpecIndex].Group : null;
                 if (currentGroup is null)
                 {
-                    currentGroup = CreateWinXGroupNode(new SpecialMenuItemViewModel(
+                    currentGroup = new SpecialMenuItemViewModel(
                         new SpecialMenuEntry
                         {
                             Id = $"{SpecialMenuKind.WinX}:Synthetic:{item.Entry.GroupName}",
@@ -994,15 +1113,64 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                         },
                         _iconPreviewService,
                         _localization,
-                        SetEnabledAsync));
-                    WinXGroups.Add(currentGroup);
+                        SetEnabledAsync);
+                    specs.Add((currentGroup, []));
                 }
             }
 
-            currentGroup.Items.Add(item);
+            var specIndex = FindWinXGroupSpecIndex(specs, currentGroup.KeyName);
+            if (specIndex >= 0)
+            {
+                specs[specIndex].Items.Add(item);
+            }
         }
 
-        UpdateWinXMoveAvailability();
+        return specs;
+    }
+
+    private static int FindWinXGroupSpecIndex(
+        IReadOnlyList<(SpecialMenuItemViewModel Group, List<SpecialMenuItemViewModel> Items)> specs,
+        string? keyName)
+    {
+        for (var index = 0; index < specs.Count; index++)
+        {
+            if (string.Equals(specs[index].Group.KeyName, keyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void ReconcileWinXGroupItems(
+        ObservableCollection<SpecialMenuItemViewModel> currentItems,
+        IReadOnlyList<SpecialMenuItemViewModel> targetItems)
+    {
+        var targetIds = targetItems
+            .Select(static item => item.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var index = currentItems.Count - 1; index >= 0; index--)
+        {
+            if (!targetIds.Contains(currentItems[index].Id))
+            {
+                currentItems.RemoveAt(index);
+            }
+        }
+
+        for (var targetIndex = 0; targetIndex < targetItems.Count; targetIndex++)
+        {
+            var item = targetItems[targetIndex];
+            var currentIndex = currentItems.IndexOf(item);
+            if (currentIndex < 0)
+            {
+                currentItems.Insert(targetIndex, item);
+            }
+            else if (currentIndex != targetIndex)
+            {
+                currentItems.Move(currentIndex, targetIndex);
+            }
+        }
     }
 
     private void UpdateShellNewMoveAvailability()
@@ -1135,10 +1303,27 @@ public sealed partial class WinXGroupNodeViewModel : ObservableObject
         Group = group;
     }
 
-    public SpecialMenuItemViewModel Group { get; }
+    public SpecialMenuItemViewModel Group { get; private set; }
 
     public ObservableCollection<SpecialMenuItemViewModel> Items { get; } = [];
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
+
+    public void UpdateGroup(SpecialMenuItemViewModel group)
+    {
+        if (ReferenceEquals(Group, group))
+        {
+            return;
+        }
+
+        if (string.Equals(Group.Id, group.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            Group.Update(group.Entry);
+            return;
+        }
+
+        Group = group;
+        OnPropertyChanged(nameof(Group));
+    }
 }
