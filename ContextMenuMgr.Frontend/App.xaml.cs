@@ -348,7 +348,7 @@ public partial class App : System.Windows.Application
 
         if (_mainWindow.WindowState == WindowState.Minimized)
         {
-            _mainWindow.WindowState = WindowState.Normal;
+            SystemCommands.RestoreWindow(_mainWindow);
         }
 
         if (!_mainWindow.IsVisible)

@@ -154,17 +154,14 @@ public class MenuItemFormDialog
             WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
             Background = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ApplicationBackgroundBrush"];
+            WindowChromeTitleBarFactory.Apply(this);
 
-            var titleBar = new TitleBar
-            {
-                Title = title,
-                Margin = new System.Windows.Thickness(0, 0, 0, 8),
-                Icon = new SymbolIcon { Symbol = SymbolRegular.WindowNew24 }
-            };
+            var titleBar = WindowChromeTitleBarFactory.CreateCloseOnlyTitleBar(
+                this,
+                title,
+                new SymbolIcon { Symbol = SymbolRegular.WindowNew24 });
 
             var mainPanel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(16, 8, 16, 16) };
-
-            mainPanel.Children.Add(titleBar);
 
             _nameTextBox = CreateTextBoxWithLabel(
                 mainPanel,
@@ -267,11 +264,24 @@ public class MenuItemFormDialog
             buttonPanel.Children.Add(cancelButton);
             mainPanel.Children.Add(buttonPanel);
 
-            Content = new System.Windows.Controls.ScrollViewer
+            var root = new System.Windows.Controls.Grid
+            {
+                RowDefinitions =
+                {
+                    new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto },
+                    new System.Windows.Controls.RowDefinition { Height = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) }
+                }
+            };
+            root.Children.Add(titleBar);
+
+            var scrollViewer = new System.Windows.Controls.ScrollViewer
             {
                 VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
                 Content = mainPanel
             };
+            System.Windows.Controls.Grid.SetRow(scrollViewer, 1);
+            root.Children.Add(scrollViewer);
+            Content = root;
 
             Loaded += (_, _) =>
             {
@@ -446,16 +456,14 @@ public class MenuItemFormDialog
             WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
             Background = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ApplicationBackgroundBrush"];
+            WindowChromeTitleBarFactory.Apply(this);
 
-            var titleBar = new TitleBar
-            {
-                Title = title,
-                Margin = new System.Windows.Thickness(0, 0, 0, 8),
-                Icon = new SymbolIcon { Symbol = SymbolRegular.WindowNew24 }
-            };
+            var titleBar = WindowChromeTitleBarFactory.CreateCloseOnlyTitleBar(
+                this,
+                title,
+                new SymbolIcon { Symbol = SymbolRegular.WindowNew24 });
 
             var mainPanel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(16, 8, 16, 16) };
-            mainPanel.Children.Add(titleBar);
 
             _extensionTextBox = CreateTextBoxWithLabel(
                 mainPanel,
@@ -522,11 +530,24 @@ public class MenuItemFormDialog
             buttonPanel.Children.Add(cancelButton);
             mainPanel.Children.Add(buttonPanel);
 
-            Content = new System.Windows.Controls.ScrollViewer
+            var root = new System.Windows.Controls.Grid
+            {
+                RowDefinitions =
+                {
+                    new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto },
+                    new System.Windows.Controls.RowDefinition { Height = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) }
+                }
+            };
+            root.Children.Add(titleBar);
+
+            var scrollViewer = new System.Windows.Controls.ScrollViewer
             {
                 VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
                 Content = mainPanel
             };
+            System.Windows.Controls.Grid.SetRow(scrollViewer, 1);
+            root.Children.Add(scrollViewer);
+            Content = root;
 
             Loaded += (_, _) =>
             {

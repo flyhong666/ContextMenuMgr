@@ -39,17 +39,16 @@ public static class TextInputDialog
             WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
             Background = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ApplicationBackgroundBrush"];
+            WindowChromeTitleBarFactory.Apply(this);
 
-            var titleBar = new TitleBar
-            {
-                Title = title,
-                Margin = new System.Windows.Thickness(0, 0, 0, 8),
-                Icon = new SymbolIcon { Symbol = SymbolRegular.TextEditStyle24 }
-            };
+            var titleBar = WindowChromeTitleBarFactory.CreateCloseOnlyTitleBar(
+                this,
+                title,
+                new SymbolIcon { Symbol = SymbolRegular.TextEditStyle24 });
 
             _textBox = new System.Windows.Controls.TextBox
             {
-                Margin = new System.Windows.Thickness(0, 8, 0, 0),
+                Margin = new System.Windows.Thickness(16, 8, 16, 0),
                 Text = initialText
             };
 
@@ -76,7 +75,6 @@ public static class TextInputDialog
 
             Content = new System.Windows.Controls.Grid
             {
-                Margin = new System.Windows.Thickness(10),
                 RowDefinitions =
                 {
                     new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto },
@@ -92,14 +90,14 @@ public static class TextInputDialog
                         Text = label,
                         FontSize = 13,
                         FontWeight = System.Windows.FontWeights.SemiBold,
-                        Margin = new System.Windows.Thickness(0, 8, 0, 0)
+                        Margin = new System.Windows.Thickness(16, 8, 16, 0)
                     },
                     _textBox,
                     new System.Windows.Controls.StackPanel
                     {
                         Orientation = System.Windows.Controls.Orientation.Horizontal,
                         HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-                        Margin = new System.Windows.Thickness(0, 20, 0, 0),
+                        Margin = new System.Windows.Thickness(16, 20, 16, 16),
                         Children = { okButton, cancelButton }
                     }
                 }

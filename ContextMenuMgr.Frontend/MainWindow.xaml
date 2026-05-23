@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:pages="clr-namespace:ContextMenuMgr.Frontend.Views.Pages"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     Title="{Binding WindowTitle}"
@@ -19,8 +20,9 @@
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     WindowBackdropType="Mica"
     WindowStartupLocation="CenterScreen"
+    WindowStyle="None"
     mc:Ignorable="d">
-    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
+    <Grid Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -28,16 +30,83 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Title="{Binding WindowTitle}" Grid.Row="0">
-            <ui:TitleBar.Icon>
-                <ui:ImageIcon Source="/Assets/AppIcon.ico" />
-            </ui:TitleBar.Icon>
-        </ui:TitleBar>
+        <Grid
+            x:Name="TitleBarRoot"
+            Grid.Row="0"
+            Height="44"
+            Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Image
+                x:Name="WindowIcon"
+                Grid.Column="0"
+                Width="24"
+                Height="24"
+                Margin="12,0,10,0"
+                VerticalAlignment="Center"
+                shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                Source="/Assets/AppIcon.ico" />
+
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                FontSize="13"
+                FontWeight="SemiBold"
+                Text="{Binding WindowTitle}" />
+
+            <StackPanel
+                x:Name="HeaderActions"
+                Grid.Column="2"
+                Margin="0,0,8,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal">
+                <ui:Button
+                    Height="32"
+                    MinWidth="108"
+                    Margin="0,0,8,0"
+                    Padding="14,6"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Appearance="Primary"
+                    Command="{Binding RestartExplorerCommand}"
+                    Content="{Binding RestartExplorerText}"
+                    Icon="{ui:SymbolIcon Symbol=ArrowCounterclockwise24}"
+                    Visibility="{Binding NeedsExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <ui:Button
+                    Height="32"
+                    MinWidth="92"
+                    Padding="14,6"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Appearance="Secondary"
+                    Command="{Binding RefreshCommand}"
+                    Content="{Binding RefreshText}"
+                    Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <ui:Button
+                    Click="MinimizeButton_Click"
+                    Icon="{ui:SymbolIcon Symbol=Subtract24}"
+                    Style="{StaticResource ChromeTitleBarButton}" />
+                <ui:Button
+                    x:Name="MaximizeButton"
+                    Click="MaximizeButton_Click"
+                    Icon="{ui:SymbolIcon Symbol=Maximize24}"
+                    Style="{StaticResource ChromeTitleBarButton}" />
+                <ui:Button
+                    Click="CloseButton_Click"
+                    Icon="{ui:SymbolIcon Symbol=Dismiss24}"
+                    Style="{StaticResource ChromeTitleBarButton}" />
+            </StackPanel>
+        </Grid>
 
         <Grid Grid.Row="1" Margin="12,0,12,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <TextBlock
@@ -47,34 +116,13 @@
                 FontSize="19"
                 Text="{Binding ServiceAttentionText}"
                 Visibility="{Binding ServiceAttentionText, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
-
-            <StackPanel x:Name="HeaderActions" Grid.Column="1" Orientation="Horizontal">
-                <ui:Button
-                    MinWidth="108"
-                    Margin="0,0,8,0"
-                    Padding="14,8"
-                    HorizontalAlignment="Right"
-                    Appearance="Primary"
-                    Command="{Binding RestartExplorerCommand}"
-                    Content="{Binding RestartExplorerText}"
-                    Icon="{ui:SymbolIcon Symbol=ArrowCounterclockwise24}"
-                    Visibility="{Binding NeedsExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <ui:Button
-                    MinWidth="108"
-                    Padding="14,8"
-                    HorizontalAlignment="Right"
-                    Appearance="Secondary"
-                    Command="{Binding RefreshCommand}"
-                    Content="{Binding RefreshText}"
-                    Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" />
-            </StackPanel>
         </Grid>
 
         <Border
             x:Name="RootInfoBar"
             Grid.Row="2"
-            Padding="16,10"
             Margin="12,0,12,12"
+            Padding="16,10"
             Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
             BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
@@ -130,7 +178,7 @@
                 x:Name="RootNavigation"
                 IsBackButtonVisible="Collapsed"
                 IsPaneOpen="True"
-                IsPaneToggleVisible="True"
+                IsPaneToggleVisible="False"
                 OpenPaneLength="257"
                 PaneDisplayMode="Left">
                 <ui:NavigationView.MenuItems>

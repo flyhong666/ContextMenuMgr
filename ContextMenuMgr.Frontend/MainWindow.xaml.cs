@@ -41,6 +41,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 #endif
         SystemThemeWatcher.Watch(this);
         InitializeComponent();
+        WindowChromeTitleBarFactory.Apply(this, 44);
         infoBarService.SetInfoBarControl(RootInfoBar, RootInfoBarTitle, RootInfoBarMessage, RootInfoBarLink);
         RootInfoBarClose.Click += (_, _) => infoBarService.CloseInfoBar();
         RootNavigation.SetServiceProvider(serviceProvider);
@@ -52,6 +53,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 #if DEBUG
         PreviewKeyDown += OnPreviewKeyDown;
 #endif
+        StateChanged += (_, _) => UpdateMaximizeButtonIcon();
         Loaded += OnLoaded;
     }
 
@@ -77,6 +79,35 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Activate();
         Topmost = previousTopmost;
         Focus();
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        SystemCommands.MinimizeWindow(this);
+    }
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            SystemCommands.RestoreWindow(this);
+        }
+        else
+        {
+            SystemCommands.MaximizeWindow(this);
+        }
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        SystemCommands.CloseWindow(this);
+    }
+
+    private void UpdateMaximizeButtonIcon()
+    {
+        MaximizeButton.Icon = WindowState == WindowState.Maximized
+            ? new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.SquareMultiple24 }
+            : new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.Maximize24 };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
