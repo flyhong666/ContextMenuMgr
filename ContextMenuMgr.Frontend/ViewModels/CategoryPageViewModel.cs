@@ -226,9 +226,13 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
         var search = SearchText.Trim();
         return Contains(item.DisplayName, search)
+               || Contains(item.KeyName, search)
                || Contains(item.Subtitle, search)
                || Contains(item.RegistryPath, search)
                || Contains(item.ShellPathTail, search)
+               || Contains(item.Entry.HandlerClsid, search)
+               || Contains(item.Entry.FilePath, search)
+               || Contains(item.Entry.CommandText, search)
                || Contains(item.Notes, search);
     }
 

@@ -1769,7 +1769,7 @@ public sealed class ContextMenuRegistryCatalog
                 var handlerClsid = root.EntryKind == ContextMenuEntryKind.ShellExtension
                     ? ResolveShellExtensionHandlerClsid(subKeyName, defaultValue)
                     : null;
-                var displayName = ResolveDisplayName(root, itemKey, subKeyName, defaultValue, handlerClsid);
+                var displayName = ResolveDisplayName(root, itemKey, subKeyName, defaultValue, handlerClsid, currentUserSid);
                 var editableText = root.EntryKind == ContextMenuEntryKind.ShellVerb
                     ? ResolveEditableText(itemKey, defaultValue)
                     : null;
@@ -1829,24 +1829,33 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private static string ResolveDisplayName(
+    private string ResolveDisplayName(
         RegistryRootDescriptor root,
         RegistryKey itemKey,
         string fallbackKeyName,
         string? rawDefaultValue,
-        string? handlerClsid)
+        string? handlerClsid,
+        string? currentUserSid)
     {
-        var displayName = itemKey.Name.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
-            ? ShellMetadataResolver.ResolveShellExtensionDisplayName(fallbackKeyName, handlerClsid)
-            : ShellMetadataResolver.ResolveVerbDisplayName(itemKey, fallbackKeyName);
-
-        if (itemKey.Name.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(displayName, fallbackKeyName, StringComparison.Ordinal)
-            && Guid.TryParse(fallbackKeyName, out _)
-            && !string.IsNullOrWhiteSpace(rawDefaultValue)
-            && !Guid.TryParse(rawDefaultValue, out _))
+        string displayName;
+        if (itemKey.Name.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase))
         {
-            displayName = rawDefaultValue;
+            var userContext = CreateResolverUserContext(currentUserSid);
+            var resolution = ShellMetadataResolver.ResolveShellExtensionDisplayNameDetails(
+                fallbackKeyName,
+                handlerClsid,
+                rawDefaultValue,
+                userContext);
+            displayName = resolution.DisplayName;
+            LogShellExtensionDisplayNameResolution(
+                fallbackKeyName,
+                handlerClsid,
+                rawDefaultValue,
+                resolution);
+        }
+        else
+        {
+            displayName = ShellMetadataResolver.ResolveVerbDisplayName(itemKey, fallbackKeyName);
         }
 
         if (root.Category == ContextMenuCategory.RecycleBin
@@ -1856,6 +1865,33 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return NormalizeDisplayName(displayName);
+    }
+
+    private void LogShellExtensionDisplayNameResolution(
+        string keyName,
+        string? handlerClsid,
+        string? handlerDefaultValue,
+        ShellMetadataResolver.ShellExtensionDisplayNameResolution resolution)
+    {
+        if (string.Equals(resolution.DisplayName, keyName, StringComparison.Ordinal))
+        {
+            _logger.LogFireAndForget(
+                $"ShellExtensionDisplayNameFallback: KeyName={keyName}, HandlerClsid={handlerClsid}, HandlerDefaultValue={handlerDefaultValue}, CheckedClsidRoots={string.Join(";", resolution.CheckedClsidRoots)}, FilePath={resolution.FilePath}, FinalDisplayName={resolution.DisplayName}.");
+            return;
+        }
+
+        if (Guid.TryParse(keyName, out _))
+        {
+            _logger.LogFireAndForget(
+                $"ShellExtensionDisplayNameResolvedFromClsid: KeyName={keyName}, HandlerClsid={handlerClsid}, Source={resolution.Source}, DisplayName={resolution.DisplayName}.");
+        }
+    }
+
+    private static BackendUserContext? CreateResolverUserContext(string? currentUserSid)
+    {
+        return string.IsNullOrWhiteSpace(currentUserSid)
+            ? null
+            : new BackendUserContext(currentUserSid, string.Empty, string.Empty, string.Empty, string.Empty, null);
     }
 
     private static string? ResolveShellExtensionHandlerClsid(string keyName, string? defaultValue)
@@ -2123,7 +2159,8 @@ public sealed class ContextMenuRegistryCatalog
                 itemKey,
                 keyName,
                 defaultValue,
-                handlerClsid);
+                handlerClsid,
+                currentUserSid: null);
             var editableText = entryKind == ContextMenuEntryKind.ShellVerb
                 ? ResolveEditableText(itemKey, defaultValue)
                 : null;

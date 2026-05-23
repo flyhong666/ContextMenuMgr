@@ -40,69 +40,103 @@ internal static class GuidMetadataCatalog
     /// <summary>
     /// Gets display Name.
     /// </summary>
-    public static string? GetDisplayName(Guid guid)
+    public static string? GetDisplayName(Guid guid) => GetDisplayName(guid, userContext: null);
+
+    /// <summary>
+    /// Gets display Name.
+    /// </summary>
+    public static string? GetDisplayName(Guid guid, BackendUserContext? userContext)
     {
-        return DisplayNameCache.GetOrAdd(guid, static id =>
+        if (userContext is null)
         {
-            if (TryGetDictionaryValue(id, "ResText", out var resourceText))
-            {
-                var resolved = ResolveIndirectString(MakeAbsolute(id, resourceText, isName: true));
-                if (!string.IsNullOrWhiteSpace(resolved))
-                {
-                    return resolved;
-                }
-            }
+            return DisplayNameCache.GetOrAdd(guid, static id => ResolveDisplayNameUncached(id, userContext: null).DisplayName);
+        }
 
-            if (TryGetDictionaryValue(id, $"{CultureInfo.CurrentUICulture.Name}-Text", out var localizedText)
-                && !string.IsNullOrWhiteSpace(localizedText))
-            {
-                return localizedText;
-            }
+        return ResolveDisplayNameUncached(guid, userContext).DisplayName;
+    }
 
-            if (TryGetDictionaryValue(id, "Text", out var text))
-            {
-                var resolved = ResolveIndirectString(text);
-                if (!string.IsNullOrWhiteSpace(resolved))
-                {
-                    return resolved;
-                }
-            }
+    internal static GuidDisplayNameResolution ResolveClsidDisplayName(Guid guid, BackendUserContext? userContext = null)
+    {
+        var checkedRoots = GetClsidRootPaths(guid, userContext).ToArray();
 
-            foreach (var clsidKey in OpenClsidKeys(id))
+        if (TryGetDictionaryValue(guid, "ResText", out var resourceText))
+        {
+            var resolved = ResolveIndirectString(MakeAbsolute(guid, resourceText, isName: true));
+            if (IsUsefulDisplayName(resolved))
             {
-                using (clsidKey)
+                return new GuidDisplayNameResolution(resolved, "Dictionary.ResText", checkedRoots);
+            }
+        }
+
+        if (TryGetDictionaryValue(guid, $"{CultureInfo.CurrentUICulture.Name}-Text", out var localizedText)
+            && IsUsefulDisplayName(localizedText))
+        {
+            return new GuidDisplayNameResolution(localizedText, "Dictionary.LocalizedText", checkedRoots);
+        }
+
+        if (TryGetDictionaryValue(guid, "Text", out var text))
+        {
+            var resolved = ResolveIndirectString(text);
+            if (IsUsefulDisplayName(resolved))
+            {
+                return new GuidDisplayNameResolution(resolved, "Dictionary.Text", checkedRoots);
+            }
+        }
+
+        foreach (var clsidKey in OpenClsidKeys(guid, userContext))
+        {
+            using (clsidKey.Key)
+            {
+                foreach (var valueName in new[] { "LocalizedString", "InfoTip", string.Empty })
                 {
-                    foreach (var valueName in new[] { "LocalizedString", "InfoTip", string.Empty })
+                    var resolved = ResolveIndirectString(clsidKey.Key.GetValue(valueName)?.ToString());
+                    if (IsUsefulDisplayName(resolved))
                     {
-                        var resolved = ResolveIndirectString(clsidKey.GetValue(valueName)?.ToString());
-                        if (!string.IsNullOrWhiteSpace(resolved))
-                        {
-                            return resolved;
-                        }
+                        var sourceValueName = string.IsNullOrEmpty(valueName) ? "Default" : valueName;
+                        return new GuidDisplayNameResolution(resolved, $"CLSID.{sourceValueName}", checkedRoots);
                     }
                 }
             }
+        }
 
-            var filePath = GetFilePath(id);
-            if (string.IsNullOrWhiteSpace(filePath))
-            {
-                return null;
-            }
+        return new GuidDisplayNameResolution(null, null, checkedRoots);
+    }
 
-            try
-            {
-                var description = FileVersionInfo.GetVersionInfo(filePath).FileDescription;
-                if (!string.IsNullOrWhiteSpace(description))
-                {
-                    return description;
-                }
-            }
-            catch
-            {
-            }
+    internal static GuidDisplayNameResolution ResolveDisplayName(Guid guid, BackendUserContext? userContext = null)
+    {
+        return ResolveDisplayNameUncached(guid, userContext);
+    }
 
-            return Path.GetFileName(filePath);
-        });
+    private static GuidDisplayNameResolution ResolveDisplayNameUncached(Guid guid, BackendUserContext? userContext)
+    {
+        var clsidDisplayName = ResolveClsidDisplayName(guid, userContext);
+        if (IsUsefulDisplayName(clsidDisplayName.DisplayName))
+        {
+            return clsidDisplayName;
+        }
+
+        var filePath = GetFilePath(guid, userContext);
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return clsidDisplayName;
+        }
+
+        try
+        {
+            var description = FileVersionInfo.GetVersionInfo(filePath).FileDescription;
+            if (IsUsefulDisplayName(description))
+            {
+                return new GuidDisplayNameResolution(description, "FileDescription", clsidDisplayName.CheckedClsidRoots);
+            }
+        }
+        catch
+        {
+        }
+
+        var fileName = Path.GetFileName(filePath);
+        return IsUsefulDisplayName(fileName)
+            ? new GuidDisplayNameResolution(fileName, "FileName", clsidDisplayName.CheckedClsidRoots)
+            : clsidDisplayName;
     }
 
     /// <summary>
@@ -132,51 +166,72 @@ internal static class GuidMetadataCatalog
     /// <summary>
     /// Gets file Path.
     /// </summary>
-    public static string? GetFilePath(Guid guid)
+    public static string? GetFilePath(Guid guid) => GetFilePath(guid, userContext: null);
+
+    /// <summary>
+    /// Gets file Path.
+    /// </summary>
+    public static string? GetFilePath(Guid guid, BackendUserContext? userContext)
     {
-        return FilePathCache.GetOrAdd(guid, static id =>
+        if (userContext is null)
         {
-            var uwpName = GetUwpName(id);
-            if (!string.IsNullOrWhiteSpace(uwpName))
+            return FilePathCache.GetOrAdd(guid, static id => GetFilePathUncached(id, userContext: null));
+        }
+
+        return GetFilePathUncached(guid, userContext);
+    }
+
+    private static string? GetFilePathUncached(Guid guid, BackendUserContext? userContext)
+    {
+        var uwpName = GetUwpName(guid);
+        if (!string.IsNullOrWhiteSpace(uwpName))
+        {
+            var uwpFilePath = UwpPackageHelper.GetFilePath(uwpName, guid);
+            if (!string.IsNullOrWhiteSpace(uwpFilePath))
             {
-                var uwpFilePath = UwpPackageHelper.GetFilePath(uwpName, id);
-                if (!string.IsNullOrWhiteSpace(uwpFilePath))
-                {
-                    return uwpFilePath;
-                }
+                return uwpFilePath;
             }
+        }
 
-            foreach (var clsidKey in OpenClsidKeys(id))
+        foreach (var clsidKey in OpenClsidKeys(guid, userContext))
+        {
+            using (clsidKey.Key)
             {
-                using (clsidKey)
+                foreach (var valueName in new[] { "app_path", "core_shell_path", "origin_core_shell_path" })
                 {
-                    foreach (var subKeyName in new[] { "InprocServer32", "LocalServer32" })
+                    var directPath = NormalizeCandidatePath(clsidKey.Key.GetValue(valueName)?.ToString(), null);
+                    if (!string.IsNullOrWhiteSpace(directPath) && File.Exists(directPath))
                     {
-                        using var subKey = clsidKey.OpenSubKey(subKeyName, writable: false);
-                        if (subKey is null)
-                        {
-                            continue;
-                        }
+                        return directPath;
+                    }
+                }
 
-                        var codeBase = subKey.GetValue("CodeBase")?.ToString()
-                            ?.Replace("file:///", string.Empty, StringComparison.OrdinalIgnoreCase)
-                            .Replace('/', '\\');
-                        if (!string.IsNullOrWhiteSpace(codeBase) && File.Exists(codeBase))
-                        {
-                            return codeBase;
-                        }
+                foreach (var subKeyName in new[] { "InprocServer32", "LocalServer32" })
+                {
+                    using var subKey = clsidKey.Key.OpenSubKey(subKeyName, writable: false);
+                    if (subKey is null)
+                    {
+                        continue;
+                    }
 
-                        var filePath = ExtractExecutablePath(subKey.GetValue(string.Empty)?.ToString());
-                        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
-                        {
-                            return filePath;
-                        }
+                    var codeBase = subKey.GetValue("CodeBase")?.ToString()
+                        ?.Replace("file:///", string.Empty, StringComparison.OrdinalIgnoreCase)
+                        .Replace('/', '\\');
+                    if (!string.IsNullOrWhiteSpace(codeBase) && File.Exists(codeBase))
+                    {
+                        return codeBase;
+                    }
+
+                    var filePath = ExtractExecutablePath(subKey.GetValue(string.Empty)?.ToString());
+                    if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+                    {
+                        return filePath;
                     }
                 }
             }
+        }
 
-            return null;
-        });
+        return null;
     }
 
     /// <summary>
@@ -192,46 +247,98 @@ internal static class GuidMetadataCatalog
         });
     }
 
-    private static IEnumerable<RegistryKey> OpenClsidKeys(Guid guid, BackendUserContext? userContext = null)
+    internal static IEnumerable<string> GetClsidRootPaths(Guid guid, BackendUserContext? userContext = null)
     {
         var guidText = guid.ToString("B");
 
         foreach (var relativePath in RegistryClsidPaths)
         {
+            yield return $@"HKEY_CLASSES_ROOT\{relativePath}\{guidText}";
+        }
+
+        foreach (var machinePath in MachineClsidPaths)
+        {
+            yield return $@"HKEY_LOCAL_MACHINE\{machinePath}\{guidText}";
+        }
+
+        if (userContext is not null)
+        {
+            foreach (var userPath in UserClsidPaths)
+            {
+                yield return $@"HKEY_USERS\{userContext.Sid}\{userPath}\{guidText}";
+            }
+
+            yield break;
+        }
+
+        foreach (var sid in EnumerateLoadedUserClassSids())
+        {
+            foreach (var userPath in UserClsidPaths)
+            {
+                yield return $@"HKEY_USERS\{sid}\{userPath}\{guidText}";
+            }
+        }
+    }
+
+    private static IEnumerable<ClsidRegistryKey> OpenClsidKeys(Guid guid, BackendUserContext? userContext = null)
+    {
+        var guidText = guid.ToString("B");
+
+        foreach (var relativePath in RegistryClsidPaths)
+        {
+            var path = $@"HKEY_CLASSES_ROOT\{relativePath}\{guidText}";
             var classesRootKey = Registry.ClassesRoot.OpenSubKey($@"{relativePath}\{guidText}", writable: false);
             if (classesRootKey is not null)
             {
-                yield return classesRootKey;
+                yield return new ClsidRegistryKey(path, classesRootKey);
             }
         }
 
         foreach (var machinePath in MachineClsidPaths)
         {
+            var path = $@"HKEY_LOCAL_MACHINE\{machinePath}\{guidText}";
             var localMachineKey = Registry.LocalMachine.OpenSubKey($@"{machinePath}\{guidText}", writable: false);
             if (localMachineKey is not null)
             {
-                yield return localMachineKey;
+                yield return new ClsidRegistryKey(path, localMachineKey);
             }
         }
 
-        foreach (var userPath in UserClsidPaths)
+        if (userContext is not null)
         {
-            RegistryKey? currentUserKey;
-
-            if (userContext is not null)
+            foreach (var userPath in UserClsidPaths)
             {
-                currentUserKey = Registry.Users.OpenSubKey($@"{userContext.Sid}\{userPath}\{guidText}", writable: false);
+                var path = $@"HKEY_USERS\{userContext.Sid}\{userPath}\{guidText}";
+                var currentUserKey = Registry.Users.OpenSubKey($@"{userContext.Sid}\{userPath}\{guidText}", writable: false);
+                if (currentUserKey is not null)
+                {
+                    yield return new ClsidRegistryKey(path, currentUserKey);
+                }
             }
-            else
-            {
-                currentUserKey = null;
-            }
 
-            if (currentUserKey is not null)
+            yield break;
+        }
+
+        foreach (var sid in EnumerateLoadedUserClassSids())
+        {
+            foreach (var userPath in UserClsidPaths)
             {
-                yield return currentUserKey;
+                var path = $@"HKEY_USERS\{sid}\{userPath}\{guidText}";
+                var loadedUserKey = Registry.Users.OpenSubKey($@"{sid}\{userPath}\{guidText}", writable: false);
+                if (loadedUserKey is not null)
+                {
+                    yield return new ClsidRegistryKey(path, loadedUserKey);
+                }
             }
         }
+    }
+
+    private static IEnumerable<string> EnumerateLoadedUserClassSids()
+    {
+        return Registry.Users.GetSubKeyNames()
+            .Where(static sid => sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
+                                 && !sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static sid => sid, StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool TryGetDictionaryValue(Guid guid, string key, out string value)
@@ -460,6 +567,23 @@ internal static class GuidMetadataCatalog
 
         return null;
     }
+
+    private static bool IsGuidText(string? value)
+    {
+        return Guid.TryParse(value, out _);
+    }
+
+    private static bool IsUsefulDisplayName(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && !IsGuidText(value);
+    }
+
+    private sealed record ClsidRegistryKey(string Path, RegistryKey Key);
+
+    internal sealed record GuidDisplayNameResolution(
+        string? DisplayName,
+        string? Source,
+        IReadOnlyList<string> CheckedClsidRoots);
 
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, SetLastError = false)]
     private static extern int SHLoadIndirectString(

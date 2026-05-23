@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32;
@@ -21,12 +22,6 @@ internal static class ShellMetadataResolver
         ["explore"] = 8502,
         ["preview"] = 8499
     };
-
-    private static readonly string[] ClsidRoots =
-    [
-        @"CLSID",
-        @"WOW6432Node\CLSID"
-    ];
 
     /// <summary>
     /// Executes resolve Verb Display Name.
@@ -57,36 +52,86 @@ internal static class ShellMetadataResolver
     /// <summary>
     /// Executes resolve Shell Extension Display Name.
     /// </summary>
-    public static string ResolveShellExtensionDisplayName(string keyName, string? handlerClsid)
+    public static string ResolveShellExtensionDisplayName(
+        string keyName,
+        string? handlerClsid,
+        string? handlerDefaultValue,
+        BackendUserContext? userContext = null)
     {
+        return ResolveShellExtensionDisplayNameDetails(keyName, handlerClsid, handlerDefaultValue, userContext).DisplayName;
+    }
+
+    internal static ShellExtensionDisplayNameResolution ResolveShellExtensionDisplayNameDetails(
+        string keyName,
+        string? handlerClsid,
+        string? handlerDefaultValue,
+        BackendUserContext? userContext = null)
+    {
+        IReadOnlyList<string> checkedClsidRoots = [];
+        string? filePath = null;
+
         if (Guid.TryParse(handlerClsid, out var handlerGuid))
         {
-            var dictionaryName = GuidMetadataCatalog.GetDisplayName(handlerGuid);
-            if (!string.IsNullOrWhiteSpace(dictionaryName))
+            var clsidDisplayName = GuidMetadataCatalog.ResolveClsidDisplayName(handlerGuid, userContext);
+            checkedClsidRoots = clsidDisplayName.CheckedClsidRoots;
+            if (IsUsefulDisplayName(clsidDisplayName.DisplayName))
             {
-                return dictionaryName;
+                return new ShellExtensionDisplayNameResolution(
+                    clsidDisplayName.DisplayName!,
+                    clsidDisplayName.Source ?? "CLSID",
+                    checkedClsidRoots,
+                    filePath);
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(handlerClsid))
+        var resolvedHandlerDefaultValue = ResolveIndirectString(handlerDefaultValue);
+        if (IsUsefulDisplayName(resolvedHandlerDefaultValue))
         {
-            foreach (var clsidKey in EnumerateClsidKeys(handlerClsid))
+            return new ShellExtensionDisplayNameResolution(
+                resolvedHandlerDefaultValue!,
+                "HandlerDefaultValue",
+                checkedClsidRoots,
+                filePath);
+        }
+
+        if (Guid.TryParse(handlerClsid, out handlerGuid))
+        {
+            filePath = GuidMetadataCatalog.GetFilePath(handlerGuid, userContext);
+            if (!string.IsNullOrWhiteSpace(filePath))
             {
-                using (clsidKey)
+                try
                 {
-                    foreach (var valueName in new[] { "LocalizedString", "InfoTip", string.Empty })
+                    var description = FileVersionInfo.GetVersionInfo(filePath).FileDescription;
+                    if (IsUsefulDisplayName(description))
                     {
-                        var resolved = ResolveIndirectString(clsidKey.GetValue(valueName)?.ToString());
-                        if (!string.IsNullOrWhiteSpace(resolved))
-                        {
-                            return resolved;
-                        }
+                        return new ShellExtensionDisplayNameResolution(
+                            description!,
+                            "FileDescription",
+                            checkedClsidRoots,
+                            filePath);
                     }
+                }
+                catch
+                {
+                }
+
+                var fileName = Path.GetFileName(filePath);
+                if (IsUsefulDisplayName(fileName))
+                {
+                    return new ShellExtensionDisplayNameResolution(
+                        fileName,
+                        "FileName",
+                        checkedClsidRoots,
+                        filePath);
                 }
             }
         }
 
-        return keyName;
+        return new ShellExtensionDisplayNameResolution(
+            keyName,
+            "KeyName",
+            checkedClsidRoots,
+            filePath);
     }
 
     /// <summary>
@@ -190,12 +235,12 @@ internal static class ShellMetadataResolver
             }
         }
 
-        if (string.IsNullOrWhiteSpace(handlerClsid))
+        if (!Guid.TryParse(handlerClsid, out handlerGuid))
         {
             return (null, 0);
         }
 
-        foreach (var clsidKey in EnumerateClsidKeys(handlerClsid))
+        foreach (var clsidKey in EnumerateClsidKeys(handlerGuid))
         {
             using (clsidKey)
             {
@@ -203,20 +248,6 @@ internal static class ShellMetadataResolver
                 if (TryParseIconLocation(defaultIconKey?.GetValue(string.Empty)?.ToString(), out var iconPath, out var iconIndex))
                 {
                     return (iconPath, iconIndex);
-                }
-
-                foreach (var subKeyName in new[] { "InprocServer32", "LocalServer32" })
-                {
-                    using var moduleKey = clsidKey.OpenSubKey(subKeyName);
-                    var modulePath = moduleKey?.GetValue("CodeBase")?.ToString()
-                        ?.Replace("file:///", string.Empty, StringComparison.OrdinalIgnoreCase)
-                        .Replace('/', '\\');
-
-                    modulePath ??= ExtractExecutablePath(moduleKey?.GetValue(string.Empty)?.ToString());
-                    if (!string.IsNullOrWhiteSpace(modulePath))
-                    {
-                        return (modulePath, 0);
-                    }
                 }
             }
         }
@@ -238,39 +269,19 @@ internal static class ShellMetadataResolver
             }
         }
 
-        if (string.IsNullOrWhiteSpace(handlerClsid))
+        if (!Guid.TryParse(handlerClsid, out handlerGuid))
         {
             return null;
-        }
-
-        foreach (var clsidKey in EnumerateClsidKeys(handlerClsid))
-        {
-            using (clsidKey)
-            {
-                foreach (var subKeyName in new[] { "InprocServer32", "LocalServer32" })
-                {
-                    using var moduleKey = clsidKey.OpenSubKey(subKeyName);
-                    var modulePath = moduleKey?.GetValue("CodeBase")?.ToString()
-                        ?.Replace("file:///", string.Empty, StringComparison.OrdinalIgnoreCase)
-                        .Replace('/', '\\');
-
-                    modulePath ??= ExtractExecutablePath(moduleKey?.GetValue(string.Empty)?.ToString());
-                    if (!string.IsNullOrWhiteSpace(modulePath))
-                    {
-                        return modulePath;
-                    }
-                }
-            }
         }
 
         return null;
     }
 
-    private static IEnumerable<RegistryKey> EnumerateClsidKeys(string handlerClsid)
+    private static IEnumerable<RegistryKey> EnumerateClsidKeys(Guid guid, BackendUserContext? userContext = null)
     {
-        foreach (var root in ClsidRoots)
+        foreach (var path in GuidMetadataCatalog.GetClsidRootPaths(guid, userContext))
         {
-            var key = Registry.ClassesRoot.OpenSubKey($@"{root}\{NormalizeGuid(handlerClsid)}", writable: false);
+            var key = OpenRegistryPath(path);
             if (key is not null)
             {
                 yield return key;
@@ -278,11 +289,25 @@ internal static class ShellMetadataResolver
         }
     }
 
-    private static string NormalizeGuid(string guid)
+    private static RegistryKey? OpenRegistryPath(string fullPath)
     {
-        return Guid.TryParse(guid, out var parsed)
-            ? parsed.ToString("B")
-            : guid;
+        const string classesRootPrefix = @"HKEY_CLASSES_ROOT\";
+        const string localMachinePrefix = @"HKEY_LOCAL_MACHINE\";
+        const string usersPrefix = @"HKEY_USERS\";
+
+        if (fullPath.StartsWith(classesRootPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return Registry.ClassesRoot.OpenSubKey(fullPath[classesRootPrefix.Length..], writable: false);
+        }
+
+        if (fullPath.StartsWith(localMachinePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return Registry.LocalMachine.OpenSubKey(fullPath[localMachinePrefix.Length..], writable: false);
+        }
+
+        return fullPath.StartsWith(usersPrefix, StringComparison.OrdinalIgnoreCase)
+            ? Registry.Users.OpenSubKey(fullPath[usersPrefix.Length..], writable: false)
+            : null;
     }
 
     private static Guid? ExtractVerbHandlerGuid(RegistryKey itemKey)
@@ -331,6 +356,22 @@ internal static class ShellMetadataResolver
 
         return null;
     }
+
+    private static bool IsGuidText(string? value)
+    {
+        return Guid.TryParse(value, out _);
+    }
+
+    private static bool IsUsefulDisplayName(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && !IsGuidText(value);
+    }
+
+    internal sealed record ShellExtensionDisplayNameResolution(
+        string DisplayName,
+        string Source,
+        IReadOnlyList<string> CheckedClsidRoots,
+        string? FilePath);
 
     private static bool TryParseIconLocation(string? value, out string? iconPath, out int iconIndex)
     {
