@@ -96,6 +96,19 @@ public sealed class BackendWindowsService : ServiceBase
         catch (Exception ex)
         {
             BackendEmergencyLogger.Log(ex, "Windows service runtime startup failed.");
+            BackendEmergencyLogger.Log("ServiceStartupFailedSuppressingFrontendShutdown.");
+            try
+            {
+                _runtime.SuppressFrontendShutdownOnStop(
+                    $"Windows service runtime startup failed. CancellationRequested={cancellationToken.IsCancellationRequested}");
+            }
+            catch (Exception suppressException)
+            {
+                BackendEmergencyLogger.Log(
+                    suppressException,
+                    "Failed to suppress frontend shutdown after service startup failure.");
+            }
+
             try
             {
                 await _runtime.LogServiceStartupFailureAsync(ex, cancellationToken.IsCancellationRequested);
@@ -109,6 +122,7 @@ public sealed class BackendWindowsService : ServiceBase
 
             try
             {
+                BackendEmergencyLogger.Log("StopAfterStartupFailureRequested.");
                 Stop();
             }
             catch (Exception stopException)

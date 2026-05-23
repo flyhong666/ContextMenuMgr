@@ -167,11 +167,13 @@ internal static class BackendServiceBootstrapper
             log($"ServiceStartCheck: ServiceName={ServiceMetadata.ServiceName}, InitialStatus={initialStatus}.");
             if (initialStatus != ServiceControllerStatus.Running)
             {
-                log("ServiceStart: Calling Start.");
-                service.Start();
-                log("ServiceStart: WaitForStatus Running started, Timeout=15s.");
+                log("ServiceStart: Ensuring keep-frontend marker before service start.");
+                EnsureKeepFrontendMarker();
                 try
                 {
+                    log("ServiceStart: Calling Start.");
+                    service.Start();
+                    log("ServiceStart: WaitForStatus Running started, Timeout=15s.");
                     service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(15));
                     service.Refresh();
                     log($"ServiceStart: WaitForStatus succeeded, Status={service.Status}.");
@@ -180,15 +182,25 @@ internal static class BackendServiceBootstrapper
                 {
                     var finalStatus = TryGetServiceControllerStatusText(service);
                     log($"ServiceStart: WaitForStatus timeout/failure, FinalStatus={finalStatus}, Exception={ex}.");
+                    if (!string.Equals(finalStatus, nameof(ServiceControllerStatus.Running), StringComparison.OrdinalIgnoreCase))
+                    {
+                        TryDeleteKeepFrontendMarker();
+                    }
+
                     return (
                         false,
                         "SERVICE_START_TIMEOUT",
-                        $"InitialStatus={initialStatus}, FinalStatus={finalStatus}, Exception={ex}, ServiceName={ServiceMetadata.ServiceName}, ServiceExePath={serviceExePath}, Hint=Check %ProgramData%\\ContextMenuMgr\\Logs\\service-startup.log and backend.log.");
+                        $"Service did not report Running within 15 seconds. InitialStatus={initialStatus}, FinalStatus={finalStatus}, ServiceName={ServiceMetadata.ServiceName}, ServiceExePath={serviceExePath}, Exception={ex.Message}. Check %ProgramData%\\ContextMenuMgr\\Logs\\bootstrap.log, backend.log, and service-startup.log.");
                 }
                 catch (Exception ex)
                 {
                     var finalStatus = TryGetServiceControllerStatusText(service);
                     log($"ServiceStart: WaitForStatus timeout/failure, FinalStatus={finalStatus}, Exception={ex}.");
+                    if (!string.Equals(finalStatus, nameof(ServiceControllerStatus.Running), StringComparison.OrdinalIgnoreCase))
+                    {
+                        TryDeleteKeepFrontendMarker();
+                    }
+
                     throw;
                 }
             }
@@ -201,6 +213,7 @@ internal static class BackendServiceBootstrapper
         var status = GetServiceStatusText(ServiceMetadata.ServiceName);
         if (!string.Equals(status, nameof(ServiceControllerStatus.Running), StringComparison.OrdinalIgnoreCase))
         {
+            TryDeleteKeepFrontendMarker();
             return (false, "SERVICE_NOT_RUNNING", status);
         }
 
@@ -210,9 +223,20 @@ internal static class BackendServiceBootstrapper
         // startup and not yet accepting pipe connections.
         if (!WaitForBackendPipeReady(TimeSpan.FromSeconds(20), log))
         {
-            return (false, "BACKEND_PIPE_NOT_READY", "Service is running but backend pipe did not become ready in time.");
+            var finalStatus = GetServiceStatusText(ServiceMetadata.ServiceName);
+            log($"BackendPipeReadyFailure: ServiceName={ServiceMetadata.ServiceName}, FinalStatus={finalStatus}.");
+            if (!string.Equals(finalStatus, nameof(ServiceControllerStatus.Running), StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteKeepFrontendMarker();
+            }
+
+            return (
+                false,
+                "BACKEND_PIPE_NOT_READY",
+                $"Service is running but backend pipe did not become ready in 20 seconds. Status={finalStatus}. ServiceName={ServiceMetadata.ServiceName}. Check %ProgramData%\\ContextMenuMgr\\Logs\\bootstrap.log, backend.log, and service-startup.log.");
         }
 
+        TryDeleteKeepFrontendMarker();
         return (true, "OK", "Running");
     }
 
@@ -483,20 +507,20 @@ internal static class BackendServiceBootstrapper
     {
         var deadlineUtc = DateTime.UtcNow + timeout;
         var attempt = 0;
-        log($"WaitForBackendPipeReadyStart: TimeoutMs={timeout.TotalMilliseconds}.");
+        log($"WaitForBackendPipeReadyStart: ServiceName={ServiceMetadata.ServiceName}, TimeoutMs={timeout.TotalMilliseconds}, Status={GetServiceStatusText(ServiceMetadata.ServiceName)}.");
         while (DateTime.UtcNow < deadlineUtc)
         {
             attempt++;
             if (TryPingBackendPipe(TimeSpan.FromSeconds(2), attempt, log))
             {
-                log($"WaitForBackendPipeReadyEnd: Result=Success, Attempts={attempt}.");
+                log($"WaitForBackendPipeReadyEnd: Result=Success, Attempts={attempt}, Status={GetServiceStatusText(ServiceMetadata.ServiceName)}.");
                 return true;
             }
 
             Thread.Sleep(300);
         }
 
-        log($"WaitForBackendPipeReadyEnd: Result=Timeout, Attempts={attempt}.");
+        log($"WaitForBackendPipeReadyEnd: Result=Timeout, Attempts={attempt}, Status={GetServiceStatusText(ServiceMetadata.ServiceName)}.");
         return false;
     }
 
@@ -539,6 +563,7 @@ internal static class BackendServiceBootstrapper
             var line = reader.ReadLine();
             if (string.IsNullOrWhiteSpace(line))
             {
+                log($"TryPingBackendPipe: Attempt={attempt}, Result=FailureEmptyResponse.");
                 return false;
             }
 

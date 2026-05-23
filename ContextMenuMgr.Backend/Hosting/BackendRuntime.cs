@@ -191,31 +191,28 @@ public sealed class BackendRuntime : IDisposable
         try
         {
             stage = "FileLogger";
+            BackendEmergencyLogger.Log("BackendStartStage=FileLogger started.");
             await _logger.LogAsync("========== Backend start ==========", cancellationToken);
-            await _logger.LogAsync($"BackendStartStage=FileLogger initialized. CurrentLevel={_logger.CurrentLevel}.", cancellationToken);
-            BackendEmergencyLogger.Log($"BackendStartStage=FileLogger initialized. CurrentLevel={_logger.CurrentLevel}.");
+            await _logger.LogAsync("BackendStartStage=FileLogger started.", cancellationToken);
+            await _logger.LogAsync($"BackendStartStage=FileLogger completed. CurrentLevel={_logger.CurrentLevel}.", cancellationToken);
+            BackendEmergencyLogger.Log($"BackendStartStage=FileLogger completed. CurrentLevel={_logger.CurrentLevel}.");
 
             stage = "BackendStarting";
+            await _logger.LogAsync("BackendStartStage=BackendStarting started.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=BackendStarting started.");
             await _logger.LogAsync("Backend starting.", cancellationToken);
             BackendEmergencyLogger.Log("Backend starting.");
-
-            stage = "LogConsistencySummary";
-            await LogConsistencySummaryForStartupAsync(cancellationToken);
+            await _logger.LogAsync("BackendStartStage=BackendStarting completed.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=BackendStarting completed.");
 
             stage = "MonitorEventSubscription";
             await _logger.LogAsync("BackendStartStage=MonitorEventSubscription started.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=MonitorEventSubscription started.");
             _monitor.ItemDetected += OnItemDetected;
             _pipeServer.BackendShutdownRequested += OnBackendShutdownRequested;
             _pipeServer.EnsureTrayHostRequested += OnEnsureTrayHostRequested;
             await _logger.LogAsync("BackendStartStage=MonitorEventSubscription completed.", cancellationToken);
             BackendEmergencyLogger.Log("BackendStartStage=MonitorEventSubscription completed.");
-
-            stage = "MonitorStart";
-            await _logger.LogAsync("BackendStartStage=MonitorStart started.", cancellationToken);
-            BackendEmergencyLogger.Log("BackendStartStage=MonitorStart started.");
-            _monitor.Start(cancellationToken);
-            await _logger.LogAsync("BackendStartStage=MonitorStart completed.", cancellationToken);
-            BackendEmergencyLogger.Log("BackendStartStage=MonitorStart completed.");
 
             stage = "PipeServerStart";
             await _logger.LogAsync("BackendStartStage=PipeServerStart started.", cancellationToken);
@@ -230,6 +227,20 @@ public sealed class BackendRuntime : IDisposable
             await _logger.LogAsync("========== Backend started ==========", cancellationToken);
             BackendEmergencyLogger.Log("Backend started.");
             BackendEmergencyLogger.Log("BackendStartStage=BackendStarted completed.");
+
+            stage = "MonitorStart";
+            await _logger.LogAsync("BackendStartStage=MonitorStart started.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=MonitorStart started.");
+            _monitor.Start(cancellationToken);
+            await _logger.LogAsync("BackendStartStage=MonitorStart completed.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=MonitorStart completed.");
+
+            stage = "StartupDiagnosticsSchedule";
+            await _logger.LogAsync("BackendStartStage=StartupDiagnostics scheduled.", cancellationToken);
+            BackendEmergencyLogger.Log("BackendStartStage=StartupDiagnostics scheduled.");
+            _ = Task.Run(
+                () => RunStartupDiagnosticsAsync(cancellationToken),
+                CancellationToken.None);
 
             if (_ensureTrayHostOnStartup)
             {
@@ -258,6 +269,72 @@ public sealed class BackendRuntime : IDisposable
 
             BackendEmergencyLogger.Log(ex, $"BackendStartStage={stage} failed.");
             throw;
+        }
+    }
+
+    private async Task RunStartupDiagnosticsAsync(CancellationToken serviceCancellationToken)
+    {
+        var startedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await _logger.LogAsync("BackendStartStage=StartupDiagnostics started.", CancellationToken.None);
+            BackendEmergencyLogger.Log("BackendStartStage=StartupDiagnostics started.");
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(serviceCancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            await LogConsistencySummaryForStartupAsync(timeoutCts.Token);
+
+            var elapsed = DateTimeOffset.UtcNow - startedAt;
+            await _logger.LogAsync(
+                $"BackendStartStage=StartupDiagnostics completed. ElapsedMs={elapsed.TotalMilliseconds:0}.",
+                CancellationToken.None);
+            BackendEmergencyLogger.Log($"BackendStartStage=StartupDiagnostics completed. ElapsedMs={elapsed.TotalMilliseconds:0}.");
+        }
+        catch (OperationCanceledException) when (!serviceCancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    "BackendStartStage=StartupDiagnostics timed out; backend remains running.",
+                    CancellationToken.None);
+            }
+            catch
+            {
+            }
+
+            BackendEmergencyLogger.Log("BackendStartStage=StartupDiagnostics timed out; backend remains running.");
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    "BackendStartStage=StartupDiagnostics canceled because backend service is stopping.",
+                    CancellationToken.None);
+            }
+            catch
+            {
+            }
+
+            BackendEmergencyLogger.Log("BackendStartStage=StartupDiagnostics canceled because backend service is stopping.");
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    "BackendStartStage=StartupDiagnostics failed but backend remains running: " + ex,
+                    CancellationToken.None);
+            }
+            catch
+            {
+            }
+
+            BackendEmergencyLogger.Log(ex, "BackendStartStage=StartupDiagnostics failed but backend remains running.");
         }
     }
 
@@ -296,7 +373,15 @@ public sealed class BackendRuntime : IDisposable
         _monitor.ItemDetected -= OnItemDetected;
         _pipeServer.BackendShutdownRequested -= OnBackendShutdownRequested;
         _pipeServer.EnsureTrayHostRequested -= OnEnsureTrayHostRequested;
-        if (_shutdownFrontendOnStop && !ConsumeKeepFrontendOnStopMarker())
+
+        var keepFrontendMarkerConsumed = ConsumeKeepFrontendOnStopMarker();
+        var willShutdownFrontend = _shutdownFrontendOnStop && !keepFrontendMarkerConsumed;
+        await _logger.LogAsync(
+            $"BackendStopFrontendShutdownPolicy: ShutdownFrontendOnStop={_shutdownFrontendOnStop}, KeepFrontendMarkerConsumed={keepFrontendMarkerConsumed}, WillShutdownFrontend={willShutdownFrontend}.",
+            CancellationToken.None);
+        BackendEmergencyLogger.Log($"BackendStopFrontendShutdownPolicy: ShutdownFrontendOnStop={_shutdownFrontendOnStop}, KeepFrontendMarkerConsumed={keepFrontendMarkerConsumed}, WillShutdownFrontend={willShutdownFrontend}.");
+
+        if (willShutdownFrontend)
         {
             // A normal backend shutdown should first ask the UI to exit cleanly
             // before the backend falls back to forcefully terminating it.
@@ -328,6 +413,24 @@ public sealed class BackendRuntime : IDisposable
         {
             return false;
         }
+    }
+
+    public void SuppressFrontendShutdownOnStop(string reason)
+    {
+        _shutdownFrontendOnStop = false;
+
+        try
+        {
+            _ = _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                $"Frontend shutdown on backend stop suppressed. Reason={reason}",
+                CancellationToken.None);
+        }
+        catch
+        {
+        }
+
+        BackendEmergencyLogger.Log($"Frontend shutdown on backend stop suppressed. Reason={reason}");
     }
 
     /// <summary>

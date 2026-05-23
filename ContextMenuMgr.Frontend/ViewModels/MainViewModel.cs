@@ -135,16 +135,25 @@ public partial class MainViewModel : ObservableObject
     {
         var stopwatch = Stopwatch.StartNew();
         FrontendDebugLog.Info("MainViewModel", "InitializeAsync started.");
-        if (await EnsureBackendReadyAsync())
+        try
         {
-            FrontendDebugLog.Info("MainViewModel", "Backend ready. Refreshing snapshot.");
-            await RefreshAsync();
-            FrontendDebugLog.Info("MainViewModel", $"InitializeAsync finished successfully in {stopwatch.ElapsedMilliseconds} ms.");
-            return;
-        }
+            if (await EnsureBackendReadyAsync())
+            {
+                FrontendDebugLog.Info("MainViewModel", "Backend ready. Refreshing snapshot.");
+                await RefreshAsync();
+                FrontendDebugLog.Info("MainViewModel", $"InitializeAsync finished successfully in {stopwatch.ElapsedMilliseconds} ms.");
+                return;
+            }
 
-        FrontendDebugLog.Info("MainViewModel", $"Backend not ready. Falling back to placeholder data after {stopwatch.ElapsedMilliseconds} ms.");
-        SeedDesignTimeData();
+            FrontendDebugLog.Info("MainViewModel", $"Backend not ready. Falling back to placeholder data after {stopwatch.ElapsedMilliseconds} ms.");
+            SeedDesignTimeData();
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Error("MainViewModel", ex, $"InitializeAsync failed after {stopwatch.ElapsedMilliseconds} ms. Falling back to placeholder data.");
+            SeedDesignTimeData();
+            ConnectionStatus = ResolveBootstrapFailureMessage("BOOTSTRAP_EXCEPTION", ex.Message);
+        }
     }
 
     /// <summary>
@@ -440,6 +449,9 @@ public partial class MainViewModel : ObservableObject
             "BACKEND_EXE_MISSING" => _localization.Translate("BackendExecutableMissing"),
             "ELEVATION_CANCELLED" => _localization.Translate("ServiceOperationCancelled"),
             "SERVICE_NOT_RUNNING" => _localization.Format("ServiceNotRunningStatus", detail),
+            "BACKEND_PIPE_NOT_READY" => _localization.Format("ServiceInstallFailedDetailed", detail),
+            "SERVICE_START_TIMEOUT" => _localization.Format("ServiceInstallFailedDetailed", detail),
+            "SERVICE_REGISTRATION_INCOMPLETE" => _localization.Format("ServiceInstallFailedDetailed", detail),
             "PIPE_UNREACHABLE" => _localization.Format("ServicePipeUnavailableStatus", detail),
             "SERVICE_BOOTSTRAP_ERROR" => _localization.Format("ServiceInstallFailedDetailed", detail),
             "BOOTSTRAP_EXCEPTION" => _localization.Format("ServiceInstallFailedDetailed", detail),
