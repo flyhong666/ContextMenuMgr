@@ -18,6 +18,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     private readonly Windows11ContextMenuService _service;
     private readonly LocalizationService _localization;
     private readonly ContextMenuWorkspaceService _workspace;
+    private readonly ListPlaceholderDebugStateService _placeholderDebug;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Windows11ContextMenuPageViewModel"/> class.
@@ -25,11 +26,13 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     public Windows11ContextMenuPageViewModel(
         Windows11ContextMenuService service,
         LocalizationService localization,
-        ContextMenuWorkspaceService workspace)
+        ContextMenuWorkspaceService workspace,
+        ListPlaceholderDebugStateService placeholderDebug)
     {
         _service = service;
         _localization = localization;
         _workspace = workspace;
+        _placeholderDebug = placeholderDebug;
 
         ItemsView = new ListCollectionView(Items);
         ItemsView.Filter = FilterItem;
@@ -37,6 +40,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
 
         _localization.LanguageChanged += OnLanguageChanged;
         _service.ItemsChanged += OnItemsChanged;
+        _placeholderDebug.PropertyChanged += OnPlaceholderDebugPropertyChanged;
         _workspace.Items.CollectionChanged += OnWorkspaceItemsChanged;
         foreach (var item in _workspace.Items)
         {
@@ -86,6 +90,10 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
 
     public string NoItemsText => _localization.Translate("Windows11NoItems");
 
+    public string LoadingItemsText => _localization.Translate("LoadingItemsText");
+
+    public string EmptyItemsText => _localization.Translate("EmptyItemsText");
+
     public string PackageFamilyLabel => _localization.Translate("Windows11PackageFamilyLabel");
 
     public string PublisherLabel => _localization.Translate("Windows11PublisherLabel");
@@ -93,6 +101,13 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     public string ContextTypesLabel => _localization.Translate("Windows11ContextTypesLabel");
 
     public bool IsSupported => _service.IsSupported;
+
+    public bool IsListLoading => _placeholderDebug.ForceLoadingState || IsLoading;
+
+    public bool IsListEmpty => !IsListLoading
+        && (_placeholderDebug.ForceEmptyState || !ItemsView.Cast<object>().Any());
+
+    public bool ShowListPlaceholder => IsListLoading || IsListEmpty;
 
     /// <summary>
     /// Refreshes async.
@@ -126,6 +141,12 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     partial void OnSearchTextChanged(string value)
     {
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
+    }
+
+    partial void OnIsLoadingChanged(bool value)
+    {
+        RefreshListPlaceholderState();
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
@@ -134,10 +155,24 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(Description));
         OnPropertyChanged(nameof(SearchLabel));
         OnPropertyChanged(nameof(NoItemsText));
+        OnPropertyChanged(nameof(LoadingItemsText));
+        OnPropertyChanged(nameof(EmptyItemsText));
         OnPropertyChanged(nameof(PackageFamilyLabel));
         OnPropertyChanged(nameof(PublisherLabel));
         OnPropertyChanged(nameof(ContextTypesLabel));
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
+    }
+
+    private void OnPlaceholderDebugPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ListPlaceholderDebugStateService.Mode)
+            or nameof(ListPlaceholderDebugStateService.ForceLoadingState)
+            or nameof(ListPlaceholderDebugStateService.ForceEmptyState)
+            or nameof(ListPlaceholderDebugStateService.HasForcedState))
+        {
+            RefreshListPlaceholderState();
+        }
     }
 
     private async Task EnsureLoadedAsync()
@@ -186,6 +221,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         }
 
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
     }
 
     private static string CreateLogicalGroupKey(Windows11ContextMenuItemDefinition item)
@@ -232,6 +268,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     {
         _localization.LanguageChanged -= OnLanguageChanged;
         _service.ItemsChanged -= OnItemsChanged;
+        _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
         _workspace.Items.CollectionChanged -= OnWorkspaceItemsChanged;
         foreach (var item in _workspace.Items)
         {
@@ -280,6 +317,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         }
 
         RefreshPendingApprovalStates();
+        RefreshListPlaceholderState();
     }
 
     private void OnWorkspaceItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -289,5 +327,12 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         {
             RefreshPendingApprovalStates();
         }
+    }
+
+    private void RefreshListPlaceholderState()
+    {
+        OnPropertyChanged(nameof(IsListLoading));
+        OnPropertyChanged(nameof(IsListEmpty));
+        OnPropertyChanged(nameof(ShowListPlaceholder));
     }
 }

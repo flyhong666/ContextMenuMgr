@@ -16,6 +16,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
+    private readonly ListPlaceholderDebugStateService _placeholderDebug;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CategoryPageViewModel"/> class.
@@ -24,14 +25,18 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         ContextMenuCategory category,
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
-        FrontendSettingsService settingsService)
+        FrontendSettingsService settingsService,
+        ListPlaceholderDebugStateService placeholderDebug)
     {
         Category = category;
         _workspace = workspace;
         _localization = localization;
         _settingsService = settingsService;
+        _placeholderDebug = placeholderDebug;
         _localization.LanguageChanged += OnLanguageChanged;
         _settingsService.SettingsChanged += OnSettingsChanged;
+        _workspace.PropertyChanged += OnWorkspacePropertyChanged;
+        _placeholderDebug.PropertyChanged += OnPlaceholderDebugPropertyChanged;
         _workspace.Items.CollectionChanged += OnItemsCollectionChanged;
         foreach (var item in _workspace.Items)
         {
@@ -45,6 +50,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         ItemsView.SortDescriptions.Add(new SortDescription(nameof(ContextMenuItemViewModel.DisplayName), ListSortDirection.Ascending));
 
         RefreshLocalizedText();
+        RefreshListPlaceholderState();
     }
 
     /// <summary>
@@ -84,6 +90,32 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     public string DeleteText => _localization.Translate("Delete");
 
     public string CancelText => _localization.Translate("DialogCancel");
+
+    public string LoadingItemsText => _localization.Translate("LoadingItemsText");
+
+    public string EmptyItemsText => _localization.Translate("EmptyItemsText");
+
+    public bool IsListLoading => _placeholderDebug.ForceLoadingState || _workspace.IsLoading;
+
+    public bool IsListEmpty
+    {
+        get
+        {
+            if (IsListLoading)
+            {
+                return false;
+            }
+
+            if (_placeholderDebug.ForceEmptyState)
+            {
+                return true;
+            }
+
+            return !ItemsView.Cast<object>().Any();
+        }
+    }
+
+    public bool ShowListPlaceholder => IsListLoading || IsListEmpty;
 
     [RelayCommand]
     private Task DeleteOrUndoAsync(ContextMenuItemViewModel? item)
@@ -137,6 +169,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     partial void OnSearchTextChanged(string value)
     {
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
@@ -147,11 +180,33 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SearchLabel));
         OnPropertyChanged(nameof(DeleteText));
         OnPropertyChanged(nameof(CancelText));
+        OnPropertyChanged(nameof(LoadingItemsText));
+        OnPropertyChanged(nameof(EmptyItemsText));
     }
 
     private void OnSettingsChanged(object? sender, EventArgs e)
     {
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
+    }
+
+    private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ContextMenuWorkspaceService.IsLoading))
+        {
+            RefreshListPlaceholderState();
+        }
+    }
+
+    private void OnPlaceholderDebugPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ListPlaceholderDebugStateService.Mode)
+            or nameof(ListPlaceholderDebugStateService.ForceLoadingState)
+            or nameof(ListPlaceholderDebugStateService.ForceEmptyState)
+            or nameof(ListPlaceholderDebugStateService.HasForcedState))
+        {
+            RefreshListPlaceholderState();
+        }
     }
 
     private void RefreshLocalizedText()
@@ -202,6 +257,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         }
 
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
     }
 
     private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -209,7 +265,9 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         if (e.PropertyName is nameof(ContextMenuItemViewModel.DisplayName)
             or nameof(ContextMenuItemViewModel.KeyName)
             or nameof(ContextMenuItemViewModel.RegistryPath)
+            or nameof(ContextMenuItemViewModel.Subtitle)
             or nameof(ContextMenuItemViewModel.Notes)
+            or nameof(ContextMenuItemViewModel.IsEnabled)
             or nameof(ContextMenuItemViewModel.IsWindows11ContextMenu)
             or nameof(ContextMenuItemViewModel.IsDeleted)
             or nameof(ContextMenuItemViewModel.HasDetectedChange)
@@ -217,7 +275,15 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
             or nameof(ContextMenuItemViewModel.HasConsistencyIssue))
         {
             ItemsView.Refresh();
+            RefreshListPlaceholderState();
         }
+    }
+
+    private void RefreshListPlaceholderState()
+    {
+        OnPropertyChanged(nameof(IsListLoading));
+        OnPropertyChanged(nameof(IsListEmpty));
+        OnPropertyChanged(nameof(ShowListPlaceholder));
     }
 
     /// <summary>
@@ -227,6 +293,8 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     {
         _localization.LanguageChanged -= OnLanguageChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
+        _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
+        _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
         _workspace.Items.CollectionChanged -= OnItemsCollectionChanged;
         foreach (var item in _workspace.Items)
         {

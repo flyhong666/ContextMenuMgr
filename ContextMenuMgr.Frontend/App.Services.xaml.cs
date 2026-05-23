@@ -31,6 +31,7 @@ public partial class App
         services.AddSingleton<DetailedEditRuleService>();
         services.AddSingleton<Windows11ContextMenuService>();
         services.AddSingleton<ContextMenuItemActionsService>();
+        services.AddSingleton<ListPlaceholderDebugStateService>();
         services.AddSingleton<IBackendClient, NamedPipeBackendClient>();
         services.AddSingleton<IBackendServiceManager, BackendServiceManager>();
         services.AddSingleton<ContextMenuWorkspaceService>();

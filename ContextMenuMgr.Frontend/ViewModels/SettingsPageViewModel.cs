@@ -23,6 +23,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localization;
     private readonly ThemeService _themeService;
     private readonly ContextMenuItemActionsService _actionsService;
+    private readonly ListPlaceholderDebugStateService _placeholderDebug;
     private bool _suppressProtectionSync;
     private bool _suppressAutoStartSync;
     private bool _pendingRegistryProtectionEnable;
@@ -37,7 +38,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
         ThemeService themeService,
-        ContextMenuItemActionsService actionsService)
+        ContextMenuItemActionsService actionsService,
+        ListPlaceholderDebugStateService placeholderDebug)
     {
         _settingsService = settingsService;
         _startupService = startupService;
@@ -46,6 +48,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _localization = localization;
         _themeService = themeService;
         _actionsService = actionsService;
+        _placeholderDebug = placeholderDebug;
 
         AvailableLanguages =
         [
@@ -218,6 +221,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string ResetSettingsText => _localization.Translate("ResetSettings");
 
     public string ClearAllLogsText => _localization.Translate("ClearAllLogs");
+
+    public string ListPlaceholderDebugTitle => _localization.Translate("ListPlaceholderDebugTitle");
+
+    public string DebugSimulateLoadingText => _localization.Translate("DebugSimulateLoadingText");
+
+    public string DebugSimulateEmptyText => _localization.Translate("DebugSimulateEmptyText");
+
+    public string DebugClearSimulatedStateText => _localization.Translate("DebugClearSimulatedStateText");
 
     public string CancelText => _localization.Translate("DialogCancel");
 
@@ -520,6 +531,24 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    private void SimulateListLoadingState()
+    {
+        _placeholderDebug.SimulateLoading();
+    }
+
+    [RelayCommand]
+    private void SimulateListEmptyState()
+    {
+        _placeholderDebug.SimulateEmpty();
+    }
+
+    [RelayCommand]
+    private void ClearListPlaceholderDebugState()
+    {
+        _placeholderDebug.Clear();
+    }
+
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
         RefreshLocalizedText();
@@ -553,6 +582,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ResetStateDatabaseText));
         OnPropertyChanged(nameof(ResetSettingsText));
         OnPropertyChanged(nameof(ClearAllLogsText));
+        OnPropertyChanged(nameof(ListPlaceholderDebugTitle));
+        OnPropertyChanged(nameof(DebugSimulateLoadingText));
+        OnPropertyChanged(nameof(DebugSimulateEmptyText));
+        OnPropertyChanged(nameof(DebugClearSimulatedStateText));
         OnPropertyChanged(nameof(CancelText));
         OnPropertyChanged(nameof(ConfirmUninstallText));
         OnPropertyChanged(nameof(UninstallFlyoutText));

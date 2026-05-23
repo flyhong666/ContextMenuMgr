@@ -539,6 +539,12 @@
   <data name="DebugToolsTitle" xml:space="preserve">
     <value>除錯</value>
   </data>
+  <data name="DebugUpdatePromptTitle" xml:space="preserve">
+    <value>更新提示</value>
+  </data>
+  <data name="DebugForceUpdatePromptText" xml:space="preserve">
+    <value>強制更新提示</value>
+  </data>
   <data name="OpenLogsFolder" xml:space="preserve">
     <value>開啟記錄檔目錄</value>
   </data>
@@ -1147,5 +1153,23 @@
   </data>
   <data name="MenuFormShellNewBeforeSeparator" xml:space="preserve">
     <value>在分隔符號前顯示</value>
+  </data>
+  <data name="LoadingItemsText" xml:space="preserve">
+    <value>正在載入中……</value>
+  </data>
+  <data name="EmptyItemsText" xml:space="preserve">
+    <value>這裡空空如也(；′⌒`)</value>
+  </data>
+  <data name="DebugSimulateLoadingText" xml:space="preserve">
+    <value>模擬載入中</value>
+  </data>
+  <data name="DebugSimulateEmptyText" xml:space="preserve">
+    <value>模擬空狀態</value>
+  </data>
+  <data name="DebugClearSimulatedStateText" xml:space="preserve">
+    <value>清除模擬狀態</value>
+  </data>
+  <data name="ListPlaceholderDebugTitle" xml:space="preserve">
+    <value>清單占位偵錯</value>
   </data>
 </root>

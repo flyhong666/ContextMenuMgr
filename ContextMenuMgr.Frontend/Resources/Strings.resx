@@ -539,6 +539,12 @@ Continue anyway? (Not recommended)</value>
   <data name="DebugToolsTitle" xml:space="preserve">
     <value>Debug</value>
   </data>
+  <data name="DebugUpdatePromptTitle" xml:space="preserve">
+    <value>Update prompt</value>
+  </data>
+  <data name="DebugForceUpdatePromptText" xml:space="preserve">
+    <value>Force update prompt</value>
+  </data>
   <data name="OpenLogsFolder" xml:space="preserve">
     <value>Open logs folder</value>
   </data>
@@ -1147,5 +1153,23 @@ Continue anyway? (Not recommended)</value>
   </data>
   <data name="MenuFormShellNewBeforeSeparator" xml:space="preserve">
     <value>Show before separator</value>
+  </data>
+  <data name="LoadingItemsText" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="EmptyItemsText" xml:space="preserve">
+    <value>Nothing here yet (；′⌒`)</value>
+  </data>
+  <data name="DebugSimulateLoadingText" xml:space="preserve">
+    <value>Simulate loading</value>
+  </data>
+  <data name="DebugSimulateEmptyText" xml:space="preserve">
+    <value>Simulate empty</value>
+  </data>
+  <data name="DebugClearSimulatedStateText" xml:space="preserve">
+    <value>Clear simulated state</value>
+  </data>
+  <data name="ListPlaceholderDebugTitle" xml:space="preserve">
+    <value>List placeholder debug</value>
   </data>
 </root>

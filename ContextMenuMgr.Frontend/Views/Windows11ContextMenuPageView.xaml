@@ -3,7 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels">
+    xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}">
     <Grid Margin="0,8,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -12,17 +13,17 @@
 
         <Border Background="{DynamicResource LayerFillColorAltBrush}" Style="{StaticResource CardBorderStyle}">
             <StackPanel>
-                <TextBlock
+                <ui:TextBlock
                     FontSize="22"
                     FontWeight="SemiBold"
                     Text="{Binding Title}" />
-                <TextBlock
+                <ui:TextBlock
                     Margin="0,6,0,0"
                     Opacity="0.72"
                     Text="{Binding Description}"
                     TextWrapping="Wrap" />
 
-                <TextBlock Margin="0,14,0,0" Text="{Binding SearchLabel}" />
+                <ui:TextBlock Margin="0,14,0,0" Text="{Binding SearchLabel}" />
 
                 <TextBox
                     Margin="0,8,0,0"
@@ -78,18 +79,18 @@
                                         </Border>
 
                                         <StackPanel VerticalAlignment="Center">
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 FontSize="17"
                                                 FontWeight="SemiBold"
                                                 Text="{Binding DisplayName}" />
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 Margin="0,4,0,0"
                                                 Opacity="0.72"
                                                 Text="{Binding PackageFamilyName}" />
                                         </StackPanel>
                                     </StackPanel>
 
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Margin="0,10,0,0"
                                         Opacity="0.72"
                                         Text="{Binding PublisherName}"
@@ -102,7 +103,7 @@
                                             Background="{DynamicResource AccentFillColorDefaultBrush}"
                                             CornerRadius="4"
                                             Visibility="{Binding IsPendingApproval, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 FontSize="11"
                                                 Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                                 Text="{Binding PendingApprovalText}" />
@@ -112,7 +113,10 @@
                                             Padding="8,2"
                                             Background="{DynamicResource AccentFillColorSecondaryBrush}"
                                             CornerRadius="4">
-                                            <TextBlock FontSize="11" Text="{Binding ContextTypesText}" />
+                                            <ui:TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                Text="{Binding ContextTypesText}" />
                                         </Border>
                                         <Border
                                             Margin="0,0,8,8"
@@ -120,11 +124,14 @@
                                             Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
                                             CornerRadius="4"
                                             Visibility="{Binding IsMachineBlocked, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock FontSize="11" Text="{Binding MachineBlockedText}" />
+                                            <ui:TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding MachineBlockedText}" />
                                         </Border>
                                     </WrapPanel>
 
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Margin="0,2,0,0"
                                         FontFamily="Consolas"
                                         FontSize="11"
@@ -162,22 +169,49 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <TextBlock
+            <Border
+                Panel.ZIndex="100"
+                Padding="24,18"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Opacity="0.72"
-                Text="{Binding NoItemsText}">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding Items.Count}" Value="0">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
+                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                IsHitTestVisible="False"
+                Visibility="{Binding ShowListPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel HorizontalAlignment="Center" MinWidth="180">
+                    <ProgressBar
+                        Width="120"
+                        Height="4"
+                        IsIndeterminate="True"
+                        Visibility="{Binding IsListLoading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:SymbolIcon
+                        Width="32"
+                        Height="32"
+                        HorizontalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Symbol="FolderOpen24"
+                        Visibility="{Binding IsListEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:TextBlock
+                        Margin="0,10,0,0"
+                        HorizontalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        FontSize="15"
+                        Opacity="0.86">
+                        <ui:TextBlock.Style>
+                            <Style TargetType="ui:TextBlock">
+                                <Setter Property="Text" Value="{Binding EmptyItemsText}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsListLoading}" Value="True">
+                                        <Setter Property="Text" Value="{Binding LoadingItemsText}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:TextBlock.Style>
+                    </ui:TextBlock>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

@@ -4,7 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
-    xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views">
+    xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}">
     <UserControl.Resources>
         <Style x:Key="OtherRulesTabHostSurfaceStyle" TargetType="Border">
             <Setter Property="Margin" Value="0,8,0,0" />
@@ -59,7 +60,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="Star24" />
-                        <TextBlock Text="{Binding EnhanceMenusTitle}" />
+                        <ui:TextBlock Text="{Binding EnhanceMenusTitle}" />
                     </StackPanel>
                 </TabItem.Header>
 
@@ -79,11 +80,11 @@
                             </Grid.RowDefinitions>
 
                             <StackPanel Margin="16,14,16,8">
-                                <TextBlock
+                                <ui:TextBlock
                                     FontSize="15"
                                     FontWeight="SemiBold"
                                     Text="{Binding EnhanceMenusTitle}" />
-                                <TextBlock
+                                <ui:TextBlock
                                     Margin="0,6,0,0"
                                     Opacity="0.72"
                                     Text="{Binding EnhanceMenusDescription}"
@@ -103,11 +104,11 @@
                                     <DataTemplate DataType="{x:Type viewModels:EnhanceMenuGroupViewModel}">
                                         <Border Padding="10">
                                             <StackPanel>
-                                                <TextBlock
+                                                <ui:TextBlock
                                                     FontSize="15"
                                                     FontWeight="SemiBold"
                                                     Text="{Binding Title}" />
-                                                <TextBlock
+                                                <ui:TextBlock
                                                     Margin="0,6,0,0"
                                                     FontSize="11"
                                                     Opacity="0.68"
@@ -141,11 +142,11 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Margin="16,14,16,8">
-                                    <TextBlock
+                                    <ui:TextBlock
                                         FontSize="22"
                                         FontWeight="SemiBold"
                                         Text="{Binding SelectedEnhanceGroup.Title}" />
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Margin="0,6,0,0"
                                         Opacity="0.72"
                                         Text="{Binding SelectedEnhanceGroup.RegistryPath}"
@@ -192,11 +193,11 @@
                                                                             Source="{Binding IconSource}" />
                                                                     </Border>
                                                                     <StackPanel VerticalAlignment="Center">
-                                                                        <TextBlock
+                                                                        <ui:TextBlock
                                                                             FontSize="16"
                                                                             FontWeight="SemiBold"
                                                                             Text="{Binding DisplayName}" />
-                                                                        <TextBlock
+                                                                        <ui:TextBlock
                                                                             Margin="0,4,0,0"
                                                                             FontFamily="Consolas"
                                                                             FontSize="11"
@@ -210,11 +211,14 @@
                                                                         Padding="8,2"
                                                                         Background="{DynamicResource AccentFillColorSecondaryBrush}"
                                                                         CornerRadius="4">
-                                                                        <TextBlock FontSize="11" Text="{Binding Kind}" />
+                                                                        <ui:TextBlock
+                                                                            FontSize="11"
+                                                                            Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                                            Text="{Binding Kind}" />
                                                                     </Border>
                                                                 </WrapPanel>
 
-                                                                <TextBlock
+                                                                <ui:TextBlock
                                                                     Margin="0,10,0,0"
                                                                     Opacity="0.72"
                                                                     Text="{Binding Tip}"
@@ -241,14 +245,14 @@
                         </Border>
                     </Grid>
 
-                    <TextBlock
+                    <ui:TextBlock
                         Grid.Column="2"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Opacity="0.72"
                         Text="{Binding NoSelectionText}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
+                        <ui:TextBlock.Style>
+                            <Style TargetType="ui:TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding SelectedEnhanceGroup}" Value="{x:Null}">
@@ -256,8 +260,8 @@
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                        </ui:TextBlock.Style>
+                    </ui:TextBlock>
                 </Grid>
                 </Border>
             </TabItem>
@@ -266,7 +270,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="DocumentEdit24" />
-                        <TextBlock Text="{Binding DetailedEditTitle}" />
+                        <ui:TextBlock Text="{Binding DetailedEditTitle}" />
                     </StackPanel>
                 </TabItem.Header>
 
@@ -286,7 +290,7 @@
                             </Grid.RowDefinitions>
 
                             <StackPanel Margin="16,14,16,8">
-                                <TextBlock
+                                <ui:TextBlock
                                     FontSize="15"
                                     FontWeight="SemiBold"
                                     Text="{Binding DetailedEditTitle}" />
@@ -305,18 +309,18 @@
                                     <DataTemplate DataType="{x:Type viewModels:DetailedEditGroupViewModel}">
                                         <Border Padding="10">
                                             <StackPanel>
-                                                <TextBlock
+                                                <ui:TextBlock
                                                     FontSize="15"
                                                     FontWeight="SemiBold"
                                                     Text="{Binding Title}" />
-                                                <TextBlock
+                                                <ui:TextBlock
                                                     Margin="0,6,0,0"
                                                     FontSize="11"
                                                     Opacity="0.68"
                                                     Text="{Binding RegistryPath}"
                                                     TextWrapping="Wrap"
                                                     Visibility="{Binding RegistryPath, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
-                                                <TextBlock
+                                                <ui:TextBlock
                                                     Margin="0,6,0,0"
                                                     FontSize="11"
                                                     Opacity="0.68"
@@ -351,17 +355,17 @@
                                 </Grid.RowDefinitions>
 
                                 <StackPanel Margin="16,14,16,8">
-                                    <TextBlock
+                                    <ui:TextBlock
                                         FontSize="22"
                                         FontWeight="SemiBold"
                                         Text="{Binding SelectedDetailedEditGroup.Title}" />
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Margin="0,6,0,0"
                                         Opacity="0.72"
                                         Text="{Binding SelectedDetailedEditGroup.RegistryPath}"
                                         TextWrapping="Wrap"
                                         Visibility="{Binding SelectedDetailedEditGroup.RegistryPath, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Margin="0,6,0,0"
                                         Opacity="0.72"
                                         Text="{Binding SelectedDetailedEditGroup.FilePath}"
@@ -386,11 +390,11 @@
                                                 <DataTemplate DataType="{x:Type viewModels:DetailedEditRuleViewModel}">
                                                     <Border Style="{StaticResource OtherRulesItemCardStyle}">
                                                         <StackPanel>
-                                                            <TextBlock
+                                                            <ui:TextBlock
                                                                 FontSize="15"
                                                                 FontWeight="SemiBold"
                                                                 Text="{Binding DisplayName}" />
-                                                            <TextBlock
+                                                            <ui:TextBlock
                                                                 Margin="0,6,0,0"
                                                                 Opacity="0.72"
                                                                 Text="{Binding Tip}"
@@ -402,7 +406,10 @@
                                                                 Background="{DynamicResource AccentFillColorSecondaryBrush}"
                                                                 CornerRadius="4"
                                                                 Visibility="{Binding RequiresExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                                <TextBlock FontSize="11" Text="{Binding RestartExplorerHint}" />
+                                                                <ui:TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                                    Text="{Binding RestartExplorerHint}" />
                                                             </Border>
 
                                                             <ui:ToggleSwitch
@@ -449,14 +456,14 @@
                         </Border>
                     </Grid>
 
-                    <TextBlock
+                    <ui:TextBlock
                         Grid.Column="2"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Opacity="0.72"
                         Text="{Binding NoSelectionText}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
+                        <ui:TextBlock.Style>
+                            <Style TargetType="ui:TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding SelectedDetailedEditGroup}" Value="{x:Null}">
@@ -464,8 +471,8 @@
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                        </ui:TextBlock.Style>
+                    </ui:TextBlock>
                 </Grid>
                 </Border>
             </TabItem>
@@ -474,7 +481,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="TextNumberListLtr24" />
-                        <TextBlock Text="{Binding CustomRegistryPathTab.Title}" />
+                        <ui:TextBlock Text="{Binding CustomRegistryPathTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
@@ -486,7 +493,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="CursorHover24" />
-                        <TextBlock Text="{Binding DragDropTab.Title}" />
+                        <ui:TextBlock Text="{Binding DragDropTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
@@ -498,7 +505,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="Library24" />
-                        <TextBlock Text="{Binding CommandStoreTab.Title}" />
+                        <ui:TextBlock Text="{Binding CommandStoreTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
@@ -510,7 +517,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="DismissCircle24" />
-                        <TextBlock Text="{Binding GuidBlockTab.Title}" />
+                        <ui:TextBlock Text="{Binding GuidBlockTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
@@ -522,7 +529,7 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:SymbolIcon Margin="0,0,6,0" Symbol="Globe24" />
-                        <TextBlock Text="{Binding IeMenuTab.Title}" />
+                        <ui:TextBlock Text="{Binding IeMenuTab.Title}" />
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">

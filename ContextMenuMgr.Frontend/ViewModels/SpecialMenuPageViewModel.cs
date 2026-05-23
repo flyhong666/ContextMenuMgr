@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -17,6 +18,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     private readonly IconPreviewService _iconPreviewService;
     private readonly LocalizationService _localization;
     private readonly ExplorerRestartStateService _explorerRestartState;
+    private readonly ListPlaceholderDebugStateService _placeholderDebug;
     private readonly string _titleKey;
     private readonly string _descriptionKey;
     private readonly Dictionary<string, bool> _winXExpandedStates = new(StringComparer.OrdinalIgnoreCase);
@@ -30,7 +32,8 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         IBackendClient backendClient,
         IconPreviewService iconPreviewService,
         LocalizationService localization,
-        ExplorerRestartStateService explorerRestartState)
+        ExplorerRestartStateService explorerRestartState,
+        ListPlaceholderDebugStateService placeholderDebug)
     {
         Kind = kind;
         _titleKey = titleKey;
@@ -39,6 +42,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         _iconPreviewService = iconPreviewService;
         _localization = localization;
         _explorerRestartState = explorerRestartState;
+        _placeholderDebug = placeholderDebug;
         ItemsView = new ListCollectionView(Items);
         ItemsView.Filter = FilterItem;
         SearchLabel = _localization.Translate("SearchLabel");
@@ -64,6 +68,9 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         ];
         _backendClient.NotificationReceived += OnNotificationReceived;
         _localization.LanguageChanged += OnLanguageChanged;
+        _placeholderDebug.PropertyChanged += OnPlaceholderDebugPropertyChanged;
+        Items.CollectionChanged += OnItemsCollectionChanged;
+        WinXGroups.CollectionChanged += OnWinXGroupsCollectionChanged;
         _ = RefreshAsync();
     }
 
@@ -152,7 +159,48 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     public bool ShowWinXTree => Kind == SpecialMenuKind.WinX;
 
-    partial void OnSearchTextChanged(string value) => ItemsView.Refresh();
+    public string LoadingItemsText => _localization.Translate("LoadingItemsText");
+
+    public string EmptyItemsText => _localization.Translate("EmptyItemsText");
+
+    public bool IsListLoading => _placeholderDebug.ForceLoadingState || IsBusy;
+
+    public bool IsListEmpty
+    {
+        get
+        {
+            if (IsListLoading)
+            {
+                return false;
+            }
+
+            if (_placeholderDebug.ForceEmptyState)
+            {
+                return true;
+            }
+
+            if (Kind == SpecialMenuKind.WinX)
+            {
+                return WinXGroups.Count == 0
+                       || WinXGroups.All(static group => group.Items.Count == 0);
+            }
+
+            return !ItemsView.Cast<object>().Any();
+        }
+    }
+
+    public bool ShowListPlaceholder => IsListLoading || IsListEmpty;
+
+    partial void OnSearchTextChanged(string value)
+    {
+        ItemsView.Refresh();
+        RefreshListPlaceholderState();
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        RefreshListPlaceholderState();
+    }
 
     partial void OnIsShellNewOrderLockedChanged(bool oldValue, bool newValue)
     {
@@ -784,6 +832,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         UpdateShellNewMoveAvailability();
         RebuildWinXGroups();
         ItemsView.Refresh();
+        RefreshListPlaceholderState();
     }
 
     private void ApplyWinXSnapshotIncrementally(IReadOnlyList<SpecialMenuEntry> entries)
@@ -795,6 +844,8 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         {
             ItemsView.Refresh();
         }
+
+        RefreshListPlaceholderState();
     }
 
     private void ReconcileItemsIncrementally(IReadOnlyList<SpecialMenuEntry> entries)
@@ -861,6 +912,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         UpdateShellNewMoveAvailability();
         ItemsView.Refresh();
         RebuildWinXGroups();
+        RefreshListPlaceholderState();
     }
 
     private bool FilterItem(object obj)
@@ -924,6 +976,30 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Description));
+        OnPropertyChanged(nameof(LoadingItemsText));
+        OnPropertyChanged(nameof(EmptyItemsText));
+        RefreshListPlaceholderState();
+    }
+
+    private void OnPlaceholderDebugPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ListPlaceholderDebugStateService.Mode)
+            or nameof(ListPlaceholderDebugStateService.ForceLoadingState)
+            or nameof(ListPlaceholderDebugStateService.ForceEmptyState)
+            or nameof(ListPlaceholderDebugStateService.HasForcedState))
+        {
+            RefreshListPlaceholderState();
+        }
+    }
+
+    private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        RefreshListPlaceholderState();
+    }
+
+    private void OnWinXGroupsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        RefreshListPlaceholderState();
     }
 
     private async Task SetShellNewOrderLockAsync(bool oldValue, bool newValue)
@@ -1078,6 +1154,14 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         }
 
         UpdateWinXMoveAvailability();
+        RefreshListPlaceholderState();
+    }
+
+    private void RefreshListPlaceholderState()
+    {
+        OnPropertyChanged(nameof(IsListLoading));
+        OnPropertyChanged(nameof(IsListEmpty));
+        OnPropertyChanged(nameof(ShowListPlaceholder));
     }
 
     private List<(SpecialMenuItemViewModel Group, List<SpecialMenuItemViewModel> Items)> BuildWinXGroupSpecs()
@@ -1269,29 +1353,32 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     {
         _backendClient.NotificationReceived -= OnNotificationReceived;
         _localization.LanguageChanged -= OnLanguageChanged;
+        _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
+        Items.CollectionChanged -= OnItemsCollectionChanged;
+        WinXGroups.CollectionChanged -= OnWinXGroupsCollectionChanged;
     }
 }
 
 public sealed class ShellNewPageViewModel : SpecialMenuPageViewModel
 {
-    public ShellNewPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState)
-        : base(SpecialMenuKind.ShellNew, "ShellNewPageTitle", "ShellNewPageDescription", backendClient, iconPreviewService, localization, explorerRestartState)
+    public ShellNewPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState, ListPlaceholderDebugStateService placeholderDebug)
+        : base(SpecialMenuKind.ShellNew, "ShellNewPageTitle", "ShellNewPageDescription", backendClient, iconPreviewService, localization, explorerRestartState, placeholderDebug)
     {
     }
 }
 
 public sealed class SendToPageViewModel : SpecialMenuPageViewModel
 {
-    public SendToPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState)
-        : base(SpecialMenuKind.SendTo, "SendToPageTitle", "SendToPageDescription", backendClient, iconPreviewService, localization, explorerRestartState)
+    public SendToPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState, ListPlaceholderDebugStateService placeholderDebug)
+        : base(SpecialMenuKind.SendTo, "SendToPageTitle", "SendToPageDescription", backendClient, iconPreviewService, localization, explorerRestartState, placeholderDebug)
     {
     }
 }
 
 public sealed class WinXPageViewModel : SpecialMenuPageViewModel
 {
-    public WinXPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState)
-        : base(SpecialMenuKind.WinX, "WinXPageTitle", "WinXPageDescription", backendClient, iconPreviewService, localization, explorerRestartState)
+    public WinXPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState, ListPlaceholderDebugStateService placeholderDebug)
+        : base(SpecialMenuKind.WinX, "WinXPageTitle", "WinXPageDescription", backendClient, iconPreviewService, localization, explorerRestartState, placeholderDebug)
     {
     }
 }

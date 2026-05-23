@@ -1,14 +1,15 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ContextMenuMgr.Frontend.Services;
 using ContextMenuMgr.Frontend.Views.Pages;
+using Microsoft.Extensions.DependencyInjection;
 using Wpf.Ui.Appearance;
 using Wpf.Ui;
-using Wpf.Ui.Controls;
 
 namespace ContextMenuMgr.Frontend;
 
@@ -18,6 +19,10 @@ namespace ContextMenuMgr.Frontend;
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly UpdateCheckService _updateCheckService;
+#if DEBUG
+    private readonly IServiceProvider _serviceProvider;
+    private DebugToolsWindow? _debugToolsWindow;
+#endif
     private Type? _pendingPageType;
 
     /// <summary>
@@ -31,6 +36,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         UpdateCheckService updateCheckService)
     {
         _updateCheckService = updateCheckService;
+#if DEBUG
+        _serviceProvider = serviceProvider;
+#endif
         SystemThemeWatcher.Watch(this);
         InitializeComponent();
         infoBarService.SetInfoBarControl(RootInfoBar, RootInfoBarTitle, RootInfoBarMessage, RootInfoBarLink);
@@ -42,7 +50,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         ApplyWindowIcon();
 #if DEBUG
-        AddDebugUpdatePromptButton();
+        PreviewKeyDown += OnPreviewKeyDown;
 #endif
         Loaded += OnLoaded;
     }
@@ -144,19 +152,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
 #if DEBUG
-    private void AddDebugUpdatePromptButton()
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        var button = new Wpf.Ui.Controls.Button
+        if (e.Key != Key.F12)
         {
-            MinWidth = 108,
-            Margin = new Thickness(0, 0, 8, 0),
-            Padding = new Thickness(14, 8, 14, 8),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-            Appearance = ControlAppearance.Secondary,
-            Content = "强制更新提示"
-        };
-        button.Click += (_, _) => _updateCheckService.ShowDebugUpdatePrompt();
-        HeaderActions.Children.Insert(0, button);
+            return;
+        }
+
+        e.Handled = true;
+        ShowDebugToolsWindow();
+    }
+
+    private void ShowDebugToolsWindow()
+    {
+        if (_debugToolsWindow is { IsVisible: true })
+        {
+            _debugToolsWindow.Activate();
+            return;
+        }
+
+        _debugToolsWindow = ActivatorUtilities.CreateInstance<DebugToolsWindow>(_serviceProvider);
+        _debugToolsWindow.Owner = this;
+        _debugToolsWindow.Closed += (_, _) => _debugToolsWindow = null;
+        _debugToolsWindow.Show();
     }
 #endif
 }

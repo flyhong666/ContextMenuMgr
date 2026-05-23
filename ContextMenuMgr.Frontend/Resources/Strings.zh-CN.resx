@@ -539,6 +539,12 @@
   <data name="DebugToolsTitle" xml:space="preserve">
     <value>调试</value>
   </data>
+  <data name="DebugUpdatePromptTitle" xml:space="preserve">
+    <value>更新提示</value>
+  </data>
+  <data name="DebugForceUpdatePromptText" xml:space="preserve">
+    <value>强制更新提示</value>
+  </data>
   <data name="OpenLogsFolder" xml:space="preserve">
     <value>打开日志目录</value>
   </data>
@@ -1147,5 +1153,23 @@
   </data>
   <data name="MenuFormShellNewBeforeSeparator" xml:space="preserve">
     <value>在分隔符前显示</value>
+  </data>
+  <data name="LoadingItemsText" xml:space="preserve">
+    <value>正在加载中……</value>
+  </data>
+  <data name="EmptyItemsText" xml:space="preserve">
+    <value>这里空空如也(；′⌒`)</value>
+  </data>
+  <data name="DebugSimulateLoadingText" xml:space="preserve">
+    <value>模拟加载中</value>
+  </data>
+  <data name="DebugSimulateEmptyText" xml:space="preserve">
+    <value>模拟空状态</value>
+  </data>
+  <data name="DebugClearSimulatedStateText" xml:space="preserve">
+    <value>清除模拟状态</value>
+  </data>
+  <data name="ListPlaceholderDebugTitle" xml:space="preserve">
+    <value>列表占位调试</value>
   </data>
 </root>

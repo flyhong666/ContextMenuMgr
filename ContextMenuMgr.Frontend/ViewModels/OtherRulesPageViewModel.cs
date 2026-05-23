@@ -32,7 +32,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         EnhanceMenuRuleService enhanceMenuRuleService,
         FrontendSettingsService settingsService,
         DetailedEditRuleService detailedEditRuleService,
-        ExplorerRestartStateService explorerRestartState)
+        ExplorerRestartStateService explorerRestartState,
+        ListPlaceholderDebugStateService placeholderDebug)
     {
         _workspace = workspace;
         _localization = localization;
@@ -65,7 +66,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
             backendClient,
             iconPreviewService,
             localization,
-            explorerRestartState);
+            explorerRestartState,
+            placeholderDebug);
         CommandStoreTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.CommandStore,
             "CommandStorePageTitle",
@@ -73,7 +75,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
             backendClient,
             iconPreviewService,
             localization,
-            explorerRestartState);
+            explorerRestartState,
+            placeholderDebug);
         GuidBlockTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.GuidBlock,
             "GuidBlockPageTitle",
@@ -81,7 +84,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
             backendClient,
             iconPreviewService,
             localization,
-            explorerRestartState);
+            explorerRestartState,
+            placeholderDebug);
         IeMenuTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.InternetExplorer,
             "IeMenuPageTitle",
@@ -89,7 +93,8 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
             backendClient,
             iconPreviewService,
             localization,
-            explorerRestartState);
+            explorerRestartState,
+            placeholderDebug);
 
         _workspace.Items.CollectionChanged += OnWorkspaceItemsCollectionChanged;
         foreach (var item in _workspace.Items)

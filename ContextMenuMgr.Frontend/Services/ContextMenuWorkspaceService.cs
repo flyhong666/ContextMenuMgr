@@ -69,6 +69,9 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     [ObservableProperty]
     public partial string ConnectionStatus { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsLoading { get; private set; }
+
     /// <summary>
     /// Gets or sets the service Attention Text.
     /// </summary>
@@ -159,6 +162,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     public async Task RefreshAsync()
     {
         _uiStateActive = true;
+        IsLoading = true;
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -176,6 +180,10 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                     ? ServiceAttentionState.Unavailable
                     : ServiceAttentionState.Missing);
             ConnectionStatus = _localization.Format("BackendUnavailableStatus", ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 

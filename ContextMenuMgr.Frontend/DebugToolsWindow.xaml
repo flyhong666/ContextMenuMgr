@@ -1,0 +1,79 @@
+<ui:FluentWindow
+    x:Class="ContextMenuMgr.Frontend.DebugToolsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Width="460"
+    Height="340"
+    MinWidth="420"
+    MinHeight="300"
+    ui:Design.Background="{DynamicResource ApplicationBackgroundBrush}"
+    ui:Design.Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    ExtendsContentIntoTitleBar="True"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    ResizeMode="CanResize"
+    WindowBackdropType="Mica"
+    WindowStartupLocation="CenterOwner">
+    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar x:Name="DebugTitleBar" Grid.Row="0">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Source="/Assets/AppIcon.ico" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="16">
+                <Border Style="{StaticResource CardBorderStyle}">
+                    <StackPanel>
+                        <TextBlock
+                            x:Name="UpdatePromptTitleText"
+                            FontSize="18"
+                            FontWeight="SemiBold" />
+                        <ui:Button
+                            x:Name="ForceUpdatePromptButton"
+                            Margin="0,14,0,0"
+                            Padding="16,8"
+                            Appearance="Secondary"
+                            Click="OnForceUpdatePromptClick"
+                            Icon="{ui:SymbolIcon Symbol=Alert24}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorderStyle}">
+                    <StackPanel>
+                        <TextBlock
+                            x:Name="ListPlaceholderTitleText"
+                            FontSize="18"
+                            FontWeight="SemiBold" />
+                        <WrapPanel Margin="0,14,0,0">
+                            <ui:Button
+                                x:Name="SimulateLoadingButton"
+                                Margin="0,0,12,12"
+                                Padding="16,8"
+                                Click="OnSimulateLoadingClick"
+                                Icon="{ui:SymbolIcon Symbol=ArrowSync24}" />
+                            <ui:Button
+                                x:Name="SimulateEmptyButton"
+                                Margin="0,0,12,12"
+                                Padding="16,8"
+                                Click="OnSimulateEmptyClick"
+                                Icon="{ui:SymbolIcon Symbol=FolderOpen24}" />
+                            <ui:Button
+                                x:Name="ClearSimulatedStateButton"
+                                Margin="0,0,12,12"
+                                Padding="16,8"
+                                Appearance="Secondary"
+                                Click="OnClearSimulatedStateClick"
+                                Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</ui:FluentWindow>
