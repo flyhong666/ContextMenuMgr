@@ -129,7 +129,7 @@ public partial class EnhanceMenuItemViewModel : ObservableObject, IDisposable
                 RefreshState();
             }
         }
-        catch
+        catch (Exception ex)
         {
             _suppressSync = true;
             try
@@ -140,6 +140,13 @@ public partial class EnhanceMenuItemViewModel : ObservableObject, IDisposable
             {
                 _suppressSync = false;
             }
+
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return;
+            }
+
             await FrontendMessageBox.ShowErrorAsync(
                 _localization.Translate("EnhanceMenuToggleFailed"),
                 DisplayName);

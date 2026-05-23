@@ -1172,4 +1172,16 @@ Continue anyway? (Not recommended)</value>
   <data name="ListPlaceholderDebugTitle" xml:space="preserve">
     <value>List placeholder debug</value>
   </data>
+  <data name="RegistryProtectionBlocksEditTitle" xml:space="preserve">
+    <value>Registry write protection is enabled</value>
+  </data>
+  <data name="RegistryProtectionBlocksEditMessage" xml:space="preserve">
+    <value>“Disable context menu item additions” is currently enabled, so normal context-menu registry locations are locked. Please turn this option off in Settings before adding, editing, disabling, or deleting menu items.</value>
+  </data>
+  <data name="RegistryProtectionOpenSettingsText" xml:space="preserve">
+    <value>Open Settings</value>
+  </data>
+  <data name="RegistryProtectionCancelText" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
 </root>

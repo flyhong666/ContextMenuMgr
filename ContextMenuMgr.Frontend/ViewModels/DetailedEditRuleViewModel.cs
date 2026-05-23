@@ -127,6 +127,13 @@ public partial class DetailedEditRuleViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                Refresh();
+                return;
+            }
+
             await FrontendMessageBox.ShowErrorAsync(
                 ex.Message,
                 DisplayName);
@@ -177,6 +184,12 @@ public partial class DetailedEditRuleViewModel : ObservableObject
             _suppressAutoApply = true;
             BoolValue = _ruleService.ReadBoolean(_definition);
             _suppressAutoApply = false;
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return;
+            }
+
             await FrontendMessageBox.ShowErrorAsync(
                 ex.Message,
                 DisplayName);

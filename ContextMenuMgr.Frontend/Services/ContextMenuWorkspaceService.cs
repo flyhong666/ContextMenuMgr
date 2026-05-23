@@ -229,6 +229,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                 return false;
             }
 
+            if (RegistryProtectionDialog.ShouldBlockNormalContextMenuRegistryMutation(_settingsService, item.Entry))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var updated = await _backendClient.SetEnabledAsync(item.Id, enable, cts.Token, item.Entry);
             if (updated is not null)
@@ -245,6 +251,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         catch (Exception ex)
         {
             FrontendDebugLog.Error("ContextMenuWorkspaceService", ex, $"SetEnabledAsync failed for {item.Id}.");
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
             ConnectionStatus = _localization.Format("ItemUpdateFailedStatus", item.DisplayName, ex.Message);
         }
 
@@ -290,6 +302,13 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                 && ProtectedMenuItemGuard.IsProtectedOpenItem(item)
                 && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
             {
+                return;
+            }
+
+            if (!item.IsDeleted
+                && RegistryProtectionDialog.ShouldBlockNormalContextMenuRegistryMutation(_settingsService, item.Entry))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
                 return;
             }
 
@@ -453,6 +472,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                 return false;
             }
 
+            if (RegistryProtectionDialog.ShouldBlockNormalContextMenuRegistryMutation(_settingsService, item.Entry))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var updated = await _backendClient.SetShellAttributeAsync(item.Id, attribute, enable, cts.Token);
             if (updated is not null)
@@ -464,6 +489,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         catch (Exception ex)
         {
             FrontendDebugLog.Error("ContextMenuWorkspaceService", ex, $"SetShellAttributeAsync failed for {item.Id}/{attribute}.");
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
             ConnectionStatus = _localization.Format("ItemUpdateFailedStatus", item.DisplayName, ex.Message);
         }
 
@@ -477,6 +508,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     {
         try
         {
+            if (RegistryProtectionDialog.ShouldBlockNormalContextMenuRegistryMutation(_settingsService, item.Entry))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var updated = await _backendClient.SetDisplayTextAsync(item.Id, textValue, cts.Token);
             if (updated is not null)
@@ -488,6 +525,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         catch (Exception ex)
         {
             FrontendDebugLog.Error("ContextMenuWorkspaceService", ex, $"SetDisplayTextAsync failed for {item.Id}.");
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
             ConnectionStatus = _localization.Format("ItemUpdateFailedStatus", item.DisplayName, ex.Message);
         }
 
@@ -897,6 +940,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         var detail = ex is TimeoutException
             ? _localization.Translate("DeleteOperationTimeoutDetail")
             : ex.Message;
+
+        if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+        {
+            await RegistryProtectionDialog.ShowAsync(_localization);
+            return;
+        }
 
         var message = _localization.Format(resourceKey, item.DisplayName, detail);
         ConnectionStatus = message;

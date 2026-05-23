@@ -1172,4 +1172,16 @@
   <data name="ListPlaceholderDebugTitle" xml:space="preserve">
     <value>列表占位调试</value>
   </data>
+  <data name="RegistryProtectionBlocksEditTitle" xml:space="preserve">
+    <value>注册表写保护已开启</value>
+  </data>
+  <data name="RegistryProtectionBlocksEditMessage" xml:space="preserve">
+    <value>当前已开启“禁用右键菜单添加选项”，普通右键菜单注册表位置已被锁定。请先在设置中关闭该选项后，再进行添加、编辑、禁用或删除操作。</value>
+  </data>
+  <data name="RegistryProtectionOpenSettingsText" xml:space="preserve">
+    <value>打开设置</value>
+  </data>
+  <data name="RegistryProtectionCancelText" xml:space="preserve">
+    <value>取消</value>
+  </data>
 </root>

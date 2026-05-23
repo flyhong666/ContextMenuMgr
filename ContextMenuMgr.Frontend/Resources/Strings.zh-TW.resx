@@ -1172,4 +1172,16 @@
   <data name="ListPlaceholderDebugTitle" xml:space="preserve">
     <value>清單占位偵錯</value>
   </data>
+  <data name="RegistryProtectionBlocksEditTitle" xml:space="preserve">
+    <value>登錄檔寫入保護已開啟</value>
+  </data>
+  <data name="RegistryProtectionBlocksEditMessage" xml:space="preserve">
+    <value>目前已啟用「停用右鍵選單項目新增」，普通右鍵選單登錄檔位置已被鎖定。請先在設定中關閉此選項後，再進行新增、編輯、停用或刪除操作。</value>
+  </data>
+  <data name="RegistryProtectionOpenSettingsText" xml:space="preserve">
+    <value>開啟設定</value>
+  </data>
+  <data name="RegistryProtectionCancelText" xml:space="preserve">
+    <value>取消</value>
+  </data>
 </root>

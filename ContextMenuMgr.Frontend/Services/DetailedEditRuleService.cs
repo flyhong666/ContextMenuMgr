@@ -12,13 +12,20 @@ namespace ContextMenuMgr.Frontend.Services;
 public sealed class DetailedEditRuleService
 {
     private readonly IBackendClient _backendClient;
+    private readonly FrontendSettingsService _settingsService;
+    private readonly LocalizationService _localization;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DetailedEditRuleService"/> class.
     /// </summary>
-    public DetailedEditRuleService(IBackendClient backendClient)
+    public DetailedEditRuleService(
+        IBackendClient backendClient,
+        FrontendSettingsService settingsService,
+        LocalizationService localization)
     {
         _backendClient = backendClient;
+        _settingsService = settingsService;
+        _localization = localization;
     }
 
     /// <summary>
@@ -134,6 +141,13 @@ public sealed class DetailedEditRuleService
     {
         if (clause.StorageKind == RuleStorageKind.Registry)
         {
+            if (RegistryProtectionDialog.ShouldBlockProtectedPathMutation(_settingsService, clause.Path))
+            {
+                throw new BackendRequestException(
+                    _localization.Translate("RegistryProtectionBlocksEditMessage"),
+                    ContextMenuMgr.Contracts.PipeErrorCodes.RegistryWriteProtectionEnabled);
+            }
+
             await _backendClient.SetDetailedEditRuleValueAsync(
                 clause.StorageKind.ToString(),
                 clause.Path,

@@ -10,14 +10,19 @@ public sealed class EnhanceMenuRuleService
 {
     private readonly IBackendClient _backendClient;
     private readonly LocalizationService _localization;
+    private readonly FrontendSettingsService _settingsService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EnhanceMenuRuleService"/> class.
     /// </summary>
-    public EnhanceMenuRuleService(IBackendClient backendClient, LocalizationService localization)
+    public EnhanceMenuRuleService(
+        IBackendClient backendClient,
+        LocalizationService localization,
+        FrontendSettingsService settingsService)
     {
         _backendClient = backendClient;
         _localization = localization;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -44,6 +49,17 @@ public sealed class EnhanceMenuRuleService
         bool enable,
         CancellationToken cancellationToken)
     {
+        var relativeGroupPath = NormalizeClassesRootRelativePath(definition.GroupRegistryPath);
+        var targetPath = string.Equals(definition.Kind, "ShellEx", StringComparison.OrdinalIgnoreCase)
+            ? $@"{relativeGroupPath}\shellex\ContextMenuHandlers"
+            : $@"{relativeGroupPath}\shell";
+        if (RegistryProtectionDialog.ShouldBlockProtectedPathMutation(_settingsService, targetPath))
+        {
+            throw new BackendRequestException(
+                _localization.Translate("RegistryProtectionBlocksEditMessage"),
+                PipeErrorCodes.RegistryWriteProtectionEnabled);
+        }
+
         return _backendClient.SetEnhanceMenuItemEnabledAsync(
             definition.GroupRegistryPath,
             definition.RawXml,

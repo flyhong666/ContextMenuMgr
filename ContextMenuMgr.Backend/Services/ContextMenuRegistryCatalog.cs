@@ -276,6 +276,42 @@ public sealed class ContextMenuRegistryCatalog
             : throw new InvalidOperationException("Unable to temporarily disable registry write protection for app-owned operation.");
     }
 
+    private async Task<bool> IsRegistryWriteProtectionEnabledAsync(CancellationToken cancellationToken)
+    {
+        var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
+        return settings.LockNewContextMenuItems;
+    }
+
+    internal async Task<PipeResponse?> CreateRegistryWriteProtectionPreflightFailureAsync(
+        string operationName,
+        IEnumerable<string?> targetPaths,
+        CancellationToken cancellationToken)
+    {
+        if (!await IsRegistryWriteProtectionEnabledAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var targets = targetPaths
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .Select(static path => path!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        await _logger.LogAsync(
+            RuntimeLogLevel.Warning,
+            $"RegistryWriteProtectionPreflightBlocked: Operation={operationName}, Targets={string.Join(";", targets)}.",
+            cancellationToken);
+
+        return new PipeResponse
+        {
+            Success = false,
+            ErrorCode = PipeErrorCodes.RegistryWriteProtectionEnabled,
+            RegistryProtectionEnabled = true,
+            Message = "Registry write protection is enabled. Please disable the context-menu add/modify protection in Settings before editing, adding, disabling, or deleting context menu items."
+        };
+    }
+
     public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
         BackendUserContext? userContext,
         CancellationToken cancellationToken = default)
@@ -498,6 +534,19 @@ public sealed class ContextMenuRegistryCatalog
             + $"UserSid={DiagnosticLogFormatter.FormatSid(userContext)}.",
             cancellationToken);
 
+        if (IsNormalContextMenuRegistryItem(item))
+        {
+            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                enable ? "EnableItem" : "DisableItem",
+                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                cancellationToken);
+
+            if (preflight is not null)
+            {
+                return preflight;
+            }
+        }
+
         try
         {
             if (item.IsWindows11ContextMenu)
@@ -568,6 +617,18 @@ public sealed class ContextMenuRegistryCatalog
         {
             stopwatch.Stop();
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update {item.DisplayName}: {ex}, ElapsedMs={stopwatch.ElapsedMilliseconds}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    enable ? "EnableItemFallback" : "DisableItemFallback",
+                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback;
+                }
+            }
+
             return CreateFailure(ex.Message, item);
         }
     }
@@ -699,6 +760,19 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure($"Menu item '{item.DisplayName}' is deleted. Undo the deletion before editing its attributes.", item);
         }
 
+        if (IsNormalContextMenuRegistryItem(item))
+        {
+            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                "ApplyShellAttribute",
+                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                cancellationToken);
+
+            if (preflight is not null)
+            {
+                return preflight with { Item = item };
+            }
+        }
+
         try
         {
             SetShellVerbAttribute(item.BackendRegistryPath, attribute, enable);
@@ -730,6 +804,18 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set {attribute} for {item.DisplayName}: {ex}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "ApplyShellAttributeFallback",
+                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback with { Item = item };
+                }
+            }
+
             return CreateFailure(ex.Message, item);
         }
     }
@@ -777,6 +863,19 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure("The resolved menu text is too long.", item);
         }
 
+        if (IsNormalContextMenuRegistryItem(item))
+        {
+            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                "ApplyDisplayText",
+                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                cancellationToken);
+
+            if (preflight is not null)
+            {
+                return preflight with { Item = item };
+            }
+        }
+
         try
         {
             using var menuKey = OpenRegistryKey(item.BackendRegistryPath, writable: true)
@@ -817,6 +916,18 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update display text for {item.DisplayName}: {ex}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "ApplyDisplayTextFallback",
+                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback with { Item = item };
+                }
+            }
+
             return CreateFailure(ex.Message, item);
         }
     }
@@ -851,25 +962,31 @@ public sealed class ContextMenuRegistryCatalog
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                await RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
-                    [$@"{relativeGroupPath}\shell"],
-                    _ =>
-                    {
-                        SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
-                        return Task.FromResult(true);
-                    },
+                var targetRoot = $@"{relativeGroupPath}\shell";
+                var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    enable ? "EnableEnhanceShellItem" : "DisableEnhanceShellItem",
+                    [targetRoot],
                     cancellationToken);
+                if (preflight is not null)
+                {
+                    return preflight;
+                }
+
+                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
             }
             else if (itemElement.Element("Guid") is not null)
             {
-                await RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
-                    [$@"{relativeGroupPath}\shellex\ContextMenuHandlers"],
-                    _ =>
-                    {
-                        SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable);
-                        return Task.FromResult(true);
-                    },
+                var targetRoot = $@"{relativeGroupPath}\shellex\ContextMenuHandlers";
+                var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    enable ? "EnableEnhanceShellExItem" : "DisableEnhanceShellExItem",
+                    [targetRoot],
                     cancellationToken);
+                if (preflight is not null)
+                {
+                    return preflight;
+                }
+
+                SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable);
             }
             else
             {
@@ -907,6 +1024,18 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update enhance menu item: {ex}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "SetEnhanceMenuItemFallback",
+                    [groupRegistryPath],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback;
+                }
+            }
+
             return CreateFailure(ex.Message);
         }
     }
@@ -943,6 +1072,19 @@ public sealed class ContextMenuRegistryCatalog
         {
             if (string.Equals(storageKind, "Registry", StringComparison.OrdinalIgnoreCase))
             {
+                if (IsProtectedNormalContextMenuRootPath(path))
+                {
+                    var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                        "SetDetailedEditRuleValue",
+                        [path],
+                        cancellationToken);
+
+                    if (preflight is not null)
+                    {
+                        return preflight;
+                    }
+                }
+
                 await _logger.LogAsync(
                     $"DetailedEditRegistryWriteStart: StorageKind={storageKind}, RawPath={path}, NormalizedPath={path.Replace('/', '\\').Trim()}, UserSid={userSid ?? "<null>"}, ValueName={DiagnosticLogFormatter.FormatRegistryValue(keyName)}, ValueKind={valueKind ?? RegistryValueKind.String.ToString()}, Operation={(value is null ? "DeleteValue" : "SetValue")}, ValueData={DiagnosticLogFormatter.FormatRegistryValueData(value)}.",
                     cancellationToken);
@@ -966,6 +1108,18 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update detailed edit rule value {path}\\{keyName}: {ex}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex) && IsProtectedNormalContextMenuRootPath(path))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "SetDetailedEditRuleValueFallback",
+                    [path],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback;
+                }
+            }
+
             return CreateFailure(ex.Message);
         }
     }
@@ -1172,6 +1326,19 @@ public sealed class ContextMenuRegistryCatalog
             return await RemoveMissingItemStateAsync(item, cancellationToken);
         }
 
+        if (item is not null && IsNormalContextMenuRegistryItem(item))
+        {
+            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                "DeleteItem",
+                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                cancellationToken);
+
+            if (preflight is not null)
+            {
+                return preflight with { Item = item };
+            }
+        }
+
         try
         {
             var backendRegistryPath = item?.BackendRegistryPath ?? persistedState?.BackendRegistryPath;
@@ -1255,6 +1422,18 @@ public sealed class ContextMenuRegistryCatalog
         {
             var displayName = item?.DisplayName ?? persistedState?.DisplayName ?? itemId;
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete {displayName}: {ex}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex) && item is not null && IsNormalContextMenuRegistryItem(item))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "DeleteItemFallback",
+                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback with { Item = item };
+                }
+            }
+
             return CreateFailure(ex.Message, item);
         }
     }
@@ -3033,6 +3212,96 @@ public sealed class ContextMenuRegistryCatalog
     {
         using var itemKey = Registry.ClassesRoot.OpenSubKey(registryPath, writable: false);
         return itemKey is not null && HasMultiItemSubCommands(itemKey);
+    }
+
+    private static bool IsNormalContextMenuRegistryItem(ContextMenuEntry item)
+    {
+        if (item.IsWindows11ContextMenu)
+        {
+            return false;
+        }
+
+        if (item.EntryKind is not (ContextMenuEntryKind.ShellVerb or ContextMenuEntryKind.ShellExtension))
+        {
+            return false;
+        }
+
+        return IsProtectedNormalContextMenuRootPath(item.BackendRegistryPath)
+               || IsProtectedNormalContextMenuRootPath(item.RegistryPath)
+               || IsProtectedNormalContextMenuRootPath(item.SourceRootPath);
+    }
+
+    internal static bool IsProtectedNormalContextMenuRootPath(string? path)
+    {
+        var normalized = NormalizeProtectedPath(path);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
+
+        if (normalized.Contains(@"\ShellNew\", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(@"\ShellNew", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains(@"Shell Extensions\Blocked", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return HasPathSegment(normalized, "shell")
+               || normalized.Contains(@"\shellex\ContextMenuHandlers", StringComparison.OrdinalIgnoreCase)
+               || normalized.StartsWith(@"shellex\ContextMenuHandlers", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeProtectedPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var normalized = path.Trim().Replace('/', '\\').Trim('\\');
+        foreach (var prefix in new[]
+        {
+            @"HKEY_CLASSES_ROOT\",
+            @"HKCR\",
+            @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\",
+            @"HKLM\SOFTWARE\Classes\"
+        })
+        {
+            if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized[prefix.Length..].Trim('\\');
+            }
+        }
+
+        foreach (var prefix in new[] { @"HKEY_USERS\", @"HKU\" })
+        {
+            if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var remainder = normalized[prefix.Length..];
+            var classesMarker = @"\Software\Classes\";
+            var classesIndex = remainder.IndexOf(classesMarker, StringComparison.OrdinalIgnoreCase);
+            if (classesIndex >= 0)
+            {
+                return remainder[(classesIndex + classesMarker.Length)..].Trim('\\');
+            }
+        }
+
+        return normalized;
+    }
+
+    private static bool HasPathSegment(string path, string segment)
+    {
+        var parts = path.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Any(part => string.Equals(part, segment, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsRegistryWriteProtectionException(Exception ex)
+    {
+        return ex is UnauthorizedAccessException or SecurityException
+               || ex.InnerException is not null && IsRegistryWriteProtectionException(ex.InnerException);
     }
 
     private static PipeResponse CreateFailure(string message, ContextMenuEntry? item = null)

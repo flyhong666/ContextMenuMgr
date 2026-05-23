@@ -81,14 +81,17 @@ public sealed class FileTypeSceneMenuService
                     return Failure("Shell verb items require a command.", operationId);
                 }
 
-                await _catalog.RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
-                    [$@"{relativeRoot}\shell"],
-                    _ =>
-                    {
-                        WriteShellVerb(relativeRoot, keyName, request);
-                        return Task.FromResult(true);
-                    },
+                var targetRoot = $@"{relativeRoot}\shell";
+                var preflight = await _catalog.CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "CreateSceneShellVerb",
+                    [targetRoot],
                     cancellationToken);
+                if (preflight is not null)
+                {
+                    return preflight with { ClientOperationId = operationId };
+                }
+
+                WriteShellVerb(relativeRoot, keyName, request);
             }
             else
             {
@@ -97,18 +100,21 @@ public sealed class FileTypeSceneMenuService
                     return Failure("The GUID format is invalid.", operationId);
                 }
 
-                await _catalog.RunWithRegistryWriteProtectionTemporarilyDisabledAsync(
-                    [$@"{relativeRoot}\shellex\ContextMenuHandlers"],
-                    _ =>
-                    {
-                        Registry.SetValue(
-                            $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}",
-                            string.Empty,
-                            guid.ToString("B"),
-                            RegistryValueKind.String);
-                        return Task.FromResult(true);
-                    },
+                var targetRoot = $@"{relativeRoot}\shellex\ContextMenuHandlers";
+                var preflight = await _catalog.CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "CreateSceneShellExHandler",
+                    [targetRoot],
                     cancellationToken);
+                if (preflight is not null)
+                {
+                    return preflight with { ClientOperationId = operationId };
+                }
+
+                Registry.SetValue(
+                    $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}",
+                    string.Empty,
+                    guid.ToString("B"),
+                    RegistryValueKind.String);
                 await _logger.LogAsync(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateSceneShellExHandler", $@"HKEY_CLASSES_ROOT\{relativeRoot}\shellex\ContextMenuHandlers\{keyName}", null, RegistryValueKind.String, guid.ToString("B"), writable: true, result: "SetValue Success"), cancellationToken);
             }
 
@@ -135,6 +141,22 @@ public sealed class FileTypeSceneMenuService
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to create scene menu item: {ex}", cancellationToken);
+            if (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                var relativeRoot = ResolveSceneRoot(request.SceneKind, request.ScopeValue);
+                var targetRoot = request.ItemKind == SceneMenuItemKind.ShellVerb
+                    ? $@"{relativeRoot}\shell"
+                    : $@"{relativeRoot}\shellex\ContextMenuHandlers";
+                var fallback = await _catalog.CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "CreateSceneMenuItemFallback",
+                    [targetRoot],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback with { ClientOperationId = operationId };
+                }
+            }
+
             return Failure(ex.Message, operationId);
         }
     }

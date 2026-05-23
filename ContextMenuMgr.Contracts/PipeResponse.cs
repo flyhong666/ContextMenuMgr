@@ -16,6 +16,11 @@ public sealed record PipeResponse
     public string Message { get; init; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the structured error code.
+    /// </summary>
+    public string? ErrorCode { get; init; }
+
+    /// <summary>
     /// Gets or sets the items.
     /// </summary>
     public IReadOnlyList<ContextMenuEntry> Items { get; init; } = [];

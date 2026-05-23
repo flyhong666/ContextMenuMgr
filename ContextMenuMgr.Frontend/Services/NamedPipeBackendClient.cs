@@ -699,8 +699,8 @@ public sealed class NamedPipeBackendClient : IBackendClient
                 {
                     FrontendDebugLog.Warning(
                         "NamedPipeBackendClient",
-                        $"SendRequestAsync <- {request.Command} failed. Message={responseEnvelope.Response.Message}");
-                    throw new InvalidOperationException(responseEnvelope.Response.Message);
+                        $"SendRequestAsync <- {request.Command} failed. ErrorCode={responseEnvelope.Response.ErrorCode ?? "<none>"}, Message={responseEnvelope.Response.Message}");
+                    throw new BackendRequestException(responseEnvelope.Response.Message, responseEnvelope.Response.ErrorCode);
                 }
 
                 FrontendDebugLog.Info("NamedPipeBackendClient", $"SendRequestAsync <- {request.Command} succeeded.");

@@ -299,6 +299,12 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
 
         try
         {
+            if (_settingsService.Current.LockNewContextMenuItems)
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return;
+            }
+
             var commandText = string.IsNullOrWhiteSpace(formData.Arguments)
                 ? formData.TargetPath
                 : $"{formData.TargetPath} {formData.Arguments}";
@@ -327,6 +333,12 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         }
         catch (Exception ex)
         {
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return;
+            }
+
             await FrontendMessageBox.ShowErrorAsync(ex.Message, AddMenuItemText);
         }
     }

@@ -11,3 +11,8 @@ public static class PipeConstants
 
     public const string TrayHostControlPipeName = "ContextMenuMgr.TrayHost.Control";
 }
+
+public static class PipeErrorCodes
+{
+    public const string RegistryWriteProtectionEnabled = "REGISTRY_WRITE_PROTECTION_ENABLED";
+}
