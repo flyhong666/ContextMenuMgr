@@ -97,6 +97,53 @@ jobs:
             return $value
           }
 
+          function Get-ReleaseVersionFromTag {
+            param([Parameter(Mandatory)] [string] $Tag)
+
+            if ($Tag -notmatch '^v(?<version>\d+(?:\.\d+){2,3})$') {
+              return $null
+            }
+
+            try {
+              return [version] $Matches['version']
+            }
+            catch {
+              return $null
+            }
+          }
+
+          function Get-PreviousReleaseTag {
+            param(
+              [Parameter(Mandatory)] [string] $CurrentReleaseTag
+            )
+
+            $currentVersion = Get-ReleaseVersionFromTag -Tag $CurrentReleaseTag
+
+            $releaseTags = git tag --list |
+              Where-Object { Get-ReleaseVersionFromTag -Tag $_ } |
+              Where-Object { $_ -ne $CurrentReleaseTag }
+
+            if ($currentVersion -ne $null) {
+              $releaseTags = $releaseTags |
+                Where-Object {
+                  $candidateVersion = Get-ReleaseVersionFromTag -Tag $_
+                  $candidateVersion -ne $null -and $candidateVersion -lt $currentVersion
+                }
+            }
+
+            return $releaseTags |
+              Sort-Object { Get-ReleaseVersionFromTag -Tag $_ } -Descending |
+              Select-Object -First 1
+          }
+
+          function Get-PreviousAnyTag {
+            param([Parameter(Mandatory)] [string] $CurrentReleaseTag)
+
+            return git tag --sort=-version:refname |
+              Where-Object { $_ -ne $CurrentReleaseTag } |
+              Select-Object -First 1
+          }
+
           $releaseVersion = Get-ProjectPropertyValue -PropertyName 'InformationalVersion' -Configuration $configuration
           if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
             $releaseVersion = Get-ProjectPropertyValue -PropertyName 'FileVersion' -Configuration $configuration
@@ -125,7 +172,17 @@ jobs:
           }
 
           git fetch --tags --force
-          $previousTag = git tag --sort=-version:refname | Select-Object -First 1
+          if ([string]::Equals($configuration, 'Release', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $previousTag = Get-PreviousReleaseTag -CurrentReleaseTag $releaseTag
+          }
+          elseif ([string]::Equals($configuration, 'Beta', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $previousTag = Get-PreviousAnyTag -CurrentReleaseTag $releaseTag
+          }
+          else {
+            $previousTag = Get-PreviousAnyTag -CurrentReleaseTag $releaseTag
+          }
+
+          $shouldCreateRelease = -not [string]::Equals($configuration, 'Debug', [System.StringComparison]::OrdinalIgnoreCase)
 
           $releaseBodyLines = @(
             '## Changes'
@@ -154,14 +211,23 @@ jobs:
             }
           }
 
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          $releaseBodyLines | Set-Content -LiteralPath 'build/release-body.md' -Encoding UTF8
+
+          Write-Host "Configuration: $configuration"
+          Write-Host "Release version: $releaseVersion"
+          Write-Host "Release tag: $releaseTag"
+          Write-Host "Release name: $releaseName"
+          Write-Host "Prerelease: $isPrerelease"
+          Write-Host "Should create release: $shouldCreateRelease"
+          Write-Host "Previous tag: $previousTag"
+
           "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_name=$releaseName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "prerelease=$($isPrerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-          "release_body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          $releaseBodyLines | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "previous_tag=$previousTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "should_create_release=$($shouldCreateRelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Build installers and portable packages
         shell: pwsh
@@ -169,6 +235,42 @@ jobs:
           .\build.ps1
           -Configuration "${{ inputs.configuration }}"
           -AppId "${{ inputs.app_id }}"
+
+      - name: Compute SHA256 checksums
+        id: checksums
+        shell: pwsh
+        run: |
+          $dist = Join-Path $PWD 'build/dist'
+          if (-not (Test-Path -LiteralPath $dist)) {
+            throw "Distribution directory was not found: $dist"
+          }
+
+          $artifacts = Get-ChildItem -LiteralPath $dist -File |
+            Where-Object { $_.Extension -in '.exe', '.zip' } |
+            Sort-Object Name
+
+          if (-not $artifacts) {
+            throw "No release artifacts were found in $dist."
+          }
+
+          $lines = @(
+            ''
+            '## SHA256'
+            ''
+            '| File | SHA256 |'
+            '|---|---|'
+          )
+
+          foreach ($artifact in $artifacts) {
+            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
+            $lines += ('| `{0}` | `{1}` |' -f $artifact.Name, $hash.Hash.ToLowerInvariant())
+          }
+
+          $lines | Add-Content -LiteralPath 'build/release-body.md' -Encoding UTF8
+
+          '### SHA256' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
+          '' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
+          $lines | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
 
       - name: Upload x64 self-contained installer
         uses: actions/upload-artifact@v7
@@ -241,13 +343,14 @@ jobs:
           if-no-files-found: error
 
       - name: Create draft release
+        if: steps.release_meta.outputs.should_create_release == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_meta.outputs.release_tag }}
           name: ${{ steps.release_meta.outputs.release_name }}
           draft: true
           prerelease: ${{ steps.release_meta.outputs.prerelease }}
-          body: ${{ steps.release_meta.outputs.release_body }}
+          body_path: build/release-body.md
           files: |
             build/dist/*.exe
             build/dist/*.zip
