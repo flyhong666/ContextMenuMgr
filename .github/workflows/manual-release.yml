@@ -139,7 +139,7 @@ jobs:
           function Get-PreviousAnyTag {
             param([Parameter(Mandatory)] [string] $CurrentReleaseTag)
 
-            return git tag --sort=-version:refname |
+            return git tag --sort=-creatordate |
               Where-Object { $_ -ne $CurrentReleaseTag } |
               Select-Object -First 1
           }
@@ -268,9 +268,19 @@ jobs:
 
           $lines | Add-Content -LiteralPath 'build/release-body.md' -Encoding UTF8
 
-          '### SHA256' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
-          '' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
-          $lines | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
+          $summaryLines = @(
+            '### SHA256'
+            ''
+            '| File | SHA256 |'
+            '|---|---|'
+          )
+
+          foreach ($artifact in $artifacts) {
+            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
+            $summaryLines += ('| `{0}` | `{1}` |' -f $artifact.Name, $hash.Hash.ToLowerInvariant())
+          }
+
+          $summaryLines | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
 
       - name: Upload x64 self-contained installer
         uses: actions/upload-artifact@v7
