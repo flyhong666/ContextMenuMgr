@@ -1,0 +1,537 @@
+#Requires -Version 5.1
+
+Set-StrictMode -Version Latest
+
+function Invoke-External {
+    param(
+        [Parameter(Mandatory)] [string] $FilePath,
+        [Parameter()] [string[]] $Arguments = @(),
+        [Parameter()] [string] $ErrorMessage = "External command failed."
+    )
+
+    Write-Host ">> $FilePath $($Arguments -join ' ')" -ForegroundColor DarkGray
+    & $FilePath @Arguments 2>&1 | ForEach-Object { Write-Host $_ }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$ErrorMessage (ExitCode=$LASTEXITCODE): $FilePath $($Arguments -join ' ')"
+    }
+}
+
+function Get-MsBuildPropertyValue {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter(Mandatory)] [string] $PropertyName
+    )
+
+    $value = & dotnet msbuild $ProjectPath `
+        -nologo `
+        "-getProperty:$PropertyName" `
+        "-p:Configuration=$Configuration"
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to evaluate MSBuild property '$PropertyName' from '$ProjectPath' for configuration '$Configuration'."
+    }
+
+    $resolvedValue = ($value | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 1)
+    if ($null -eq $resolvedValue) {
+        return ""
+    }
+
+    return $resolvedValue.Trim()
+}
+
+function Get-FrontendVersion {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $Configuration
+    )
+
+    $informationalVersion = Get-MsBuildPropertyValue `
+        -ProjectPath $ProjectPath `
+        -Configuration $Configuration `
+        -PropertyName "InformationalVersion"
+
+    if (-not [string]::IsNullOrWhiteSpace($informationalVersion)) {
+        return $informationalVersion
+    }
+
+    $fileVersion = Get-MsBuildPropertyValue `
+        -ProjectPath $ProjectPath `
+        -Configuration $Configuration `
+        -PropertyName "FileVersion"
+
+    if (-not [string]::IsNullOrWhiteSpace($fileVersion)) {
+        return $fileVersion
+    }
+
+    throw "Neither InformationalVersion nor FileVersion was found for configuration '$Configuration'."
+}
+
+function Get-GitShortCommit {
+    $commit = & git rev-parse --short HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
+        throw "Unable to resolve the current Git commit hash."
+    }
+
+    return $commit.Trim()
+}
+
+function Get-BuildVersion {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $Configuration
+    )
+
+    $version = Get-FrontendVersion -ProjectPath $ProjectPath -Configuration $Configuration
+    if (
+        [string]::Equals($Configuration, "Beta", [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($Configuration, "Debug", [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        $version = "$version+$(Get-GitShortCommit)"
+    }
+
+    return $version
+}
+
+function Ensure-FileExists {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Description
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "$Description is missing: $Path"
+    }
+}
+
+function Remove-DirectoryIfExists {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    try {
+        [System.IO.Directory]::Delete((Resolve-Path -LiteralPath $Path).Path, $true)
+        return
+    }
+    catch {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+        }
+
+        Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                try {
+                    $_.Attributes = [System.IO.FileAttributes]::Normal
+                }
+                catch {
+                }
+
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+            }
+
+        Get-ChildItem -LiteralPath $Path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            ForEach-Object {
+                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+            }
+
+        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+    }
+}
+
+function Resolve-IsccPath {
+    param([Parameter(Mandatory)] [string] $RepoRoot)
+
+    $candidates = @(
+        (Join-Path $RepoRoot "Installer\Inno Setup 6\ISCC.exe"),
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+
+    $command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+    if ($command -and $command.Source) {
+        return $command.Source
+    }
+
+    throw "Unable to locate ISCC.exe. Install Inno Setup 6 or place it under Installer\Inno Setup 6\ISCC.exe."
+}
+
+function Get-RuntimeIdentifier {
+    param([Parameter(Mandatory)] [string] $Platform)
+
+    switch ($Platform.ToLowerInvariant()) {
+        "anycpu" { return "" }
+        "win-x64" { return "win-x64" }
+        "win-x86" { return "win-x86" }
+        "win-arm64" { return "win-arm64" }
+        default { throw "Unsupported platform '$Platform'. Supported values: anycpu, win-x64, win-x86, win-arm64." }
+    }
+}
+
+function Get-ArtifactPlatformLabel {
+    param([Parameter(Mandatory)] [string] $Platform)
+
+    switch ($Platform.ToLowerInvariant()) {
+        "anycpu" { return "anycpu" }
+        "win-x64" { return "x64" }
+        "win-x86" { return "x86" }
+        "win-arm64" { return "arm64" }
+        default { throw "Unsupported platform '$Platform'. Supported values: anycpu, win-x64, win-x86, win-arm64." }
+    }
+}
+
+function Get-InstallerArchitectureOptions {
+    param([Parameter(Mandatory)] [string] $Platform)
+
+    switch ($Platform.ToLowerInvariant()) {
+        "win-x64" {
+            return @{
+                Allowed = "x64compatible"
+                InstallIn64BitMode = "x64compatible"
+            }
+        }
+        "win-x86" {
+            return @{
+                Allowed = "x86compatible"
+                InstallIn64BitMode = ""
+            }
+        }
+        "win-arm64" {
+            return @{
+                Allowed = "arm64"
+                InstallIn64BitMode = "arm64"
+            }
+        }
+        default {
+            throw "Unsupported installer platform '$Platform'. Supported values: win-x64, win-x86, win-arm64."
+        }
+    }
+}
+
+function Get-DistributionModeOptions {
+    param([Parameter(Mandatory)] [string] $DistributionMode)
+
+    switch ($DistributionMode.ToLowerInvariant()) {
+        "self-contained" {
+            return @{
+                SelfContained = "true"
+                InstallerSuffix = "self-contained"
+                UseDotNetDependencyInstaller = "0"
+            }
+        }
+        "framework-dependent" {
+            return @{
+                SelfContained = "false"
+                InstallerSuffix = "framework-dependent"
+                UseDotNetDependencyInstaller = "1"
+            }
+        }
+        default {
+            throw "Unsupported distribution mode '$DistributionMode'. Supported values: self-contained, framework-dependent."
+        }
+    }
+}
+
+function New-DotNetRestoreArguments {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter()] [string] $RuntimeIdentifier = "",
+        [Parameter(Mandatory)] [string] $NuGetConfig,
+        [Parameter(Mandatory)] [string] $ArtifactsPath
+    )
+
+    $arguments = @("restore", $ProjectPath)
+
+    if (-not [string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
+        $arguments += @("-r", $RuntimeIdentifier)
+    }
+
+    $baseOutputPath = Join-Path $ArtifactsPath "bin"
+    if (-not $baseOutputPath.EndsWith([System.IO.Path]::DirectorySeparatorChar.ToString())) {
+        $baseOutputPath += [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    $arguments += @(
+        "--configfile", $NuGetConfig,
+        "--artifacts-path", $ArtifactsPath,
+        "-p:BaseOutputPath=$baseOutputPath"
+    )
+
+    return $arguments
+}
+
+function New-DotNetPublishArguments {
+    param(
+        [Parameter(Mandatory)] [string] $ProjectPath,
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter()] [string] $RuntimeIdentifier = "",
+        [Parameter(Mandatory)] [string] $SelfContained,
+        [Parameter(Mandatory)] [string] $OutputPath,
+        [Parameter(Mandatory)] [string] $ArtifactsPath,
+        [Parameter(Mandatory)] [string] $InformationalVersion
+    )
+
+    $arguments = @(
+        "publish", $ProjectPath,
+        "-c", $Configuration
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
+        $arguments += @("-r", $RuntimeIdentifier)
+    }
+
+    $baseOutputPath = Join-Path $ArtifactsPath "bin"
+    if (-not $baseOutputPath.EndsWith([System.IO.Path]::DirectorySeparatorChar.ToString())) {
+        $baseOutputPath += [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    $arguments += @(
+        "--self-contained", $SelfContained,
+        "--no-restore",
+        "--artifacts-path", $ArtifactsPath,
+        "-p:BaseOutputPath=$baseOutputPath",
+        "-p:UseAppHost=true",
+        "-p:InformationalVersion=$InformationalVersion",
+        "-o", $OutputPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier) -and $SelfContained -eq "false") {
+        $arguments += @("-p:PlatformTarget=AnyCPU")
+    }
+
+    return $arguments
+}
+
+function Publish-Application {
+    param(
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter(Mandatory)] [string] $DistributionMode,
+        [Parameter(Mandatory)] [string] $Platform,
+        [Parameter(Mandatory)] [string] $FrontendProject,
+        [Parameter(Mandatory)] [string] $BackendProject,
+        [Parameter(Mandatory)] [string] $TrayHostProject,
+        [Parameter(Mandatory)] [string] $PublishRoot,
+        [Parameter(Mandatory)] [string] $NuGetConfig,
+        [Parameter(Mandatory)] [string] $PublishGroup,
+        [Parameter(Mandatory)] [string] $Version
+    )
+
+    $distributionOptions = Get-DistributionModeOptions -DistributionMode $DistributionMode
+    $runtimeIdentifier = Get-RuntimeIdentifier -Platform $Platform
+    $platformLabel = Get-ArtifactPlatformLabel -Platform $Platform
+
+    $publishDir = Join-Path $PublishRoot (Join-Path $PublishGroup (Join-Path $DistributionMode $Platform))
+    $taskArtifactsRoot = Join-Path $PublishRoot (Join-Path "_artifacts" (Join-Path $PublishGroup (Join-Path $DistributionMode $Platform)))
+
+    Remove-DirectoryIfExists -Path $publishDir
+
+    New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $taskArtifactsRoot -Force | Out-Null
+
+    $frontendRestoreArguments = New-DotNetRestoreArguments `
+        -ProjectPath $FrontendProject `
+        -RuntimeIdentifier $runtimeIdentifier `
+        -NuGetConfig $NuGetConfig `
+        -ArtifactsPath $taskArtifactsRoot
+
+    $frontendPublishArguments = New-DotNetPublishArguments `
+        -ProjectPath $FrontendProject `
+        -Configuration $Configuration `
+        -RuntimeIdentifier $runtimeIdentifier `
+        -SelfContained $distributionOptions.SelfContained `
+        -OutputPath $publishDir `
+        -ArtifactsPath $taskArtifactsRoot `
+        -InformationalVersion $Version
+
+    $backendRestoreArguments = New-DotNetRestoreArguments `
+        -ProjectPath $BackendProject `
+        -RuntimeIdentifier $runtimeIdentifier `
+        -NuGetConfig $NuGetConfig `
+        -ArtifactsPath $taskArtifactsRoot
+
+    $backendPublishArguments = New-DotNetPublishArguments `
+        -ProjectPath $BackendProject `
+        -Configuration $Configuration `
+        -RuntimeIdentifier $runtimeIdentifier `
+        -SelfContained $distributionOptions.SelfContained `
+        -OutputPath $publishDir `
+        -ArtifactsPath $taskArtifactsRoot `
+        -InformationalVersion $Version
+
+    $trayHostRestoreArguments = New-DotNetRestoreArguments `
+        -ProjectPath $TrayHostProject `
+        -RuntimeIdentifier $runtimeIdentifier `
+        -NuGetConfig $NuGetConfig `
+        -ArtifactsPath $taskArtifactsRoot
+
+    $trayHostPublishArguments = New-DotNetPublishArguments `
+        -ProjectPath $TrayHostProject `
+        -Configuration $Configuration `
+        -RuntimeIdentifier $runtimeIdentifier `
+        -SelfContained $distributionOptions.SelfContained `
+        -OutputPath $publishDir `
+        -ArtifactsPath $taskArtifactsRoot `
+        -InformationalVersion $Version
+
+    Invoke-External -FilePath "dotnet" -Arguments $frontendRestoreArguments -ErrorMessage "dotnet restore failed for frontend ($platformLabel, $DistributionMode)"
+    Invoke-External -FilePath "dotnet" -Arguments $frontendPublishArguments -ErrorMessage "dotnet publish failed for frontend ($platformLabel, $DistributionMode)"
+
+    Invoke-External -FilePath "dotnet" -Arguments $backendRestoreArguments -ErrorMessage "dotnet restore failed for backend ($platformLabel, $DistributionMode)"
+    Invoke-External -FilePath "dotnet" -Arguments $backendPublishArguments -ErrorMessage "dotnet publish failed for backend ($platformLabel, $DistributionMode)"
+
+    Invoke-External -FilePath "dotnet" -Arguments $trayHostRestoreArguments -ErrorMessage "dotnet restore failed for tray host ($platformLabel, $DistributionMode)"
+    Invoke-External -FilePath "dotnet" -Arguments $trayHostPublishArguments -ErrorMessage "dotnet publish failed for tray host ($platformLabel, $DistributionMode)"
+
+    Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.exe") -Description "Frontend executable"
+    Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.exe") -Description "Backend service executable"
+    Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.dll") -Description "Backend service DLL"
+    Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.TrayHost.exe") -Description "Tray host executable"
+
+    return $publishDir
+}
+
+function New-PortableArchive {
+    param(
+        [Parameter(Mandatory)] [string] $PublishDir,
+        [Parameter(Mandatory)] [string] $DistRoot,
+        [Parameter(Mandatory)] [string] $ArtifactProductName,
+        [Parameter(Mandatory)] [string] $Version,
+        [Parameter(Mandatory)] [string] $DistributionMode,
+        [Parameter(Mandatory)] [string] $Platform
+    )
+
+    $platformLabel = Get-ArtifactPlatformLabel -Platform $Platform
+
+    if ($DistributionMode -eq "framework-dependent" -and $platformLabel -eq "anycpu") {
+        $archiveFileName = "$ArtifactProductName-$Version-framework-dependent-portable.zip"
+    }
+    else {
+        $archiveFileName = "$ArtifactProductName-$Version-$platformLabel-$DistributionMode-portable.zip"
+    }
+
+    $archivePath = Join-Path $DistRoot $archiveFileName
+
+    if (Test-Path -LiteralPath $archivePath) {
+        Remove-Item -LiteralPath $archivePath -Force
+    }
+
+    New-Item -ItemType Directory -Path $DistRoot -Force | Out-Null
+    Compress-Archive -Path (Join-Path $PublishDir "*") -DestinationPath $archivePath -CompressionLevel Optimal -Force
+    Ensure-FileExists -Path $archivePath -Description "Portable package"
+
+    return $archivePath
+}
+
+function Invoke-InstallerBuildTarget {
+    param(
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter(Mandatory)] [string] $DistributionMode,
+        [Parameter(Mandatory)] [string] $Platform,
+        [Parameter(Mandatory)] [string] $FrontendProject,
+        [Parameter(Mandatory)] [string] $BackendProject,
+        [Parameter(Mandatory)] [string] $TrayHostProject,
+        [Parameter(Mandatory)] [string] $PublishRoot,
+        [Parameter(Mandatory)] [string] $DistRoot,
+        [Parameter(Mandatory)] [string] $Version,
+        [Parameter(Mandatory)] [string] $ArtifactProductName,
+        [Parameter(Mandatory)] [string] $IsccPath,
+        [Parameter(Mandatory)] [string] $InstallerIss,
+        [Parameter(Mandatory)] [string] $AppId,
+        [Parameter(Mandatory)] [string] $NuGetConfig
+    )
+
+    $distributionOptions = Get-DistributionModeOptions -DistributionMode $DistributionMode
+    $platformLabel = Get-ArtifactPlatformLabel -Platform $Platform
+    $publishDir = Publish-Application `
+        -Configuration $Configuration `
+        -DistributionMode $DistributionMode `
+        -Platform $Platform `
+        -FrontendProject $FrontendProject `
+        -BackendProject $BackendProject `
+        -TrayHostProject $TrayHostProject `
+        -PublishRoot $PublishRoot `
+        -NuGetConfig $NuGetConfig `
+        -PublishGroup "installer" `
+        -Version $Version
+
+    $installerOptions = Get-InstallerArchitectureOptions -Platform $Platform
+    $setupBaseName = "$ArtifactProductName-$Version-$platformLabel-$($distributionOptions.InstallerSuffix)-Setup"
+
+    $isccArguments = @(
+        "/DMyArchitecturesAllowed=$($installerOptions.Allowed)",
+        "/DMyArchitecturesInstallIn64BitMode=$($installerOptions.InstallIn64BitMode)",
+        "/DMyUseDotNetDependencyInstaller=$($distributionOptions.UseDotNetDependencyInstaller)",
+        "/DMyAppId=$AppId",
+        "/DMyAppBuildDir=$publishDir",
+        "/DMyOutputDir=$DistRoot",
+        "/DMyAppSetupName=$setupBaseName",
+        $InstallerIss
+    )
+
+    New-Item -ItemType Directory -Path $DistRoot -Force | Out-Null
+    Invoke-External -FilePath $IsccPath -Arguments $isccArguments -ErrorMessage "Inno Setup packaging failed for $platformLabel ($DistributionMode)"
+
+    $artifacts = New-Object System.Collections.Generic.List[string]
+    $installerPath = Join-Path $DistRoot ($setupBaseName + ".exe")
+    Ensure-FileExists -Path $installerPath -Description "Installer package"
+    $artifacts.Add($installerPath) | Out-Null
+
+    if ($DistributionMode -eq "self-contained") {
+        $portableArchive = New-PortableArchive `
+            -PublishDir $publishDir `
+            -DistRoot $DistRoot `
+            -ArtifactProductName $ArtifactProductName `
+            -Version $Version `
+            -DistributionMode $DistributionMode `
+            -Platform $Platform
+        $artifacts.Add($portableArchive) | Out-Null
+    }
+
+    return $artifacts.ToArray()
+}
+
+function Invoke-PortableFrameworkDependentBuildTarget {
+    param(
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter(Mandatory)] [string] $FrontendProject,
+        [Parameter(Mandatory)] [string] $BackendProject,
+        [Parameter(Mandatory)] [string] $TrayHostProject,
+        [Parameter(Mandatory)] [string] $PublishRoot,
+        [Parameter(Mandatory)] [string] $DistRoot,
+        [Parameter(Mandatory)] [string] $Version,
+        [Parameter(Mandatory)] [string] $ArtifactProductName,
+        [Parameter(Mandatory)] [string] $NuGetConfig
+    )
+
+    $publishDir = Publish-Application `
+        -Configuration $Configuration `
+        -DistributionMode "framework-dependent" `
+        -Platform "anycpu" `
+        -FrontendProject $FrontendProject `
+        -BackendProject $BackendProject `
+        -TrayHostProject $TrayHostProject `
+        -PublishRoot $PublishRoot `
+        -NuGetConfig $NuGetConfig `
+        -PublishGroup "portable" `
+        -Version $Version
+
+    return New-PortableArchive `
+        -PublishDir $publishDir `
+        -DistRoot $DistRoot `
+        -ArtifactProductName $ArtifactProductName `
+        -Version $Version `
+        -DistributionMode "framework-dependent" `
+        -Platform "anycpu"
+}

@@ -1,871 +1,227 @@
 #Requires -Version 5.1
 param(
-    [string] $Configuration = "Release",
-    [string] $AppId = "45156332-3408-47B7-B5D2-2567E5888F64",
-    [string[]] $Platforms = @("win-x64", "win-x86", "win-arm64"),
-    [string[]] $DistributionModes = @("self-contained", "framework-dependent"),
+    [ValidateSet('Debug', 'Release', 'Beta')]
+    [string] $Configuration = 'Release',
+
+    [string] $AppId = '45156332-3408-47B7-B5D2-2567E5888F64',
+
+    [ValidateSet('win-x64', 'win-x86', 'win-arm64')]
+    [string[]] $Platforms = @('win-x64', 'win-x86', 'win-arm64'),
+
+    [ValidateSet('self-contained', 'framework-dependent')]
+    [string[]] $DistributionModes = @('self-contained', 'framework-dependent'),
+
     [int] $MaxParallel = 3
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-ScriptDirectory {
-    if ($PSScriptRoot) { return $PSScriptRoot }
+function ConvertTo-ProcessArgument {
+    param([Parameter(Mandatory)] [string] $Value)
 
-    $path = $MyInvocation.MyCommand.Path
-    if ($path) { return (Split-Path -Parent $path) }
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
 
-    throw "Cannot determine script directory. Please run this as a .ps1 file."
+    return '"' + $Value.Replace('"', '\"') + '"'
 }
 
-function Invoke-External {
+function New-TargetName {
     param(
-        [Parameter(Mandatory)] [string] $FilePath,
-        [Parameter()] [string[]] $Arguments = @(),
-        [Parameter()] [string] $ErrorMessage = "External command failed."
+        [Parameter(Mandatory)] [object] $Task
     )
 
-    Write-Host ">> $FilePath $($Arguments -join ' ')" -ForegroundColor DarkGray
-    & $FilePath @Arguments 2>&1 | ForEach-Object { Write-Host $_ }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "$ErrorMessage (ExitCode=$LASTEXITCODE): $FilePath $($Arguments -join ' ')"
-    }
+    return "$($Task.Kind)-$($Task.Platform)-$($Task.DistributionMode)"
 }
 
-function Test-PropertyGroupMatchesConfiguration {
+function Start-BuildTargetProcess {
     param(
-        [Parameter(Mandatory)] [object] $PropertyGroup,
-        [Parameter(Mandatory)] [string] $Configuration
+        [Parameter(Mandatory)] [object] $Task,
+        [Parameter(Mandatory)] [string] $PowerShellPath,
+        [Parameter(Mandatory)] [string] $BuildTargetScript,
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter(Mandatory)] [string] $AppId,
+        [Parameter(Mandatory)] [string] $Version,
+        [Parameter(Mandatory)] [string] $LogPath
     )
 
-    $condition = [string] $PropertyGroup.GetAttribute("Condition")
-    if ([string]::IsNullOrWhiteSpace($condition)) {
-        return $true
-    }
+    $arguments = @(
+        '-NoLogo',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $BuildTargetScript,
+        '-Kind', $Task.Kind,
+        '-Configuration', $Configuration,
+        '-Platform', $Task.Platform,
+        '-DistributionMode', $Task.DistributionMode,
+        '-AppId', $AppId,
+        '-Version', $Version,
+        '-LogPath', $LogPath
+    ) | ForEach-Object { ConvertTo-ProcessArgument -Value ([string] $_) }
 
-    $expanded = $condition.Replace('$(Configuration)', $Configuration)
-    $match = [regex]::Match(
-        $expanded,
-        "^\s*['""]?(?<left>[^'""]*)['""]?\s*(?<operator>==|!=)\s*['""]?(?<right>[^'""]*)['""]?\s*$")
+    $process = Start-Process `
+        -FilePath $PowerShellPath `
+        -ArgumentList $arguments `
+        -WindowStyle Hidden `
+        -PassThru
 
-    if (-not $match.Success) {
-        return $false
-    }
-
-    $left = $match.Groups["left"].Value.Trim()
-    $right = $match.Groups["right"].Value.Trim()
-    $equals = [string]::Equals($left, $right, [System.StringComparison]::OrdinalIgnoreCase)
-
-    if ($match.Groups["operator"].Value -eq "==") {
-        return $equals
-    }
-
-    return -not $equals
+    return $process
 }
 
-function Get-ProjectPropertyValue {
-    param(
-        [Parameter(Mandatory)] [string] $ProjectPath,
-        [Parameter(Mandatory)] [string] $PropertyName,
-        [Parameter(Mandatory)] [string] $Configuration
-    )
-
-    [xml] $projectXml = Get-Content -LiteralPath $ProjectPath
-    $propertyGroups = @($projectXml.Project.PropertyGroup)
-    $value = $null
-
-    foreach ($group in $propertyGroups) {
-        if (-not (Test-PropertyGroupMatchesConfiguration -PropertyGroup $group -Configuration $Configuration)) {
-            continue
-        }
-
-        $property = $group.SelectSingleNode($PropertyName)
-        if ($property) {
-            $value = [string] $property.InnerText
-        }
-    }
-
-    return $value
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-function Get-FrontendVersion {
-    param(
-        [Parameter(Mandatory)] [string] $ProjectPath,
-        [Parameter(Mandatory)] [string] $Configuration
-    )
+$repoRoot = (Resolve-Path -LiteralPath $scriptDir).Path
+$scriptsRoot = Join-Path $repoRoot 'Scripts'
+$buildTargetScript = Join-Path $scriptsRoot 'Build-Target.ps1'
+$commonModule = Join-Path $scriptsRoot 'Build.Common.psm1'
 
-    $informationalVersion = Get-ProjectPropertyValue -ProjectPath $ProjectPath -PropertyName "InformationalVersion" -Configuration $Configuration
-    if (-not [string]::IsNullOrWhiteSpace($informationalVersion)) {
-        return $informationalVersion
-    }
+Import-Module $commonModule -Force -DisableNameChecking
+Set-Location -LiteralPath $repoRoot
 
-    $fileVersion = Get-ProjectPropertyValue -ProjectPath $ProjectPath -PropertyName "FileVersion" -Configuration $Configuration
-    if (-not [string]::IsNullOrWhiteSpace($fileVersion)) {
-        return $fileVersion
-    }
-
-    return "0.0.0"
+if ($MaxParallel -lt 1) {
+    throw 'MaxParallel must be 1 or greater.'
 }
 
-function Get-GitShortCommit {
-    $commit = & git rev-parse --short HEAD 2>$null
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
-        throw "Unable to resolve the current Git commit hash."
-    }
+$solutionPath = Join-Path $repoRoot 'ContextMenuMgr.slnx'
+$frontendProject = Join-Path $repoRoot 'ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj'
+$installerIss = Join-Path $repoRoot 'Installer\build_Installer.iss'
+$publishRoot = Join-Path $repoRoot 'build\publish'
+$distRoot = Join-Path $repoRoot 'build\dist'
+$logsRoot = Join-Path $repoRoot 'build\logs'
 
-    return $commit.Trim()
-}
+Ensure-FileExists -Path $solutionPath -Description 'Solution'
+Ensure-FileExists -Path $frontendProject -Description 'Frontend project'
+Ensure-FileExists -Path $installerIss -Description 'Inno Setup script'
+Ensure-FileExists -Path $buildTargetScript -Description 'Build target script'
 
-function Get-BuildVersion {
-    param(
-        [Parameter(Mandatory)] [string] $ProjectPath,
-        [Parameter(Mandatory)] [string] $Configuration
-    )
+Write-Host 'Cleaning build output...' -ForegroundColor DarkGray
+Remove-DirectoryIfExists -Path $publishRoot
+Remove-DirectoryIfExists -Path $distRoot
+Remove-DirectoryIfExists -Path $logsRoot
 
-    $version = Get-FrontendVersion -ProjectPath $ProjectPath -Configuration $Configuration
-    if ([string]::Equals($Configuration, "Beta", [System.StringComparison]::OrdinalIgnoreCase)) {
-        $version = "$version+$(Get-GitShortCommit)"
-    }
+New-Item -ItemType Directory -Path $publishRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $logsRoot -Force | Out-Null
 
-    return $version
-}
+$version = Get-BuildVersion -ProjectPath $frontendProject -Configuration $Configuration
 
-function Ensure-FileExists {
-    param(
-        [Parameter(Mandatory)] [string] $Path,
-        [Parameter(Mandatory)] [string] $Description
-    )
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        throw "$Description is missing: $Path"
-    }
-}
-
-function Remove-DirectoryIfExists {
-    param([Parameter(Mandatory)] [string] $Path)
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return
-    }
-
-    try {
-        [System.IO.Directory]::Delete((Resolve-Path -LiteralPath $Path).Path, $true)
-        return
-    }
-    catch {
-        try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-            return
-        }
-        catch {
-        }
-
-        Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
-            ForEach-Object {
-                try {
-                    $_.Attributes = [System.IO.FileAttributes]::Normal
-                }
-                catch {
-                }
-
-                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
-            }
-
-        Get-ChildItem -LiteralPath $Path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
-            ForEach-Object {
-                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
-            }
-
-        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
-    }
-}
-
-function Resolve-IsccPath {
-    param([Parameter(Mandatory)] [string] $RepoRoot)
-
-    $candidates = @(
-        (Join-Path $RepoRoot "Installer\Inno Setup 6\ISCC.exe"),
-        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate) {
-            return $candidate
-        }
-    }
-
-    $command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
-    if ($command -and $command.Source) {
-        return $command.Source
-    }
-
-    throw "Unable to locate ISCC.exe. Install Inno Setup 6 or place it under Installer\Inno Setup 6\ISCC.exe."
-}
-
-$ScriptDir = Get-ScriptDirectory
-Set-Location -Path $ScriptDir
-
-$RepoRoot = $ScriptDir
-$SolutionPath = Join-Path $RepoRoot "ContextMenuMgr.slnx"
-$FrontendProject = Join-Path $RepoRoot "ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj"
-$BackendProject = Join-Path $RepoRoot "ContextMenuMgr.Backend\ContextMenuMgr.Backend.csproj"
-$TrayHostProject = Join-Path $RepoRoot "ContextMenuMgr.TrayHost\ContextMenuMgr.TrayHost.csproj"
-$NuGetConfig = Join-Path $RepoRoot "NuGet.Config"
-$PublishRoot = Join-Path $RepoRoot "build\publish"
-$DistRoot = Join-Path $RepoRoot "build\dist"
-$Version = Get-BuildVersion -ProjectPath $FrontendProject -Configuration $Configuration
-$ArtifactProductName = "ContextMenuMgrPlus"
-$IsccPath = Resolve-IsccPath -RepoRoot $RepoRoot
-$InstallerIss = Join-Path $RepoRoot "Installer\build_Installer.iss"
-
-Remove-DirectoryIfExists -Path $PublishRoot
-Remove-DirectoryIfExists -Path $DistRoot
-
-New-Item -ItemType Directory -Path $PublishRoot | Out-Null
-New-Item -ItemType Directory -Path $DistRoot | Out-Null
-
-Ensure-FileExists -Path $IsccPath -Description "Inno Setup compiler"
-Ensure-FileExists -Path $InstallerIss -Description "Inno Setup script"
-
-Invoke-External -FilePath "dotnet" -Arguments @(
-    "restore",
-    $SolutionPath,
-    "--configfile", $NuGetConfig
-) -ErrorMessage "dotnet restore failed"
-
-$buildTasks = New-Object System.Collections.Generic.List[object]
+$tasks = New-Object System.Collections.Generic.List[object]
 foreach ($distributionMode in $DistributionModes) {
     foreach ($platform in $Platforms) {
-        $buildTasks.Add([pscustomobject]@{
-            Kind = "installer"
-            DistributionMode = $distributionMode
+        $tasks.Add([pscustomobject]@{
+            Kind = 'installer'
             Platform = $platform
+            DistributionMode = $distributionMode
         }) | Out-Null
     }
 }
 
-$buildTasks.Add([pscustomobject]@{
-    Kind = "portable-framework-dependent"
-    DistributionMode = "framework-dependent"
-    Platform = "anycpu"
+$tasks.Add([pscustomobject]@{
+    Kind = 'portable'
+    Platform = 'anycpu'
+    DistributionMode = 'framework-dependent'
 }) | Out-Null
 
-[void] (Get-Command "Start-Job" -ErrorAction Stop)
-Write-Host "Using Windows PowerShell 5.1 Start-Job for parallel build tasks." -ForegroundColor DarkGray
-
-function Test-HasRunningJobForBuildPlatform {
-    param(
-        [Parameter()] [object[]] $Jobs = @(),
-        [Parameter(Mandatory)] [string] $Platform
-    )
-
-    if ($Platform -eq "anycpu") {
-        return $false
-    }
-
-    return @(
-        $Jobs | Where-Object {
-            $_.State -eq 'Running' -and $_.Name.EndsWith("-$Platform", [System.StringComparison]::OrdinalIgnoreCase)
-        }
-    ).Count -gt 0
+$pwshCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+if ($pwshCommand -and $pwshCommand.Source) {
+    $powerShellPath = $pwshCommand.Source
+}
+else {
+    $powerShellPath = (Get-Command powershell -ErrorAction Stop).Source
 }
 
-$jobInitScript = {
-    Set-StrictMode -Version Latest
-    $ErrorActionPreference = 'Stop'
+Write-Host "Version: $version"
+Write-Host "Logs: $logsRoot"
+Write-Host "Starting $($tasks.Count) build targets with MaxParallel=$MaxParallel..."
 
-    function Invoke-External {
-        param(
-            [Parameter(Mandatory)] [string] $FilePath,
-            [Parameter()] [string[]] $Arguments = @(),
-            [Parameter()] [string] $ErrorMessage = "External command failed."
-        )
+$pending = New-Object System.Collections.Generic.Queue[object]
+foreach ($task in $tasks) {
+    $pending.Enqueue($task)
+}
 
-        Write-Host ">> $FilePath $($Arguments -join ' ')" -ForegroundColor DarkGray
-        & $FilePath @Arguments 2>&1 | ForEach-Object { Write-Host $_ }
+$running = New-Object System.Collections.Generic.List[object]
+$completed = New-Object System.Collections.Generic.List[object]
 
-        if ($LASTEXITCODE -ne 0) {
-            throw "$ErrorMessage (ExitCode=$LASTEXITCODE): $FilePath $($Arguments -join ' ')"
-        }
-    }
+while ($pending.Count -gt 0 -or $running.Count -gt 0) {
+    while ($pending.Count -gt 0 -and $running.Count -lt $MaxParallel) {
+        $task = $pending.Dequeue()
+        $targetName = New-TargetName -Task $task
+        $logPath = Join-Path $logsRoot "$targetName.log"
 
-    function Get-RuntimeIdentifier {
-        param([Parameter(Mandatory)] [string] $Platform)
-
-        switch ($Platform.ToLowerInvariant()) {
-            "anycpu" { return "" }
-            "win-x64" { return "win-x64" }
-            "win-x86" { return "win-x86" }
-            "win-arm64" { return "win-arm64" }
-            default { throw "Unsupported platform '$Platform'. Supported values: anycpu, win-x64, win-x86, win-arm64." }
-        }
-    }
-
-    function Get-ArtifactPlatformLabel {
-        param([Parameter(Mandatory)] [string] $Platform)
-
-        switch ($Platform.ToLowerInvariant()) {
-            "anycpu" { return "anycpu" }
-            "win-x64" { return "x64" }
-            "win-x86" { return "x86" }
-            "win-arm64" { return "arm64" }
-            default { throw "Unsupported platform '$Platform'. Supported values: anycpu, win-x64, win-x86, win-arm64." }
-        }
-    }
-
-    function Ensure-FileExists {
-        param(
-            [Parameter(Mandatory)] [string] $Path,
-            [Parameter(Mandatory)] [string] $Description
-        )
-
-        if (-not (Test-Path -LiteralPath $Path)) {
-            throw "$Description is missing: $Path"
-        }
-    }
-
-    function Remove-DirectoryIfExists {
-        param([Parameter(Mandatory)] [string] $Path)
-
-        if (-not (Test-Path -LiteralPath $Path)) {
-            return
-        }
-
-        try {
-            [System.IO.Directory]::Delete((Resolve-Path -LiteralPath $Path).Path, $true)
-            return
-        }
-        catch {
-            try {
-                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
-                return
-            }
-            catch {
-            }
-
-            Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
-                ForEach-Object {
-                    try {
-                        $_.Attributes = [System.IO.FileAttributes]::Normal
-                    }
-                    catch {
-                    }
-
-                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
-                }
-
-            Get-ChildItem -LiteralPath $Path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
-                Sort-Object FullName -Descending |
-                ForEach-Object {
-                    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
-                }
-
-            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
-        }
-    }
-
-    function Get-InstallerArchitectureOptions {
-        param([Parameter(Mandatory)] [string] $Platform)
-
-        switch ($Platform.ToLowerInvariant()) {
-            "win-x64" {
-                return @{
-                    Allowed = "x64compatible"
-                    InstallIn64BitMode = "x64compatible"
-                }
-            }
-            "win-x86" {
-                return @{
-                    Allowed = "x86compatible"
-                    InstallIn64BitMode = ""
-                }
-            }
-            "win-arm64" {
-                return @{
-                    Allowed = "arm64"
-                    InstallIn64BitMode = "arm64"
-                }
-            }
-            default {
-                throw "Unsupported installer platform '$Platform'. Supported values: win-x64, win-x86, win-arm64."
-            }
-        }
-    }
-
-    function Get-DistributionModeOptions {
-        param([Parameter(Mandatory)] [string] $DistributionMode)
-
-        switch ($DistributionMode.ToLowerInvariant()) {
-            "self-contained" {
-                return @{
-                    SelfContained = "true"
-                    InstallerSuffix = "self-contained"
-                    UseDotNetDependencyInstaller = "0"
-                }
-            }
-            "framework-dependent" {
-                return @{
-                    SelfContained = "false"
-                    InstallerSuffix = "framework-dependent"
-                    UseDotNetDependencyInstaller = "1"
-                }
-            }
-            default {
-                throw "Unsupported distribution mode '$DistributionMode'. Supported values: self-contained, framework-dependent."
-            }
-        }
-    }
-
-    function New-DotNetRestoreArguments {
-        param(
-            [Parameter(Mandatory)] [string] $ProjectPath,
-            [Parameter()] [string] $RuntimeIdentifier = "",
-            [Parameter(Mandatory)] [string] $NuGetConfig,
-            [Parameter(Mandatory)] [string] $ArtifactsPath
-        )
-
-        $arguments = @("restore", $ProjectPath)
-
-        if (-not [string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
-            $arguments += @("-r", $RuntimeIdentifier)
-        }
-
-        $arguments += @(
-            "--configfile", $NuGetConfig,
-            "--artifacts-path", $ArtifactsPath
-        )
-
-        return $arguments
-    }
-
-    function New-DotNetPublishArguments {
-        param(
-            [Parameter(Mandatory)] [string] $ProjectPath,
-            [Parameter(Mandatory)] [string] $Configuration,
-            [Parameter()] [string] $RuntimeIdentifier = "",
-            [Parameter(Mandatory)] [string] $SelfContained,
-            [Parameter(Mandatory)] [string] $OutputPath,
-            [Parameter(Mandatory)] [string] $ArtifactsPath,
-            [Parameter(Mandatory)] [string] $InformationalVersion
-        )
-
-        $arguments = @(
-            "publish", $ProjectPath,
-            "-c", $Configuration
-        )
-
-        if (-not [string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
-            $arguments += @("-r", $RuntimeIdentifier)
-        }
-
-        $arguments += @(
-            "--self-contained", $SelfContained,
-            "--no-restore",
-            "--artifacts-path", $ArtifactsPath,
-            "-p:UseAppHost=true",
-            "-p:InformationalVersion=$InformationalVersion",
-            "-o", $OutputPath
-        )
-
-        if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier) -and $SelfContained -eq "false") {
-            $arguments += @("-p:PlatformTarget=AnyCPU")
-        }
-
-        return $arguments
-    }
-
-    function Publish-Application {
-        param(
-            [Parameter(Mandatory)] [string] $Configuration,
-            [Parameter(Mandatory)] [string] $DistributionMode,
-            [Parameter(Mandatory)] [string] $Platform,
-            [Parameter(Mandatory)] [string] $FrontendProject,
-            [Parameter(Mandatory)] [string] $BackendProject,
-            [Parameter(Mandatory)] [string] $TrayHostProject,
-            [Parameter(Mandatory)] [string] $PublishRoot,
-            [Parameter(Mandatory)] [string] $NuGetConfig,
-            [Parameter(Mandatory)] [string] $PublishGroup,
-            [Parameter(Mandatory)] [string] $Version
-        )
-
-        $distributionOptions = Get-DistributionModeOptions -DistributionMode $DistributionMode
-        $runtimeIdentifier = Get-RuntimeIdentifier -Platform $Platform
-        $platformLabel = Get-ArtifactPlatformLabel -Platform $Platform
-
-        $publishDir = Join-Path $PublishRoot (Join-Path $PublishGroup (Join-Path $DistributionMode $platformLabel))
-        $taskArtifactsRoot = Join-Path $PublishRoot (Join-Path "_artifacts" (Join-Path $PublishGroup (Join-Path $DistributionMode $platformLabel)))
-
-        Remove-DirectoryIfExists -Path $publishDir
-
-        New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
-        New-Item -ItemType Directory -Path $taskArtifactsRoot -Force | Out-Null
-
-        $frontendRestoreArguments = New-DotNetRestoreArguments `
-            -ProjectPath $FrontendProject `
-            -RuntimeIdentifier $runtimeIdentifier `
-            -NuGetConfig $NuGetConfig `
-            -ArtifactsPath $taskArtifactsRoot
-
-        $frontendPublishArguments = New-DotNetPublishArguments `
-            -ProjectPath $FrontendProject `
+        Write-Host "Starting $targetName"
+        $process = Start-BuildTargetProcess `
+            -Task $task `
+            -PowerShellPath $powerShellPath `
+            -BuildTargetScript $buildTargetScript `
             -Configuration $Configuration `
-            -RuntimeIdentifier $runtimeIdentifier `
-            -SelfContained $distributionOptions.SelfContained `
-            -OutputPath $publishDir `
-            -ArtifactsPath $taskArtifactsRoot `
-            -InformationalVersion $Version
+            -AppId $AppId `
+            -Version $version `
+            -LogPath $logPath
 
-        $backendRestoreArguments = New-DotNetRestoreArguments `
-            -ProjectPath $BackendProject `
-            -RuntimeIdentifier $runtimeIdentifier `
-            -NuGetConfig $NuGetConfig `
-            -ArtifactsPath $taskArtifactsRoot
-
-        $backendPublishArguments = New-DotNetPublishArguments `
-            -ProjectPath $BackendProject `
-            -Configuration $Configuration `
-            -RuntimeIdentifier $runtimeIdentifier `
-            -SelfContained $distributionOptions.SelfContained `
-            -OutputPath $publishDir `
-            -ArtifactsPath $taskArtifactsRoot `
-            -InformationalVersion $Version
-
-        $trayHostRestoreArguments = New-DotNetRestoreArguments `
-            -ProjectPath $TrayHostProject `
-            -RuntimeIdentifier $runtimeIdentifier `
-            -NuGetConfig $NuGetConfig `
-            -ArtifactsPath $taskArtifactsRoot
-
-        $trayHostPublishArguments = New-DotNetPublishArguments `
-            -ProjectPath $TrayHostProject `
-            -Configuration $Configuration `
-            -RuntimeIdentifier $runtimeIdentifier `
-            -SelfContained $distributionOptions.SelfContained `
-            -OutputPath $publishDir `
-            -ArtifactsPath $taskArtifactsRoot `
-            -InformationalVersion $Version
-
-        Invoke-External -FilePath "dotnet" -Arguments $frontendRestoreArguments -ErrorMessage "dotnet restore failed for frontend ($platformLabel, $DistributionMode)"
-        Invoke-External -FilePath "dotnet" -Arguments $frontendPublishArguments -ErrorMessage "dotnet publish failed for frontend ($platformLabel, $DistributionMode)"
-
-        Invoke-External -FilePath "dotnet" -Arguments $backendRestoreArguments -ErrorMessage "dotnet restore failed for backend ($platformLabel, $DistributionMode)"
-        Invoke-External -FilePath "dotnet" -Arguments $backendPublishArguments -ErrorMessage "dotnet publish failed for backend ($platformLabel, $DistributionMode)"
-
-        Invoke-External -FilePath "dotnet" -Arguments $trayHostRestoreArguments -ErrorMessage "dotnet restore failed for tray host ($platformLabel, $DistributionMode)"
-        Invoke-External -FilePath "dotnet" -Arguments $trayHostPublishArguments -ErrorMessage "dotnet publish failed for tray host ($platformLabel, $DistributionMode)"
-
-        Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.exe") -Description "Frontend executable"
-        Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.exe") -Description "Backend service executable"
-        Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.dll") -Description "Backend service DLL"
-        Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.TrayHost.exe") -Description "Tray host executable"
-
-        return $publishDir
+        $running.Add([pscustomobject]@{
+            Task = $task
+            TargetName = $targetName
+            Process = $process
+            LogPath = $logPath
+        }) | Out-Null
     }
 
-    function New-PortableArchive {
-        param(
-            [Parameter(Mandatory)] [string] $PublishDir,
-            [Parameter(Mandatory)] [string] $DistRoot,
-            [Parameter(Mandatory)] [string] $ArtifactProductName,
-            [Parameter(Mandatory)] [string] $Version,
-            [Parameter(Mandatory)] [string] $DistributionMode,
-            [Parameter(Mandatory)] [string] $Platform
-        )
-
-        $platformLabel = Get-ArtifactPlatformLabel -Platform $Platform
-
-        if ($DistributionMode -eq "framework-dependent" -and $platformLabel -eq "anycpu") {
-            $archiveFileName = "$ArtifactProductName-$Version-framework-dependent-portable.zip"
+    $finished = @($running | Where-Object { $_.Process.HasExited })
+    foreach ($item in $finished) {
+        $exitCode = $item.Process.ExitCode
+        if ($exitCode -eq 0) {
+            Write-Host "Completed $($item.TargetName)"
         }
         else {
-            $archiveFileName = "$ArtifactProductName-$Version-$platformLabel-$DistributionMode-portable.zip"
+            Write-Host "Failed $($item.TargetName) (ExitCode=$exitCode). Log: $($item.LogPath)" -ForegroundColor Red
         }
 
-        $archivePath = Join-Path $DistRoot $archiveFileName
+        $completed.Add([pscustomobject]@{
+            TargetName = $item.TargetName
+            ExitCode = $exitCode
+            LogPath = $item.LogPath
+        }) | Out-Null
 
-        if (Test-Path -LiteralPath $archivePath) {
-            Remove-Item -LiteralPath $archivePath -Force
-        }
-
-        Compress-Archive -Path (Join-Path $PublishDir "*") -DestinationPath $archivePath -CompressionLevel Optimal -Force
-        Ensure-FileExists -Path $archivePath -Description "Portable package"
-
-        return $archivePath
+        $running.Remove($item) | Out-Null
     }
 
-    function Invoke-InstallerBuildTarget {
-        param(
-            [Parameter(Mandatory)] [string] $Configuration,
-            [Parameter(Mandatory)] [string] $DistributionMode,
-            [Parameter(Mandatory)] [string] $Platform,
-            [Parameter(Mandatory)] [string] $FrontendProject,
-            [Parameter(Mandatory)] [string] $BackendProject,
-            [Parameter(Mandatory)] [string] $TrayHostProject,
-            [Parameter(Mandatory)] [string] $PublishRoot,
-            [Parameter(Mandatory)] [string] $DistRoot,
-            [Parameter(Mandatory)] [string] $Version,
-            [Parameter(Mandatory)] [string] $ArtifactProductName,
-            [Parameter(Mandatory)] [string] $IsccPath,
-            [Parameter(Mandatory)] [string] $InstallerIss,
-            [Parameter(Mandatory)] [string] $AppId,
-            [Parameter(Mandatory)] [string] $NuGetConfig
-        )
-
-        $distributionOptions = Get-DistributionModeOptions -DistributionMode $DistributionMode
-        $platformLabel = Get-ArtifactPlatformLabel -Platform $Platform
-        $publishDir = Publish-Application `
-            -Configuration $Configuration `
-            -DistributionMode $DistributionMode `
-            -Platform $Platform `
-            -FrontendProject $FrontendProject `
-            -BackendProject $BackendProject `
-            -TrayHostProject $TrayHostProject `
-            -PublishRoot $PublishRoot `
-            -NuGetConfig $NuGetConfig `
-            -PublishGroup "installer" `
-            -Version $Version
-
-        $installerOptions = Get-InstallerArchitectureOptions -Platform $Platform
-        $setupBaseName = "$ArtifactProductName-$Version-$platformLabel-$($distributionOptions.InstallerSuffix)-Setup"
-
-        $isccArguments = @(
-            "/DMyArchitecturesAllowed=$($installerOptions.Allowed)",
-            "/DMyArchitecturesInstallIn64BitMode=$($installerOptions.InstallIn64BitMode)",
-            "/DMyUseDotNetDependencyInstaller=$($distributionOptions.UseDotNetDependencyInstaller)",
-            "/DMyAppId=$AppId",
-            "/DMyAppBuildDir=$publishDir",
-            "/DMyOutputDir=$DistRoot",
-            "/DMyAppSetupName=$setupBaseName",
-            $InstallerIss
-        )
-
-        Invoke-External -FilePath $IsccPath -Arguments $isccArguments -ErrorMessage "Inno Setup packaging failed for $platformLabel ($DistributionMode)"
-
-        $artifacts = New-Object System.Collections.Generic.List[string]
-        $installerPath = Join-Path $DistRoot ($setupBaseName + ".exe")
-        Ensure-FileExists -Path $installerPath -Description "Installer package"
-        $artifacts.Add($installerPath) | Out-Null
-
-        if ($DistributionMode -eq "self-contained") {
-            $portableArchive = New-PortableArchive `
-                -PublishDir $publishDir `
-                -DistRoot $DistRoot `
-                -ArtifactProductName $ArtifactProductName `
-                -Version $Version `
-                -DistributionMode $DistributionMode `
-                -Platform $Platform
-            $artifacts.Add($portableArchive) | Out-Null
-        }
-
-        return $artifacts.ToArray()
-    }
-
-    function Invoke-PortableFrameworkDependentBuildTarget {
-        param(
-            [Parameter(Mandatory)] [string] $Configuration,
-            [Parameter(Mandatory)] [string] $FrontendProject,
-            [Parameter(Mandatory)] [string] $BackendProject,
-            [Parameter(Mandatory)] [string] $TrayHostProject,
-            [Parameter(Mandatory)] [string] $PublishRoot,
-            [Parameter(Mandatory)] [string] $DistRoot,
-            [Parameter(Mandatory)] [string] $Version,
-            [Parameter(Mandatory)] [string] $ArtifactProductName,
-            [Parameter(Mandatory)] [string] $NuGetConfig
-        )
-
-        $publishDir = Publish-Application `
-            -Configuration $Configuration `
-            -DistributionMode "framework-dependent" `
-            -Platform "anycpu" `
-            -FrontendProject $FrontendProject `
-            -BackendProject $BackendProject `
-            -TrayHostProject $TrayHostProject `
-            -PublishRoot $PublishRoot `
-            -NuGetConfig $NuGetConfig `
-            -PublishGroup "portable" `
-            -Version $Version
-
-        return New-PortableArchive `
-            -PublishDir $publishDir `
-            -DistRoot $DistRoot `
-            -ArtifactProductName $ArtifactProductName `
-            -Version $Version `
-            -DistributionMode "framework-dependent" `
-            -Platform "anycpu"
+    if ($running.Count -gt 0 -or $pending.Count -gt 0) {
+        Start-Sleep -Seconds 1
     }
 }
 
-$jobWorkerPath = Join-Path $PublishRoot "_build-worker.ps1"
-$jobWorkerScript = @'
-param(
-    [Parameter(Mandatory)] [string] $Kind,
-    [Parameter(Mandatory)] [string] $Configuration,
-    [Parameter(Mandatory)] [string] $DistributionMode,
-    [Parameter(Mandatory)] [string] $Platform,
-    [Parameter(Mandatory)] [string] $FrontendProject,
-    [Parameter(Mandatory)] [string] $BackendProject,
-    [Parameter(Mandatory)] [string] $TrayHostProject,
-    [Parameter(Mandatory)] [string] $PublishRoot,
-    [Parameter(Mandatory)] [string] $DistRoot,
-    [Parameter(Mandatory)] [string] $Version,
-    [Parameter(Mandatory)] [string] $ArtifactProductName,
-    [Parameter(Mandatory)] [string] $IsccPath,
-    [Parameter(Mandatory)] [string] $InstallerIss,
-    [Parameter(Mandatory)] [string] $AppId,
-    [Parameter(Mandatory)] [string] $NuGetConfig
-)
-
-__JOB_INIT_SCRIPT__
-
-switch ($Kind) {
-    "installer" {
-        Invoke-InstallerBuildTarget `
-            -Configuration $Configuration `
-            -DistributionMode $DistributionMode `
-            -Platform $Platform `
-            -FrontendProject $FrontendProject `
-            -BackendProject $BackendProject `
-            -TrayHostProject $TrayHostProject `
-            -PublishRoot $PublishRoot `
-            -DistRoot $DistRoot `
-            -Version $Version `
-            -ArtifactProductName $ArtifactProductName `
-            -IsccPath $IsccPath `
-            -InstallerIss $InstallerIss `
-            -AppId $AppId `
-            -NuGetConfig $NuGetConfig
-    }
-    "portable-framework-dependent" {
-        Invoke-PortableFrameworkDependentBuildTarget `
-            -Configuration $Configuration `
-            -FrontendProject $FrontendProject `
-            -BackendProject $BackendProject `
-            -TrayHostProject $TrayHostProject `
-            -PublishRoot $PublishRoot `
-            -DistRoot $DistRoot `
-            -Version $Version `
-            -ArtifactProductName $ArtifactProductName `
-            -NuGetConfig $NuGetConfig
-    }
-    default {
-        throw "Unsupported build task kind '$Kind'."
-    }
-}
-'@
-
-$jobWorkerScript = $jobWorkerScript.Replace("__JOB_INIT_SCRIPT__", $jobInitScript.ToString())
-Set-Content -LiteralPath $jobWorkerPath -Value $jobWorkerScript -Encoding UTF8
-
-$artifacts = New-Object System.Collections.Generic.List[string]
-
-$runningJobs = @()
-$failed = $false
-
-foreach ($task in $buildTasks) {
-    while (
-        @($runningJobs | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParallel `
-        -or (Test-HasRunningJobForBuildPlatform -Jobs $runningJobs -Platform $task.Platform)
-    ) {
-        $finishedJob = Wait-Job -Job $runningJobs -Any
-
-        try {
-            $jobOutput = Receive-Job -Job $finishedJob -ErrorAction Stop
-            foreach ($item in @($jobOutput)) {
-                if (-not [string]::IsNullOrWhiteSpace($item)) {
-                    $artifacts.Add([string] $item) | Out-Null
-                }
-            }
-        }
-        catch {
-            $failed = $true
-            Write-Host ""
-            Write-Host "Parallel build job failed: $($finishedJob.Name)" -ForegroundColor Red
-            Write-Host $_
-        }
-        finally {
-            Remove-Job -Job $finishedJob -Force
-            $runningJobs = @($runningJobs | Where-Object { $_.Id -ne $finishedJob.Id })
-        }
-
-        if ($failed) {
-            break
-        }
+$failedTargets = @($completed | Where-Object { $_.ExitCode -ne 0 })
+if ($failedTargets.Count -gt 0) {
+    Write-Host ''
+    Write-Host 'One or more build targets failed:' -ForegroundColor Red
+    foreach ($failedTarget in $failedTargets) {
+        Write-Host "  $($failedTarget.TargetName): $($failedTarget.LogPath)" -ForegroundColor Red
     }
 
-    if ($failed) {
-        break
-    }
-
-    if ($task.Kind -eq "installer") {
-        $jobName = "$($task.Kind)-$($task.DistributionMode)-$($task.Platform)"
-    }
-    else {
-        $jobName = "$($task.Kind)-$($task.Platform)"
-    }
-
-    $jobArguments = @(
-        $task.Kind,
-        $Configuration,
-        $task.DistributionMode,
-        $task.Platform,
-        $FrontendProject,
-        $BackendProject,
-        $TrayHostProject,
-        $PublishRoot,
-        $DistRoot,
-        $Version,
-        $ArtifactProductName,
-        $IsccPath,
-        $InstallerIss,
-        $AppId,
-        $NuGetConfig
-    )
-
-    $job = Start-Job -Name $jobName -FilePath $jobWorkerPath -ArgumentList $jobArguments
-
-    $runningJobs += $job
+    throw 'Build failed.'
 }
 
-while (-not $failed -and $runningJobs.Count -gt 0) {
-    $finishedJob = Wait-Job -Job $runningJobs -Any
+$artifacts = @(Get-ChildItem -LiteralPath $distRoot -File |
+    Where-Object { $_.Extension -in '.exe', '.zip' } |
+    Sort-Object Name |
+    ForEach-Object { $_.FullName })
 
-    try {
-        $jobOutput = Receive-Job -Job $finishedJob -ErrorAction Stop
-        foreach ($item in @($jobOutput)) {
-            if (-not [string]::IsNullOrWhiteSpace($item)) {
-                $artifacts.Add([string] $item) | Out-Null
-            }
-        }
-    }
-    catch {
-        $failed = $true
-        Write-Host ""
-        Write-Host "Parallel build job failed: $($finishedJob.Name)" -ForegroundColor Red
-        Write-Host $_
-    }
-    finally {
-        Remove-Job -Job $finishedJob -Force
-        $runningJobs = @($runningJobs | Where-Object { $_.Id -ne $finishedJob.Id })
-    }
+if ($artifacts.Count -eq 0) {
+    throw "No artifacts were produced in $distRoot."
 }
 
-if ($failed) {
-    throw "One or more parallel build jobs failed."
-}
-
-$manifestPath = Join-Path $DistRoot "artifacts.txt"
-$artifacts = $artifacts | Sort-Object
+$manifestPath = Join-Path $distRoot 'artifacts.txt'
 $artifacts | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
-Write-Host ""
-Write-Host "Build completed successfully." -ForegroundColor Green
-Write-Host "Version: $Version"
+Write-Host ''
+Write-Host 'Build completed successfully.' -ForegroundColor Green
+Write-Host "Configuration: $Configuration"
+Write-Host "Version: $version"
 Write-Host "AppId: $AppId"
-Write-Host "Artifacts:"
+Write-Host 'Artifacts:'
 foreach ($artifact in $artifacts) {
     Write-Host "  $artifact"
 }

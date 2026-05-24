@@ -22,8 +22,15 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  resolve-metadata:
     runs-on: windows-latest
+    outputs:
+      release_version: ${{ steps.version.outputs.release_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      release_name: ${{ steps.version.outputs.release_name }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      should_create_release: ${{ steps.version.outputs.should_create_release }}
 
     steps:
       - name: Checkout
@@ -38,329 +45,122 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Resolve release metadata
-        id: release_meta
+        id: version
+        shell: pwsh
+        run: .\Scripts\Resolve-Version.ps1 -Configuration "${{ inputs.configuration }}"
+
+      - name: Create release notes
+        shell: pwsh
+        run: .\Scripts\New-ReleaseNotes.ps1 -PreviousTag "${{ steps.version.outputs.previous_tag }}" -OutputPath build/release-body.md
+
+      - name: Upload release body
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-body
+          path: build/release-body.md
+          if-no-files-found: error
+
+  build:
+    needs: resolve-metadata
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: installer
+            platform: win-x64
+            distribution: self-contained
+          - kind: installer
+            platform: win-x86
+            distribution: self-contained
+          - kind: installer
+            platform: win-arm64
+            distribution: self-contained
+          - kind: installer
+            platform: win-x64
+            distribution: framework-dependent
+          - kind: installer
+            platform: win-x86
+            distribution: framework-dependent
+          - kind: installer
+            platform: win-arm64
+            distribution: framework-dependent
+          - kind: portable
+            platform: anycpu
+            distribution: framework-dependent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build package target
         shell: pwsh
         run: |
-          [xml] $projectXml = Get-Content -LiteralPath '.\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj'
-          $propertyGroups = @($projectXml.Project.PropertyGroup)
-          $configuration = '${{ inputs.configuration }}'
+          .\Scripts\Build-Target.ps1 `
+            -Kind "${{ matrix.kind }}" `
+            -Platform "${{ matrix.platform }}" `
+            -DistributionMode "${{ matrix.distribution }}" `
+            -Configuration "${{ inputs.configuration }}" `
+            -AppId "${{ inputs.app_id }}" `
+            -Version "${{ needs.resolve-metadata.outputs.release_version }}"
 
-          function Test-PropertyGroupMatchesConfiguration {
-            param(
-              [Parameter(Mandatory)] [object] $PropertyGroup,
-              [Parameter(Mandatory)] [string] $Configuration
-            )
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ContextMenuMgrPlus-${{ needs.resolve-metadata.outputs.release_tag }}-${{ matrix.platform }}-${{ matrix.distribution }}-${{ matrix.kind }}
+          path: build/dist/*
+          if-no-files-found: error
 
-            $condition = [string] $PropertyGroup.GetAttribute("Condition")
-            if ([string]::IsNullOrWhiteSpace($condition)) {
-              return $true
-            }
+  create-release:
+    needs:
+      - resolve-metadata
+      - build
+    runs-on: windows-latest
 
-            $expanded = $condition.Replace('$(Configuration)', $Configuration)
-            $match = [regex]::Match(
-              $expanded,
-              "^\s*['""]?(?<left>[^'""]*)['""]?\s*(?<operator>==|!=)\s*['""]?(?<right>[^'""]*)['""]?\s*$")
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
-            if (-not $match.Success) {
-              return $false
-            }
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: downloaded-artifacts
+          pattern: ContextMenuMgrPlus-*
 
-            $left = $match.Groups["left"].Value.Trim()
-            $right = $match.Groups["right"].Value.Trim()
-            $equals = [string]::Equals($left, $right, [System.StringComparison]::OrdinalIgnoreCase)
+      - name: Download release body
+        uses: actions/download-artifact@v7
+        with:
+          name: release-body
+          path: build
 
-            if ($match.Groups["operator"].Value -eq "==") {
-              return $equals
-            }
-
-            return -not $equals
-          }
-
-          function Get-ProjectPropertyValue {
-            param(
-              [Parameter(Mandatory)] [string] $PropertyName,
-              [Parameter(Mandatory)] [string] $Configuration
-            )
-
-            $value = $null
-            foreach ($group in $propertyGroups) {
-              if (-not (Test-PropertyGroupMatchesConfiguration -PropertyGroup $group -Configuration $Configuration)) {
-                continue
-              }
-
-              $property = $group.SelectSingleNode($PropertyName)
-              if ($property) {
-                $value = [string] $property.InnerText
-              }
-            }
-
-            return $value
-          }
-
-          function Get-ReleaseVersionFromTag {
-            param([Parameter(Mandatory)] [string] $Tag)
-
-            if ($Tag -notmatch '^v(?<version>\d+(?:\.\d+){2,3})$') {
-              return $null
-            }
-
-            try {
-              return [version] $Matches['version']
-            }
-            catch {
-              return $null
-            }
-          }
-
-          function Get-PreviousReleaseTag {
-            param(
-              [Parameter(Mandatory)] [string] $CurrentReleaseTag
-            )
-
-            $currentVersion = Get-ReleaseVersionFromTag -Tag $CurrentReleaseTag
-
-            $releaseTags = git tag --list |
-              Where-Object { Get-ReleaseVersionFromTag -Tag $_ } |
-              Where-Object { $_ -ne $CurrentReleaseTag }
-
-            if ($currentVersion -ne $null) {
-              $releaseTags = $releaseTags |
-                Where-Object {
-                  $candidateVersion = Get-ReleaseVersionFromTag -Tag $_
-                  $candidateVersion -ne $null -and $candidateVersion -lt $currentVersion
-                }
-            }
-
-            return $releaseTags |
-              Sort-Object { Get-ReleaseVersionFromTag -Tag $_ } -Descending |
-              Select-Object -First 1
-          }
-
-          function Get-PreviousAnyTag {
-            param([Parameter(Mandatory)] [string] $CurrentReleaseTag)
-
-            return git tag --sort=-creatordate |
-              Where-Object { $_ -ne $CurrentReleaseTag } |
-              Select-Object -First 1
-          }
-
-          $releaseVersion = Get-ProjectPropertyValue -PropertyName 'InformationalVersion' -Configuration $configuration
-          if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
-            $releaseVersion = Get-ProjectPropertyValue -PropertyName 'FileVersion' -Configuration $configuration
-          }
-
-          if ([string]::IsNullOrWhiteSpace($releaseVersion)) {
-            throw "Neither InformationalVersion nor FileVersion was found in ContextMenuMgr.Frontend.csproj."
-          }
-
-          $isPrerelease = [string]::Equals($configuration, 'Beta', [System.StringComparison]::OrdinalIgnoreCase)
-          if ($isPrerelease) {
-            $commit = & git rev-parse --short HEAD
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
-              throw "Unable to resolve the current Git commit hash."
-            }
-
-            $releaseVersion = "$releaseVersion+$($commit.Trim())"
-          }
-
-          $releaseTag = "v$releaseVersion"
-          if ($isPrerelease) {
-            $releaseName = $releaseTag
-          }
-          else {
-            $releaseName = "$releaseTag-Release"
-          }
-
-          git fetch --tags --force
-          if ([string]::Equals($configuration, 'Release', [System.StringComparison]::OrdinalIgnoreCase)) {
-            $previousTag = Get-PreviousReleaseTag -CurrentReleaseTag $releaseTag
-          }
-          elseif ([string]::Equals($configuration, 'Beta', [System.StringComparison]::OrdinalIgnoreCase)) {
-            $previousTag = Get-PreviousAnyTag -CurrentReleaseTag $releaseTag
-          }
-          else {
-            $previousTag = Get-PreviousAnyTag -CurrentReleaseTag $releaseTag
-          }
-
-          $shouldCreateRelease = -not [string]::Equals($configuration, 'Debug', [System.StringComparison]::OrdinalIgnoreCase)
-
-          $releaseBodyLines = @(
-            '## Changes'
-            ''
-          )
-
-          if ([string]::IsNullOrWhiteSpace($previousTag)) {
-            $releaseBodyLines += '- Initial release'
-          }
-          else {
-            $releaseBodyLines += ('Previous tag: `{0}`' -f $previousTag)
-            $releaseBodyLines += ''
-
-            $revisionRange = '{0}..HEAD' -f $previousTag
-            $gitLogArguments = @(
-              'log'
-              '--pretty=format:- %s (%h)'
-              $revisionRange
-            )
-            $commitLines = & git @gitLogArguments
-            if (-not $commitLines) {
-              $releaseBodyLines += '- No commits since the previous tag'
-            }
-            else {
-              $releaseBodyLines += $commitLines
-            }
-          }
-
-          New-Item -ItemType Directory -Force -Path build | Out-Null
-          $releaseBodyLines | Set-Content -LiteralPath 'build/release-body.md' -Encoding UTF8
-
-          Write-Host "Configuration: $configuration"
-          Write-Host "Release version: $releaseVersion"
-          Write-Host "Release tag: $releaseTag"
-          Write-Host "Release name: $releaseName"
-          Write-Host "Prerelease: $isPrerelease"
-          Write-Host "Should create release: $shouldCreateRelease"
-          Write-Host "Previous tag: $previousTag"
-
-          "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "release_name=$releaseName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "prerelease=$($isPrerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "previous_tag=$previousTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "should_create_release=$($shouldCreateRelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-      - name: Build installers and portable packages
-        shell: pwsh
-        run: >
-          .\build.ps1
-          -Configuration "${{ inputs.configuration }}"
-          -AppId "${{ inputs.app_id }}"
-
-      - name: Compute SHA256 checksums
-        id: checksums
+      - name: Flatten artifacts
         shell: pwsh
         run: |
-          $dist = Join-Path $PWD 'build/dist'
-          if (-not (Test-Path -LiteralPath $dist)) {
-            throw "Distribution directory was not found: $dist"
-          }
-
-          $artifacts = Get-ChildItem -LiteralPath $dist -File |
+          New-Item -ItemType Directory -Force -Path build/dist | Out-Null
+          Get-ChildItem -LiteralPath downloaded-artifacts -Recurse -File |
             Where-Object { $_.Extension -in '.exe', '.zip' } |
-            Sort-Object Name
+            ForEach-Object {
+              Copy-Item -LiteralPath $_.FullName -Destination (Join-Path 'build/dist' $_.Name) -Force
+            }
 
-          if (-not $artifacts) {
-            throw "No release artifacts were found in $dist."
-          }
-
-          $lines = @(
-            ''
-            '## SHA256'
-            ''
-            '| File | SHA256 |'
-            '|---|---|'
-          )
-
-          foreach ($artifact in $artifacts) {
-            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
-            $lines += ('| `{0}` | `{1}` |' -f $artifact.Name, $hash.Hash.ToLowerInvariant())
-          }
-
-          $lines | Add-Content -LiteralPath 'build/release-body.md' -Encoding UTF8
-
-          $summaryLines = @(
-            '### SHA256'
-            ''
-            '| File | SHA256 |'
-            '|---|---|'
-          )
-
-          foreach ($artifact in $artifacts) {
-            $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256
-            $summaryLines += ('| `{0}` | `{1}` |' -f $artifact.Name, $hash.Hash.ToLowerInvariant())
-          }
-
-          $summaryLines | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
-
-      - name: Upload x64 self-contained installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x64-self-contained-setup
-          path: build/dist/*-x64-self-contained-Setup.exe
-          if-no-files-found: error
-
-      - name: Upload x86 self-contained installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x86-self-contained-setup
-          path: build/dist/*-x86-self-contained-Setup.exe
-          if-no-files-found: error
-
-      - name: Upload arm64 self-contained installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-arm64-self-contained-setup
-          path: build/dist/*-arm64-self-contained-Setup.exe
-          if-no-files-found: error
-
-      - name: Upload x64 framework-dependent installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x64-framework-dependent-setup
-          path: build/dist/*-x64-framework-dependent-Setup.exe
-          if-no-files-found: error
-
-      - name: Upload x86 framework-dependent installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x86-framework-dependent-setup
-          path: build/dist/*-x86-framework-dependent-Setup.exe
-          if-no-files-found: error
-
-      - name: Upload arm64 framework-dependent installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-arm64-framework-dependent-setup
-          path: build/dist/*-arm64-framework-dependent-Setup.exe
-          if-no-files-found: error
-
-      - name: Upload x64 self-contained portable
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x64-self-contained-portable
-          path: build/dist/*-x64-self-contained-portable.zip
-          if-no-files-found: error
-
-      - name: Upload x86 self-contained portable
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-x86-self-contained-portable
-          path: build/dist/*-x86-self-contained-portable.zip
-          if-no-files-found: error
-
-      - name: Upload arm64 self-contained portable
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-arm64-self-contained-portable
-          path: build/dist/*-arm64-self-contained-portable.zip
-          if-no-files-found: error
-
-      - name: Upload framework-dependent portable
-        uses: actions/upload-artifact@v7
-        with:
-          name: ContextMenuMgrPlus-${{ steps.release_meta.outputs.release_tag }}-framework-dependent-portable
-          path: build/dist/*-framework-dependent-portable.zip
-          if-no-files-found: error
+      - name: Append SHA256 table
+        shell: pwsh
+        run: .\Scripts\New-ChecksumTable.ps1 -ArtifactDirectory build/dist -ReleaseBodyPath build/release-body.md
 
       - name: Create draft release
-        if: steps.release_meta.outputs.should_create_release == 'true'
+        if: needs.resolve-metadata.outputs.should_create_release == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.release_meta.outputs.release_tag }}
-          name: ${{ steps.release_meta.outputs.release_name }}
+          tag_name: ${{ needs.resolve-metadata.outputs.release_tag }}
+          name: ${{ needs.resolve-metadata.outputs.release_name }}
           draft: true
-          prerelease: ${{ steps.release_meta.outputs.prerelease }}
+          prerelease: ${{ needs.resolve-metadata.outputs.prerelease }}
           body_path: build/release-body.md
-          files: |
-            build/dist/*.exe
-            build/dist/*.zip
+          files: build/dist/*
