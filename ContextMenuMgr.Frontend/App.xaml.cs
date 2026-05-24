@@ -65,7 +65,6 @@ public partial class App : Application
             FrontendDebugLog.Configure(settingsService.Current.LogLevel);
             FrontendDebugLog.StartSession("App startup");
             _localization.ApplyPersistedLanguage();
-            _serviceProvider.GetRequiredService<ThemeService>().ApplyPersistedTheme();
 
             _controlServerCts = new CancellationTokenSource();
             _controlServer = new FrontendControlServer(HandleFrontendControlRequestAsync);
@@ -328,6 +327,7 @@ public partial class App : Application
             _mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
             _mainWindow.Closed += OnMainWindowClosed;
             _mainWindow.Closing += OnMainWindowClosing;
+            _serviceProvider.GetRequiredService<FrontendThemeService>().Initialize(_mainWindow);
             _mainWindow.Show();
             _mainWindow.ShowInTaskbar = true;
 

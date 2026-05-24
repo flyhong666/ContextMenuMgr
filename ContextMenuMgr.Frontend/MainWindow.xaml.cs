@@ -8,7 +8,6 @@ using System.Windows.Threading;
 using ContextMenuMgr.Frontend.Services;
 using ContextMenuMgr.Frontend.Views.Pages;
 using Microsoft.Extensions.DependencyInjection;
-using Wpf.Ui.Appearance;
 using Wpf.Ui;
 
 namespace ContextMenuMgr.Frontend;
@@ -33,13 +32,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         IServiceProvider serviceProvider,
         INavigationService navigationService,
         IInfoBarService infoBarService,
-        UpdateCheckService updateCheckService)
+        UpdateCheckService updateCheckService,
+        FrontendThemeService themeService)
     {
         _updateCheckService = updateCheckService;
 #if DEBUG
         _serviceProvider = serviceProvider;
 #endif
-        SystemThemeWatcher.Watch(this);
+        themeService.Initialize(this);
         InitializeComponent();
         WindowChromeTitleBarFactory.Apply(this, 44);
         infoBarService.SetInfoBarControl(RootInfoBar, RootInfoBarTitle, RootInfoBarMessage, RootInfoBarLink);

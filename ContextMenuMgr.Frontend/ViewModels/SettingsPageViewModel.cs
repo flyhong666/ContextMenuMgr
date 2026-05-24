@@ -8,6 +8,8 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Markup;
+using System.Windows.Media;
+using Wpf.Ui.Appearance;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
 
@@ -21,11 +23,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly TrayHostProcessService _trayHostProcessService;
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly LocalizationService _localization;
-    private readonly ThemeService _themeService;
+    private readonly FrontendThemeService _themeService;
     private readonly ContextMenuItemActionsService _actionsService;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
     private bool _suppressProtectionSync;
     private bool _suppressAutoStartSync;
+    private bool _suppressThemeSync;
     private bool _pendingRegistryProtectionEnable;
 
     /// <summary>
@@ -37,7 +40,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         TrayHostProcessService trayHostProcessService,
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
-        ThemeService themeService,
+        FrontendThemeService themeService,
         ContextMenuItemActionsService actionsService,
         ListPlaceholderDebugStateService placeholderDebug)
     {
@@ -73,7 +76,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         ];
 
         SelectedLanguage = AvailableLanguages.FirstOrDefault(item => item.Option == _localization.SelectedLanguage) ?? AvailableLanguages[0];
-        SelectedTheme = AvailableThemes.FirstOrDefault(item => item.Option == _themeService.CurrentTheme) ?? AvailableThemes[0];
+        SelectedTheme = AvailableThemes.FirstOrDefault(item => item.Option == _themeService.GetThemePreference()) ?? AvailableThemes[0];
         SelectedLogLevel = AvailableLogLevels.FirstOrDefault(item => item.Option == _settingsService.Current.LogLevel) ?? AvailableLogLevels[1];
 
         // Initialize with default values to avoid blocking UI thread
@@ -82,6 +85,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         LockNewContextMenuItems = _settingsService.Current.LockNewContextMenuItems;
 
         _localization.LanguageChanged += OnLanguageChanged;
+        _themeService.ThemePreferenceChanged += OnThemePreferenceChanged;
+        ApplicationThemeManager.Changed += OnApplicationThemeChanged;
         RefreshLocalizedText();
         RefreshServiceState();
 
@@ -255,9 +260,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedThemeChanged(ThemeOptionViewModel? value)
     {
+        if (_suppressThemeSync)
+        {
+            return;
+        }
+
         if (value is not null)
         {
-            _themeService.ApplyTheme(value.Option);
+            _themeService.SetThemePreference(value.Option);
         }
     }
 
@@ -480,8 +490,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             _localization.SelectedLanguage = AppLanguageOption.System;
             SelectedLanguage = AvailableLanguages.FirstOrDefault(item => item.Option == AppLanguageOption.System) ?? AvailableLanguages[0];
 
-            _themeService.ApplyTheme(AppThemeOption.System);
-            SelectedTheme = AvailableThemes.FirstOrDefault(item => item.Option == AppThemeOption.System) ?? AvailableThemes[0];
+            _themeService.SetThemePreference(AppThemeOption.System);
+            SetSelectedThemeFromPreference(AppThemeOption.System);
 
             FrontendDebugLog.Configure(AppLogLevel.Warning);
             SelectedLogLevel = AvailableLogLevels.FirstOrDefault(item => item.Option == AppLogLevel.Warning) ?? AvailableLogLevels[0];
@@ -589,6 +599,29 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CancelText));
         OnPropertyChanged(nameof(ConfirmUninstallText));
         OnPropertyChanged(nameof(UninstallFlyoutText));
+    }
+
+    private void OnThemePreferenceChanged(object? sender, ThemePreferenceChangedEventArgs e)
+    {
+        SetSelectedThemeFromPreference(e.NewPreference);
+    }
+
+    private void OnApplicationThemeChanged(ApplicationTheme currentApplicationTheme, Color systemAccent)
+    {
+        SetSelectedThemeFromPreference(_themeService.GetThemePreference());
+    }
+
+    private void SetSelectedThemeFromPreference(AppThemeOption preference)
+    {
+        var selectedTheme = AvailableThemes.FirstOrDefault(item => item.Option == preference) ?? AvailableThemes[0];
+        if (ReferenceEquals(SelectedTheme, selectedTheme))
+        {
+            return;
+        }
+
+        _suppressThemeSync = true;
+        SelectedTheme = selectedTheme;
+        _suppressThemeSync = false;
     }
 
     private void RefreshLocalizedText()
@@ -741,6 +774,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _localization.LanguageChanged -= OnLanguageChanged;
+        _themeService.ThemePreferenceChanged -= OnThemePreferenceChanged;
+        ApplicationThemeManager.Changed -= OnApplicationThemeChanged;
         foreach (var item in AvailableLanguages)
         {
             item.Dispose();

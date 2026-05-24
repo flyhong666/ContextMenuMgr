@@ -24,7 +24,7 @@ public partial class App
         services.AddSingleton<TrayHostProcessService>();
         services.AddSingleton<FrontendNavigationState>();
         services.AddSingleton<LocalizationService>();
-        services.AddSingleton<Services.ThemeService>();
+        services.AddSingleton<FrontendThemeService>();
         services.AddSingleton<IconPreviewService>();
         services.AddSingleton<RuleDictionaryCatalogService>();
         services.AddSingleton<EnhanceMenuRuleService>();
@@ -46,7 +46,8 @@ public partial class App
             sp,
             sp.GetRequiredService<INavigationService>(),
             sp.GetRequiredService<IInfoBarService>(),
-            sp.GetRequiredService<UpdateCheckService>()));
+            sp.GetRequiredService<UpdateCheckService>(),
+            sp.GetRequiredService<FrontendThemeService>()));
 
         services.AddSingleton<FileContextMenuPageViewModel>();
         services.AddSingleton<AllObjectsContextMenuPageViewModel>();

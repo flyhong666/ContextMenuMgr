@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using ContextMenuMgr.Frontend.Services;
-using Wpf.Ui.Appearance;
 
 namespace ContextMenuMgr.Frontend;
 
@@ -22,7 +21,6 @@ public partial class DebugToolsWindow : Wpf.Ui.Controls.FluentWindow
         _placeholderDebug = placeholderDebug;
         _localization = localization;
 
-        SystemThemeWatcher.Watch(this);
         InitializeComponent();
         WindowChromeTitleBarFactory.Apply(this, 44);
         ApplyWindowIcon();
