@@ -1,4 +1,4 @@
-<UserControl
+<Page
     x:Class="ContextMenuMgr.Frontend.Views.OtherRulesPageView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -6,7 +6,7 @@
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}">
-    <UserControl.Resources>
+    <Page.Resources>
         <Style x:Key="OtherRulesTabHostSurfaceStyle" TargetType="Border">
             <Setter Property="Margin" Value="0,8,0,0" />
             <Setter Property="Padding" Value="8" />
@@ -50,7 +50,7 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
-    </UserControl.Resources>
+    </Page.Resources>
 
     <Grid>
         <Border Style="{StaticResource OtherRulesTabHostSurfaceStyle}">
@@ -539,4 +539,4 @@
         </TabControl>
         </Border>
     </Grid>
-</UserControl>
+</Page>

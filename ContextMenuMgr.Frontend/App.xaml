@@ -43,11 +43,6 @@
                         Value="{DynamicResource CurrentLanguage}"/>
             </Style>
 
-            <Style TargetType="UserControl">
-                <Setter Property="Language"
-                        Value="{DynamicResource CurrentLanguage}"/>
-            </Style>
-
             <Style BasedOn="{StaticResource {x:Type Label}}"
                    TargetType="Label">
                 <Setter Property="Language"

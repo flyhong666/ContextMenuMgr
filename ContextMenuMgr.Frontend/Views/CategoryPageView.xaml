@@ -1,4 +1,4 @@
-<UserControl
+<Page
     x:Class="ContextMenuMgr.Frontend.Views.CategoryPageView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -204,7 +204,7 @@
                                 <ui:TextBlock
                                     Margin="0,6,0,0"
                                     Opacity="0.6"
-                                    Text="{Binding DataContext.RegistryMissingText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Text="{Binding DataContext.RegistryMissingText, RelativeSource={RelativeSource AncestorType=Page}}"
                                     Visibility="{Binding IsPresentInRegistry, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                 <ui:TextBlock
                                     Margin="0,6,0,0"
@@ -227,15 +227,15 @@
                                 <ui:Button
                                     MinWidth="88"
                                     Padding="12,5"
-                                    Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                     CommandParameter="{Binding}"
-                                    Content="{Binding DataContext.DeleteText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Content="{Binding DataContext.DeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
                                     Icon="{ui:SymbolIcon Symbol=Delete24}"
                                     Visibility="{Binding IsDeleted, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                                 <ui:Button
                                     MinWidth="88"
                                     Padding="12,5"
-                                    Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                     CommandParameter="{Binding}"
                                     Content="{Binding PrimaryActionLabel}"
                                     Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
@@ -328,14 +328,14 @@
                                                 <ui:Button
                                                     Margin="0,0,8,0"
                                                     Appearance="Primary"
-                                                    Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                                     CommandParameter="{Binding}"
-                                                    Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
                                                     Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}" />
                                                 <ui:Button
                                                     Appearance="Secondary"
                                                     Command="{Binding ClosePermanentDeleteFlyoutCommand}"
-                                                    Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=Page}}"
                                                     Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -344,9 +344,9 @@
                                         MinWidth="88"
                                         Padding="12,5"
                                         Appearance="Secondary"
-                                        Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                         CommandParameter="{Binding}"
-                                        Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
                                         Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}" />
                                 </Grid>
                             </StackPanel>
@@ -401,4 +401,4 @@
             </Border>
         </Grid>
     </Grid>
-</UserControl>
+</Page>

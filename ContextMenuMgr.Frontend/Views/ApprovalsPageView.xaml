@@ -1,4 +1,4 @@
-<UserControl
+<Page
     x:Class="ContextMenuMgr.Frontend.Views.ApprovalsPageView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -145,18 +145,18 @@
                                 <ui:Button
                                     Margin="0,0,8,0"
                                     Padding="12,5"
-                                    Command="{Binding DataContext.AllowGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Command="{Binding DataContext.AllowGroupCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                     CommandParameter="{Binding}"
-                                    Content="{Binding DataContext.AllowText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Content="{Binding DataContext.AllowText, RelativeSource={RelativeSource AncestorType=Page}}"
                                     Icon="{ui:SymbolIcon Symbol=Checkmark24}"
                                     IsEnabled="{Binding CanReviewApproval}" />
                                 <ui:Button
                                     Margin="8,0,0,0"
                                     Padding="12,5"
                                     Appearance="Secondary"
-                                    Command="{Binding DataContext.DenyGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Command="{Binding DataContext.DenyGroupCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                     CommandParameter="{Binding}"
-                                    Content="{Binding DataContext.KeepDisabledText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    Content="{Binding DataContext.KeepDisabledText, RelativeSource={RelativeSource AncestorType=Page}}"
                                     Icon="{ui:SymbolIcon Symbol=Dismiss24}"
                                     IsEnabled="{Binding CanReviewApproval}" />
                                 <Grid Margin="10,0,0,0" Visibility="{Binding CanRemove, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -170,14 +170,14 @@
                                                 <ui:Button
                                                     Margin="0,0,8,0"
                                                     Appearance="Primary"
-                                                    Command="{Binding DataContext.ConfirmRemoveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    Command="{Binding DataContext.ConfirmRemoveCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                                     CommandParameter="{Binding}"
-                                                    Content="{Binding DataContext.ConfirmRemoveText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    Content="{Binding DataContext.ConfirmRemoveText, RelativeSource={RelativeSource AncestorType=Page}}"
                                                     Icon="{ui:SymbolIcon Symbol=Delete24}" />
                                                 <ui:Button
                                                     Appearance="Secondary"
                                                     Command="{Binding CloseApprovalRemoveFlyoutCommand}"
-                                                    Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=Page}}"
                                                     Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
                                             </StackPanel>
                                         </StackPanel>
@@ -186,9 +186,9 @@
                                         MinWidth="88"
                                         Padding="12,5"
                                         Appearance="Secondary"
-                                        Command="{Binding DataContext.OpenRemoveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        Command="{Binding DataContext.OpenRemoveCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                         CommandParameter="{Binding}"
-                                        Content="{Binding DataContext.RemoveText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        Content="{Binding DataContext.RemoveText, RelativeSource={RelativeSource AncestorType=Page}}"
                                         Icon="{ui:SymbolIcon Symbol=Delete24}" />
                                 </Grid>
                             </StackPanel>
@@ -198,4 +198,4 @@
             </ListBox.ItemTemplate>
         </ListBox>
     </Grid>
-</UserControl>
+</Page>
