@@ -271,7 +271,7 @@
     <value>桌面背景</value>
   </data>
   <data name="DesktopCategoryDescription" xml:space="preserve">
-    <value>HKCR\DesktopBackground\shell 和 HKCR\DesktopBackground\shellex\ContextMenuHandlers</value>
+    <value>桌面右键菜单可能同时来自 HKCR\DesktopBackground 和 HKCR\Directory\Background</value>
   </data>
   <data name="DriveCategoryName" xml:space="preserve">
     <value>磁盘分区</value>

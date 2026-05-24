@@ -83,6 +83,8 @@ internal static class GuidMetadataCatalog
             }
         }
 
+        string? weakClsidDisplayName = null;
+        string? weakClsidDisplayNameSource = null;
         foreach (var clsidKey in OpenClsidKeys(guid, userContext))
         {
             using (clsidKey.Key)
@@ -93,13 +95,23 @@ internal static class GuidMetadataCatalog
                     if (IsUsefulDisplayName(resolved))
                     {
                         var sourceValueName = string.IsNullOrEmpty(valueName) ? "Default" : valueName;
-                        return new GuidDisplayNameResolution(resolved, $"CLSID.{sourceValueName}", checkedRoots);
+                        if (!IsWeakComClassDisplayName(resolved))
+                        {
+                            return new GuidDisplayNameResolution(resolved, $"CLSID.{sourceValueName}", checkedRoots);
+                        }
+
+                        weakClsidDisplayName ??= resolved;
+                        weakClsidDisplayNameSource ??= $"CLSID.{sourceValueName}";
                     }
                 }
             }
         }
 
-        return new GuidDisplayNameResolution(null, null, checkedRoots);
+        return new GuidDisplayNameResolution(
+            weakClsidDisplayName,
+            weakClsidDisplayNameSource,
+            checkedRoots,
+            IsWeak: weakClsidDisplayName is not null);
     }
 
     internal static GuidDisplayNameResolution ResolveDisplayName(Guid guid, BackendUserContext? userContext = null)
@@ -110,7 +122,7 @@ internal static class GuidMetadataCatalog
     private static GuidDisplayNameResolution ResolveDisplayNameUncached(Guid guid, BackendUserContext? userContext)
     {
         var clsidDisplayName = ResolveClsidDisplayName(guid, userContext);
-        if (IsUsefulDisplayName(clsidDisplayName.DisplayName))
+        if (IsUsefulDisplayName(clsidDisplayName.DisplayName) && !clsidDisplayName.IsWeak)
         {
             return clsidDisplayName;
         }
@@ -121,12 +133,35 @@ internal static class GuidMetadataCatalog
             return clsidDisplayName;
         }
 
+        var fileDisplayName = ResolveFileDisplayName(filePath, clsidDisplayName.CheckedClsidRoots);
+        if (fileDisplayName is not null)
+        {
+            return fileDisplayName;
+        }
+
+        return IsUsefulDisplayName(clsidDisplayName.DisplayName)
+            ? clsidDisplayName
+            : new GuidDisplayNameResolution(null, null, clsidDisplayName.CheckedClsidRoots);
+    }
+
+    private static GuidDisplayNameResolution? ResolveFileDisplayName(
+        string filePath,
+        IReadOnlyList<string> checkedClsidRoots)
+    {
         try
         {
-            var description = FileVersionInfo.GetVersionInfo(filePath).FileDescription;
-            if (IsUsefulDisplayName(description))
+            var versionInfo = FileVersionInfo.GetVersionInfo(filePath);
+            foreach (var candidate in new[]
+                     {
+                         ("ProductName", versionInfo.ProductName),
+                         ("FileDescription", versionInfo.FileDescription)
+                     })
             {
-                return new GuidDisplayNameResolution(description, "FileDescription", clsidDisplayName.CheckedClsidRoots);
+                if (IsUsefulDisplayName(candidate.Item2)
+                    && !IsWeakComClassDisplayName(candidate.Item2))
+                {
+                    return new GuidDisplayNameResolution(candidate.Item2, candidate.Item1, checkedClsidRoots);
+                }
             }
         }
         catch
@@ -135,8 +170,8 @@ internal static class GuidMetadataCatalog
 
         var fileName = Path.GetFileName(filePath);
         return IsUsefulDisplayName(fileName)
-            ? new GuidDisplayNameResolution(fileName, "FileName", clsidDisplayName.CheckedClsidRoots)
-            : clsidDisplayName;
+            ? new GuidDisplayNameResolution(fileName, "FileName", checkedClsidRoots)
+            : null;
     }
 
     /// <summary>
@@ -578,12 +613,32 @@ internal static class GuidMetadataCatalog
         return !string.IsNullOrWhiteSpace(value) && !IsGuidText(value);
     }
 
+    internal static bool IsWeakComClassDisplayName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var text = value.Trim();
+        if (Guid.TryParse(text, out _))
+        {
+            return true;
+        }
+
+        return text.EndsWith(" Class", StringComparison.OrdinalIgnoreCase)
+               || text.Equals("DesktopContext Class", StringComparison.OrdinalIgnoreCase)
+               || text.Equals("ContextMenu Class", StringComparison.OrdinalIgnoreCase)
+               || text.Equals("Context Menu Class", StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed record ClsidRegistryKey(string Path, RegistryKey Key);
 
     internal sealed record GuidDisplayNameResolution(
         string? DisplayName,
         string? Source,
-        IReadOnlyList<string> CheckedClsidRoots);
+        IReadOnlyList<string> CheckedClsidRoots,
+        bool IsWeak = false);
 
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, SetLastError = false)]
     private static extern int SHLoadIndirectString(

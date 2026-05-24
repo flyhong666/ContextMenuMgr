@@ -17,6 +17,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
+    private readonly HashSet<string> _loggedDesktopCompatibilityItemIds = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CategoryPageViewModel"/> class.
@@ -148,7 +149,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
     private bool FilterItem(object obj)
     {
-        if (obj is not ContextMenuItemViewModel item || item.Category != Category)
+        if (obj is not ContextMenuItemViewModel item || !IsItemVisibleInCurrentCategory(item))
         {
             return false;
         }
@@ -164,6 +165,66 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         }
 
         return MatchesSearch(item);
+    }
+
+    private bool IsItemVisibleInCurrentCategory(ContextMenuItemViewModel item)
+    {
+        if (item.Category == Category)
+        {
+            return true;
+        }
+
+        if (Category == ContextMenuCategory.DesktopBackground
+            && item.Category == ContextMenuCategory.DirectoryBackground
+            && IsDirectoryBackgroundItemVisibleOnDesktopBackgroundPage(item))
+        {
+            LogDesktopBackgroundCompatibilityItemVisible(item);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsDirectoryBackgroundItemVisibleOnDesktopBackgroundPage(ContextMenuItemViewModel item)
+    {
+        return item.Entry.SourceRootPath.StartsWith(@"Directory\Background\", StringComparison.OrdinalIgnoreCase)
+               || item.Entry.RegistryPath.StartsWith(@"Directory\Background\", StringComparison.OrdinalIgnoreCase)
+               || item.Entry.BackendRegistryPath.Contains(@"\Directory\Background\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void LogDesktopBackgroundCompatibilityItemVisible(ContextMenuItemViewModel item)
+    {
+        if (!ShouldLogDesktopBackgroundCompatibilityItem(item)
+            || !_loggedDesktopCompatibilityItemIds.Add(item.Id))
+        {
+            return;
+        }
+
+        FrontendDebugLog.Info(
+            nameof(CategoryPageViewModel),
+            "DesktopBackgroundCompatibilityItemVisible: "
+            + $"DisplayName={item.DisplayName}, "
+            + $"KeyName={item.KeyName}, "
+            + $"ItemId={item.Id}, "
+            + $"SourceCategory={item.Category}, "
+            + $"VisibleCategory={Category}, "
+            + $"RegistryPath={item.RegistryPath}, "
+            + $"HandlerClsid={item.Entry.HandlerClsid ?? "<null>"}.");
+    }
+
+    private static bool ShouldLogDesktopBackgroundCompatibilityItem(ContextMenuItemViewModel item)
+    {
+        return ContainsNvidiaSignal(item.DisplayName)
+               || ContainsNvidiaSignal(item.KeyName)
+               || ContainsNvidiaSignal(item.Entry.HandlerClsid)
+               || ContainsNvidiaSignal(item.Entry.FilePath);
+    }
+
+    private static bool ContainsNvidiaSignal(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+               && (value.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)
+                   || value.Contains("Nv", StringComparison.OrdinalIgnoreCase));
     }
 
     partial void OnSearchTextChanged(string value)

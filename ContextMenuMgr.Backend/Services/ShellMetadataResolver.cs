@@ -69,12 +69,14 @@ internal static class ShellMetadataResolver
     {
         IReadOnlyList<string> checkedClsidRoots = [];
         string? filePath = null;
+        string? weakDisplayName = null;
+        string? weakDisplayNameSource = null;
 
         if (Guid.TryParse(handlerClsid, out var handlerGuid))
         {
             var clsidDisplayName = GuidMetadataCatalog.ResolveClsidDisplayName(handlerGuid, userContext);
             checkedClsidRoots = clsidDisplayName.CheckedClsidRoots;
-            if (IsUsefulDisplayName(clsidDisplayName.DisplayName))
+            if (IsUsefulDisplayName(clsidDisplayName.DisplayName) && !clsidDisplayName.IsWeak)
             {
                 return new ShellExtensionDisplayNameResolution(
                     clsidDisplayName.DisplayName!,
@@ -82,16 +84,28 @@ internal static class ShellMetadataResolver
                     checkedClsidRoots,
                     filePath);
             }
+
+            if (IsUsefulDisplayName(clsidDisplayName.DisplayName))
+            {
+                weakDisplayName = clsidDisplayName.DisplayName;
+                weakDisplayNameSource = clsidDisplayName.Source ?? "CLSID";
+            }
         }
 
         var resolvedHandlerDefaultValue = ResolveIndirectString(handlerDefaultValue);
         if (IsUsefulDisplayName(resolvedHandlerDefaultValue))
         {
-            return new ShellExtensionDisplayNameResolution(
-                resolvedHandlerDefaultValue!,
-                "HandlerDefaultValue",
-                checkedClsidRoots,
-                filePath);
+            if (!GuidMetadataCatalog.IsWeakComClassDisplayName(resolvedHandlerDefaultValue))
+            {
+                return new ShellExtensionDisplayNameResolution(
+                    resolvedHandlerDefaultValue!,
+                    "HandlerDefaultValue",
+                    checkedClsidRoots,
+                    filePath);
+            }
+
+            weakDisplayName ??= resolvedHandlerDefaultValue;
+            weakDisplayNameSource ??= "HandlerDefaultValue";
         }
 
         if (Guid.TryParse(handlerClsid, out handlerGuid))
@@ -99,32 +113,21 @@ internal static class ShellMetadataResolver
             filePath = GuidMetadataCatalog.GetFilePath(handlerGuid, userContext);
             if (!string.IsNullOrWhiteSpace(filePath))
             {
-                try
+                var fileDisplayName = ResolveFileDisplayName(filePath, checkedClsidRoots);
+                if (fileDisplayName is not null)
                 {
-                    var description = FileVersionInfo.GetVersionInfo(filePath).FileDescription;
-                    if (IsUsefulDisplayName(description))
-                    {
-                        return new ShellExtensionDisplayNameResolution(
-                            description!,
-                            "FileDescription",
-                            checkedClsidRoots,
-                            filePath);
-                    }
-                }
-                catch
-                {
-                }
-
-                var fileName = Path.GetFileName(filePath);
-                if (IsUsefulDisplayName(fileName))
-                {
-                    return new ShellExtensionDisplayNameResolution(
-                        fileName,
-                        "FileName",
-                        checkedClsidRoots,
-                        filePath);
+                    return fileDisplayName;
                 }
             }
+        }
+
+        if (IsUsefulDisplayName(weakDisplayName))
+        {
+            return new ShellExtensionDisplayNameResolution(
+                weakDisplayName!,
+                weakDisplayNameSource ?? "WeakDisplayName",
+                checkedClsidRoots,
+                filePath);
         }
 
         return new ShellExtensionDisplayNameResolution(
@@ -132,6 +135,44 @@ internal static class ShellMetadataResolver
             "KeyName",
             checkedClsidRoots,
             filePath);
+    }
+
+    private static ShellExtensionDisplayNameResolution? ResolveFileDisplayName(
+        string filePath,
+        IReadOnlyList<string> checkedClsidRoots)
+    {
+        try
+        {
+            var versionInfo = FileVersionInfo.GetVersionInfo(filePath);
+            foreach (var candidate in new[]
+                     {
+                         ("ProductName", versionInfo.ProductName),
+                         ("FileDescription", versionInfo.FileDescription)
+                     })
+            {
+                if (IsUsefulDisplayName(candidate.Item2)
+                    && !GuidMetadataCatalog.IsWeakComClassDisplayName(candidate.Item2))
+                {
+                    return new ShellExtensionDisplayNameResolution(
+                        candidate.Item2!,
+                        candidate.Item1,
+                        checkedClsidRoots,
+                        filePath);
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        var fileName = Path.GetFileName(filePath);
+        return IsUsefulDisplayName(fileName)
+            ? new ShellExtensionDisplayNameResolution(
+                fileName,
+                "FileName",
+                checkedClsidRoots,
+                filePath)
+            : null;
     }
 
     /// <summary>

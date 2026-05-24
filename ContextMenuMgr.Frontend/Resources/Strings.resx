@@ -271,7 +271,7 @@
     <value>Desktop background</value>
   </data>
   <data name="DesktopCategoryDescription" xml:space="preserve">
-    <value>HKCR\DesktopBackground\shell and HKCR\DesktopBackground\shellex\ContextMenuHandlers</value>
+    <value>HKCR\DesktopBackground and HKCR\Directory\Background</value>
   </data>
   <data name="DriveCategoryName" xml:space="preserve">
     <value>Drive</value>
