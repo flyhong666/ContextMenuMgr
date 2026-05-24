@@ -43,7 +43,9 @@ function Start-BuildTargetProcess {
         [Parameter(Mandatory)] [string] $Configuration,
         [Parameter(Mandatory)] [string] $AppId,
         [Parameter(Mandatory)] [string] $Version,
-        [Parameter(Mandatory)] [string] $LogPath
+        [Parameter(Mandatory)] [string] $LogPath,
+        [Parameter(Mandatory)] [string] $PublishRoot,
+        [Parameter(Mandatory)] [string] $DistRoot
     )
 
     $arguments = @(
@@ -56,7 +58,9 @@ function Start-BuildTargetProcess {
         '-DistributionMode', $Task.DistributionMode,
         '-AppId', $AppId,
         '-Version', $Version,
-        '-LogPath', $LogPath
+        '-LogPath', $LogPath,
+        '-PublishRoot', $PublishRoot,
+        '-DistRoot', $DistRoot
     ) | ForEach-Object { ConvertTo-ProcessArgument -Value ([string] $_) }
 
     $process = Start-Process `
@@ -66,6 +70,38 @@ function Start-BuildTargetProcess {
         -PassThru
 
     return $process
+}
+
+function Stop-ProcessTree {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Stop-ProcessTree -ProcessId ([int] $child.ProcessId)
+    }
+
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Stop-StaleBuildTargetProcesses {
+    param(
+        [Parameter(Mandatory)] [string] $RepoRoot,
+        [Parameter(Mandatory)] [int] $CurrentProcessId
+    )
+
+    $buildTargetMarker = (Join-Path $RepoRoot 'Scripts\Build-Target.ps1')
+    $candidates = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.ProcessId -ne $CurrentProcessId -and
+            $_.Name -in @('pwsh.exe', 'powershell.exe') -and
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf($buildTargetMarker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+
+    foreach ($candidate in $candidates) {
+        Write-Host "Stopping stale build target process $($candidate.ProcessId)." -ForegroundColor DarkGray
+        Stop-ProcessTree -ProcessId ([int] $candidate.ProcessId)
+    }
 }
 
 $scriptDir = $PSScriptRoot
@@ -88,7 +124,8 @@ if ($MaxParallel -lt 1) {
 $solutionPath = Join-Path $repoRoot 'ContextMenuMgr.slnx'
 $frontendProject = Join-Path $repoRoot 'ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj'
 $installerIss = Join-Path $repoRoot 'Installer\build_Installer.iss'
-$publishRoot = Join-Path $repoRoot 'build\publish'
+$publishRunName = "run-$([System.DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'))-$PID"
+$publishRoot = Join-Path $repoRoot (Join-Path 'build\publish-runs' $publishRunName)
 $distRoot = Join-Path $repoRoot 'build\dist'
 $logsRoot = Join-Path $repoRoot 'build\logs'
 
@@ -96,6 +133,18 @@ Ensure-FileExists -Path $solutionPath -Description 'Solution'
 Ensure-FileExists -Path $frontendProject -Description 'Frontend project'
 Ensure-FileExists -Path $installerIss -Description 'Inno Setup script'
 Ensure-FileExists -Path $buildTargetScript -Description 'Build target script'
+
+Stop-StaleBuildTargetProcesses -RepoRoot $repoRoot -CurrentProcessId $PID
+
+Write-Host 'Stopping dotnet build servers...' -ForegroundColor DarkGray
+$buildServerOutput = & dotnet build-server shutdown 2>&1
+foreach ($line in @($buildServerOutput)) {
+    Write-Host $line
+}
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning 'dotnet build-server shutdown failed; continuing with build output cleanup.'
+}
 
 Write-Host 'Cleaning build output...' -ForegroundColor DarkGray
 Remove-DirectoryIfExists -Path $publishRoot
@@ -134,6 +183,7 @@ else {
 }
 
 Write-Host "Version: $version"
+Write-Host "Publish workspace: $publishRoot"
 Write-Host "Logs: $logsRoot"
 Write-Host "Starting $($tasks.Count) build targets with MaxParallel=$MaxParallel..."
 
@@ -144,9 +194,10 @@ foreach ($task in $tasks) {
 
 $running = New-Object System.Collections.Generic.List[object]
 $completed = New-Object System.Collections.Generic.List[object]
+$stopScheduling = $false
 
 while ($pending.Count -gt 0 -or $running.Count -gt 0) {
-    while ($pending.Count -gt 0 -and $running.Count -lt $MaxParallel) {
+    while (-not $stopScheduling -and $pending.Count -gt 0 -and $running.Count -lt $MaxParallel) {
         $task = $pending.Dequeue()
         $targetName = New-TargetName -Task $task
         $logPath = Join-Path $logsRoot "$targetName.log"
@@ -159,7 +210,9 @@ while ($pending.Count -gt 0 -or $running.Count -gt 0) {
             -Configuration $Configuration `
             -AppId $AppId `
             -Version $version `
-            -LogPath $logPath
+            -LogPath $logPath `
+            -PublishRoot $publishRoot `
+            -DistRoot $distRoot
 
         $running.Add([pscustomobject]@{
             Task = $task
@@ -177,6 +230,8 @@ while ($pending.Count -gt 0 -or $running.Count -gt 0) {
         }
         else {
             Write-Host "Failed $($item.TargetName) (ExitCode=$exitCode). Log: $($item.LogPath)" -ForegroundColor Red
+            $stopScheduling = $true
+            $pending.Clear()
         }
 
         $completed.Add([pscustomobject]@{
@@ -186,6 +241,24 @@ while ($pending.Count -gt 0 -or $running.Count -gt 0) {
         }) | Out-Null
 
         $running.Remove($item) | Out-Null
+    }
+
+    if ($stopScheduling -and $running.Count -gt 0) {
+        foreach ($item in @($running)) {
+            if (-not $item.Process.HasExited) {
+                Write-Host "Stopping $($item.TargetName) after build failure. Log: $($item.LogPath)" -ForegroundColor Yellow
+                Stop-ProcessTree -ProcessId $item.Process.Id
+                $item.Process.WaitForExit()
+            }
+
+            $completed.Add([pscustomobject]@{
+                TargetName = $item.TargetName
+                ExitCode = -1
+                LogPath = $item.LogPath
+            }) | Out-Null
+
+            $running.Remove($item) | Out-Null
+        }
     }
 
     if ($running.Count -gt 0 -or $pending.Count -gt 0) {

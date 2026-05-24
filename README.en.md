@@ -8,7 +8,7 @@
   <span align="center">Context Menu Manager Plus is a powerful utility that help you manage you context menu on Windows and avoid third party to add rubish to your context menu.</span>
 </p>
 
-[中文版文档](./README.md)
+[中文版 README](./README.md)
 
 > [!WARNING]
 > A significant portion of this project was generated with AI assistance and then continuously revised, tested, and reshaped by hand. It may still contain gaps, edge-case regressions, or behavior that does not fully match expectations.
@@ -16,121 +16,370 @@
 
 ## Overview
 
-`Context Menu Manager Plus` is a Windows context menu management tool focused on an approval-first workflow rather than simple toggling.
+`Context Menu Manager Plus` is a Windows context menu management tool.
 
-The project is built around:
+It is not just a simple enable/disable switcher. It is designed around the following goals:
+
+- manage classic Windows context menu items
+- manage Windows 11 modern context menu items
+- detect new context menu entries added by third-party software
+- intercept new items first, then let the user review them
+- protect context-menu-related registry locations from unwanted modifications
+- provide global search, page-level filtering, and runtime menu analysis
+- keep the app usable through a coordinated frontend / backend service / tray host model
+
+In short, the goal is:
+
+> Turn the Windows context menu from “software can add whatever it wants” into “the user decides what is allowed to stay”.
+
+The project is built with:
 
 - `.NET 10`
 - `WPF`
 - `WPF-UI`
 - `Named Pipe IPC`
 - `Windows Service`
-- a native Win32 tray host
+- native Win32 tray host
+- isolated ProbeHost helper process
 
-## Core Idea
+---
 
-### Intercept first, review second
+## Core Features
 
-This project is intentionally designed to do more than just enable or disable context menu items:
+### Intercept First, Review Second
 
-- when a new menu item is detected, it is intercepted first
-- it is forced into a disabled state
-- it is then placed into a review queue
-- the user explicitly decides what to do next
+This is the most important design goal of the project.
 
-The available review actions are:
+When a new context menu item is detected, the app tries not to let it silently become active. Instead, it follows this workflow as much as possible:
 
-- `Allow`
-- `Keep disabled`
-- `Remove`
+1. the backend service detects a new menu item
+2. the item is marked as pending review
+3. the item is intercepted or disabled first
+4. the item appears on the approvals page
+5. the user manually decides what to do with it
 
-That “intercept -> review -> manually allow” pipeline is the main differentiator of this project.
+Available review actions include:
 
-### Backend-driven process model
+- `Allow`: allow and enable the item
+- `Keep disabled`: keep the item but leave it disabled
+- `Remove`: remove the item from the registry or from the review queue
 
-The project follows a backend-driven model:
+This approval-first workflow is the main difference between this project and ordinary context menu managers.
 
-- `ContextMenuManagerPlus.Service.exe`
-  - the real controller and runtime core
-- `ContextMenuManagerPlus.TrayHost.exe`
-  - a separate per-user tray surface
+---
+
+### Backend-Driven Multi-Process Model
+
+The project uses a backend-driven architecture.
+
+Main processes:
+
 - `ContextMenuManagerPlus.exe`
-  - an on-demand UI process only
+  - WPF frontend
+  - handles UI and user interaction
+  - exits when the window is closed
+- `ContextMenuManagerPlus.Service.exe`
+  - backend Windows Service
+  - handles scanning, state management, registry operations, approval logic, and IPC
+- `ContextMenuManagerPlus.TrayHost.exe`
+  - per-user tray host
+  - handles tray icon, notifications, tray menu, and launching the frontend
+- `ContextMenuMgr.ProbeHost.exe`
+  - isolated runtime analysis helper
+  - loads third-party Shell Extensions outside the main app
+  - a crash in ProbeHost should not take down the frontend or backend service
 
-The tray exists as a separate per-user surface, while the frontend remains a UI process.
+The frontend is not a resident background process. The tray is owned by a separate TrayHost process, while the backend service owns the core logic.
+
+---
+
+### Classic Menu And Windows 11 Modern Menu Support
+
+The project handles both major context menu systems:
+
+- classic context menus
+  - `shell`
+  - `shellex\ContextMenuHandlers`
+  - file, folder, directory background, desktop background, and other classic scenes
+- Windows 11 modern context menus
+  - Packaged COM
+  - AppX / MSIX related entries
+  - user-level block / restore behavior on the Windows 11 menu page
+
+Classic menus and Windows 11 modern menus are registered differently, so they are processed through separate internal paths.
+
+---
+
+### Global Search
+
+The title bar contains a global search box.
+
+This is not a page filter. It is a global search-and-jump tool.
+
+It supports searching by:
+
+- menu item title
+- command text
+- registry path
+- backend registry path
+- DLL / EXE file path
+- CLSID
+- Windows 11 package information and COM Server path
+
+Search results show:
+
+- the actual menu item icon when available
+- menu item title
+- enabled / disabled state
+- scene label or Windows 11 menu label
+- a jump hint
+
+Selecting a search result will:
+
+1. navigate to the corresponding page
+2. automatically fill the target page’s filter box with the selected item title
+3. make the target page show only or mostly that item
+
+Global search works from frontend in-memory data. It does not query the backend, registry, or file system on every keystroke.
+
+---
+
+### Multi-Field Page Filtering
+
+Page-level filter boxes also support multi-field search.
+
+Searchable fields include:
+
+- display name
+- key name
+- command text
+- registry path
+- backend registry path
+- Shell Extension CLSID
+- DLL / EXE file path
+- notes
+- Windows 11 package name, publisher, COM Server path, and related metadata
+
+Global search and page-level filtering try to share the same matching logic, so results feel consistent.
+
+---
+
+### Shell Extension Deep Analysis
+
+For Shell Extension / DLL-based menu items, the app provides a “Deep Analysis” feature.
+
+It attempts to load and probe the selected Shell Extension inside an isolated ProbeHost process, then tries to resolve the actual menu text inserted by that extension.
+
+Important limitations:
+
+- this is a best-effort feature
+- not every Shell Extension can be initialized in isolation
+- some extensions depend on Explorer’s full runtime environment
+- some entries only appear for specific file types, states, or user sessions
+- some entries are owner-drawn and may not expose normal text
+- failure to analyze an item is usually normal and does not mean enable/disable behavior is broken
+
+In other words, Deep Analysis failures usually do not need to be reported as bugs unless they crash the main app, break normal item management, or cause clearly incorrect behavior.
+
+---
+
+### ProbeHost Isolation
+
+The project does not directly load third-party Shell Extension DLLs inside the frontend or backend service.
+
+A Shell Extension is a third-party in-process COM component. It may:
+
+- crash
+- hang
+- access invalid memory
+- depend on Explorer internals
+- require a different process architecture
+
+To isolate that risk, the app uses a separate `ProbeHost` process for runtime analysis.
+
+ProbeHost rules:
+
+- starts only when the user clicks Deep Analysis
+- does not participate in normal scanning
+- does not write to the registry
+- does not execute menu commands
+- has a timeout
+- reports structured results or failures to the frontend
+
+Release packages may include multiple ProbeHost architectures:
+
+- `x86`
+- `x64`
+- `arm64`
+
+On Windows on ARM, the app chooses the helper based on the target DLL architecture, for example:
+
+- ARM64 Shell Extension → ARM64 ProbeHost
+- x64 Shell Extension → x64 ProbeHost
+- x86 Shell Extension → x86 ProbeHost
+
+---
+
+### Registry Protection Enhancements
+
+The Settings page includes context-menu-related registry protection switches.
+
+The goal is to reduce unwanted menu item creation or modification by third-party software.
+
+Important notes:
+
+- this feature changes registry permissions
+- some installers, driver installers, security software, archive tools, or cloud clients may fail to write context menu entries while protection is enabled
+- if you need to install software that adds context menu entries, you may need to temporarily disable the protection
+- if the app itself is blocked from editing a menu item by the protection, it will ask you to unlock the protection first
+
+This is an advanced feature. It is not recommended to enable it blindly if you do not understand the consequences.
+
+---
+
+### Special Menu Management
+
+The project also handles some special menus:
+
+- New menu
+- Send To
+- Win + X menu
+
+These areas behave differently from ordinary `shell` / `shellex` entries. Some operations involve user-level registry locations, ordering, hiding, restoring, or ACL-related state, so they are handled separately.
+
+---
 
 ## Features
 
-### Context menu management
+### Classic Context Menu Management
 
-- Browse context menu items by category
-  - File
-  - All Objects
-  - Folder
-  - Directory
-  - Directory Background
-  - Desktop Background
-  - Drive
-  - Library
-  - This PC
-  - Recycle Bin
-- Enable / disable items
-- Delete items
-- Undo delete
-- Permanently remove delete backups
-- Search and filter entries
-- Parse names, icons, command text, and CLSID metadata for many items
+Supported scenes include:
 
-### Review queue
+- File
+- All Objects
+- Folder
+- Directory
+- Directory Background
+- Desktop Background
+- Drive
+- Library
+- This PC
+- Recycle Bin
 
-- New items are placed into a review queue
-- Review actions:
-  - `Allow`
-  - `Keep disabled`
-  - `Remove`
-- Approval items can aggregate multiple category sources for the same logical item
-- New approval events are forwarded to the tray host, which shows a system notification
-- Clicking the notification launches the frontend and opens the approvals page
+Supported actions include:
 
-### External-change tracking
+- enable / disable menu items
+- delete menu items
+- undo delete
+- permanently remove delete backups
+- edit some display names
+- view command text
+- open registry location
+- open CLSID location
+- open file location
+- search and filter
+- parse icons, display names, command text, and CLSID metadata
 
-External-change tracking focuses on:
+---
 
-- externally added items
-- external enabled/disabled changes that happened while the guard was offline
+### Windows 11 Modern Context Menu Management
 
-### File-type and rules pages
+The app can scan and manage Windows 11 modern context menu entries.
 
-- File Types page
-  - Shortcuts
-  - UWP shortcuts
-  - Executables
-  - Custom extensions
-  - Perceived types
-  - Directory types
-  - Unknown types
-- Other Rules page
-  - Enhance Menu
-  - Detailed Edit
-  - Custom registry paths
+Features include:
 
-### Settings page
+- enumerate Windows 11 modern menu items
+- view package name, publisher, context types, COM Server path, and related information
+- enable / disable user-level Windows 11 modern menu entries
+- integrate with the approval workflow
+- page-level search and filtering
+- global search navigation
 
-- Language
-  - Follow system
+Windows 11 modern menu items use a different registration model from classic menus, so the app builds and manages their snapshots separately.
+
+---
+
+### Review Queue
+
+New menu items are placed into the approvals page.
+
+The approvals page supports:
+
+- Allow
+- Keep disabled
+- Remove
+- grouping multiple category sources for the same logical item
+
+When a new pending item is detected:
+
+1. backend broadcasts an event
+2. TrayHost shows a system notification
+3. the user clicks the notification
+4. the frontend is launched and navigates to the approvals page
+
+---
+
+### External Change Tracking
+
+The app tries to detect external changes, such as:
+
+- third-party software adding new menu items
+- enable/disable state changes while the guard was offline
+- registry state diverging from the local state store
+- known items being restored or deleted externally
+
+This is not intended to replace a full system audit mechanism, but it helps users notice when software modifies the context menu unexpectedly.
+
+---
+
+### File Type And Rules Pages
+
+The File Types page covers:
+
+- shortcuts
+- UWP shortcuts
+- executables
+- custom extensions
+- perceived types
+- directory types
+- unknown types
+
+The Other Rules page covers:
+
+- Enhance Menu
+- Detailed Edit
+- custom registry paths
+- other context-menu-related rules
+
+These pages are intended for more detailed and lower-level registry rules.
+
+---
+
+### Settings Page
+
+The Settings page provides:
+
+- language
+  - follow system
   - Simplified Chinese
   - English (United States)
-- Theme
-  - Follow system
-  - Light
-  - Dark
-- Log level
-- Start with Windows
-- Install / repair service
-- Uninstall service
-- Restart Explorer
-- Open logs / state / config folders
-- Registry protection enhancement switch
+- theme
+  - follow system
+  - light
+  - dark
+- log level
+- start with Windows
+- install / repair service
+- uninstall service
+- restart Explorer
+- open logs folder
+- open state folder
+- open config folder
+- registry protection enhancement switches
+
+Theme settings are loaded and applied during startup so the app opens directly in the selected appearance.
+
+---
 
 ## Architecture
 
@@ -139,105 +388,183 @@ External-change tracking focuses on:
 Project: `ContextMenuMgr.Backend`  
 Executable: `ContextMenuManagerPlus.Service.exe`
 
-Responsibilities:
+Backend Service is the main controller.
 
-- enumerate and monitor context-menu-related registry entries
-- store and merge persisted state
-- apply enable / disable / delete / restore / approval decisions
-- expose backend IPC
-- ensure the tray host exists when appropriate
+Responsibilities include:
 
-### 2. Tray Host
+- scanning and parsing context-menu-related registry entries
+- building classic menu and Windows 11 modern menu snapshots
+- saving and merging the local state store
+- applying enable / disable / delete / restore operations
+- applying approval decisions
+- performing registry operations that require elevated permissions
+- exposing Named Pipe IPC
+- broadcasting state changes and approval notifications
+- launching TrayHost for the active user session when appropriate
 
-Project: `ContextMenuMgr.TrayHost`  
-Executable: `ContextMenuManagerPlus.TrayHost.exe`
+---
 
-The tray host is intentionally thin:
-
-- tray icon
-- tray menu
-- system notifications
-- launching the frontend main window
-- opening the approvals UI
-- requesting backend shutdown
-
-The tray host uses a **native Win32 tray implementation**.
-
-### 3. Frontend
+### 2. Frontend
 
 Project: `ContextMenuMgr.Frontend`  
 Executable: `ContextMenuManagerPlus.exe`
 
-Responsibilities:
+Frontend is the WPF UI layer.
 
-- main UI
-- approvals UI
-- rules pages
-- settings UI
-- IPC with backend
-- control-pipe cooperation for frontend single-instance behavior
+Responsibilities include:
+
+- main window
+- category pages
+- approvals page
+- settings page
+- Windows 11 modern menu page
+- special menu pages
+- global search
+- page-level filtering
+- Deep Analysis result window
+- IPC with Backend
+- single-instance activation and page navigation through control pipe
 
 The frontend is UI-only:
 
 - closing the window exits the frontend process
-- no tray ownership
-- no background-resident frontend process
+- it does not own the tray
+- it does not directly host third-party Shell Extension analysis
 
-### 4. Shared Contracts
+---
+
+### 3. Tray Host
+
+Project: `ContextMenuMgr.TrayHost`  
+Executable: `ContextMenuManagerPlus.TrayHost.exe`
+
+TrayHost is a per-user tray process.
+
+Responsibilities include:
+
+- tray icon
+- tray menu
+- system notifications
+- opening the frontend main window
+- opening the approvals page
+- requesting backend shutdown
+- responding to localization refresh
+
+TrayHost uses a native Win32 tray implementation and does not require the frontend window to stay alive.
+
+---
+
+### 4. ProbeHost
+
+Project: `ContextMenuMgr.ProbeHost`  
+Executable: `ContextMenuMgr.ProbeHost.exe`
+
+ProbeHost is the isolated helper process for Deep Analysis.
+
+Responsibilities include:
+
+- receiving analysis requests from the frontend
+- initializing a Shell Extension against a sample target
+- attempting to call `IContextMenu.QueryContextMenu`
+- enumerating generated menu text
+- returning the result to the frontend
+- reporting structured errors on failure
+
+ProbeHost should not:
+
+- write to the registry
+- execute menu commands
+- remain resident in the background
+- participate in normal scanning
+- be loaded as a library by the backend service
+
+---
+
+### 5. Shared Contracts
 
 Project: `ContextMenuMgr.Contracts`
 
-Responsibilities:
+Responsibilities include:
 
 - IPC request / response models
-- notification kinds
-- tray host and frontend control commands
-- shared protocol constants
+- shared contracts between Frontend, Backend, TrayHost, and ProbeHost
+- notification types
+- control commands
+- enums and shared constants
 
-## IPC and Process Coordination
+---
 
-### Backend pipe
+## IPC And Process Coordination
 
-JSON-over-Named-Pipe is used for:
+### Backend Pipe
 
-- snapshot retrieval
-- item state updates
+The backend pipe uses JSON-over-Named-Pipe request / response messages for:
+
+- menu snapshot retrieval
+- menu item state changes
 - approval decisions
-- registry-protection settings
-- explicit tray-host startup requests
-- backend shutdown requests
+- registry protection settings
+- special menu management
+- asking backend to launch TrayHost
+- clean backend shutdown
 
-### Frontend control pipe
+---
 
-Used for:
+### Frontend Control Pipe
+
+The frontend control pipe is used for:
 
 - single-instance activation
 - showing the main window
+- navigating to a specific page
 - opening the approvals page
 - focusing a specific approval item
-- shutting down the frontend cleanly
+- clean frontend shutdown
 
-### Tray host control pipe
+---
 
-Used for:
+### TrayHost Control Pipe
 
-- tray host exit
-- tray localization reload
+The TrayHost control pipe is used for:
+
+- exiting TrayHost
+- refreshing tray localization text
+- responding to frontend or backend control requests
+
+---
+
+### ProbeHost Communication
+
+ProbeHost is started by the frontend on demand.
+
+It exchanges data through controlled request / result channels and is guarded by a timeout.  
+If ProbeHost crashes, times out, or returns invalid output, the frontend converts that into a user-readable failure state.
+
+---
 
 ## Main Registry Scopes
 
-The code primarily targets:
+The project primarily targets:
 
 - `HKEY_CLASSES_ROOT\*\shell`
 - `HKEY_CLASSES_ROOT\*\shellex\ContextMenuHandlers`
+- `HKEY_CLASSES_ROOT\AllFileSystemObjects\shell`
+- `HKEY_CLASSES_ROOT\AllFileSystemObjects\shellex\ContextMenuHandlers`
 - `HKEY_CLASSES_ROOT\Directory\shell`
 - `HKEY_CLASSES_ROOT\Directory\shellex\ContextMenuHandlers`
 - `HKEY_CLASSES_ROOT\Directory\Background\shell`
 - `HKEY_CLASSES_ROOT\Directory\Background\shellex\ContextMenuHandlers`
+- `HKEY_CLASSES_ROOT\Drive\shell`
+- `HKEY_CLASSES_ROOT\Drive\shellex\ContextMenuHandlers`
 - `CLSID`
 - `PackagedCom`
 - file-type, extension, perceived-type, and directory-type branches
 - user-level `HKCU/HKEY_USERS\<SID>\Software\Classes` ranges
+- user-level Windows 11 modern menu block lists
+
+Windows context menu registration is complex. Different software, menu types, and Windows versions may behave differently.
+
+---
 
 ## Repository Layout
 
@@ -249,145 +576,15 @@ ContextMenuMgr/
 ├─ ContextMenuMgr.Backend/         # Windows Service / backend core
 ├─ ContextMenuMgr.Contracts/       # Shared contracts
 ├─ ContextMenuMgr.Frontend/        # WPF frontend
+├─ ContextMenuMgr.ProbeHost/       # Deep Analysis helper process
 ├─ ContextMenuMgr.TrayHost/        # Per-user tray host
 ├─ Installer/                      # Inno Setup scripts and related files
+├─ Scripts/                        # Build script modules
 ├─ build.ps1                       # Main build script
 ├─ build.bat                       # Batch wrapper for build.ps1
 ├─ ContextMenuMgr.slnx             # Solution
-├─ README.md                       # Chinese primary README
+├─ README.md                       # Chinese README
 └─ README.en.md                    # English README
-```
-
-## Executables
-
-Public-facing executable names are:
-
-- Frontend: `ContextMenuManagerPlus.exe`
-- Backend service: `ContextMenuManagerPlus.Service.exe`
-- Tray host: `ContextMenuManagerPlus.TrayHost.exe`
-
-## Requirements
-
-- Windows 10 / 11
-- .NET SDK 10
-- PowerShell 5.1 or later
-- Inno Setup 6
-  - the repo prefers the bundled compiler under:
-    - `Installer\Inno Setup 6\ISCC.exe`
-
-## Local Development Build
-
-```powershell
-dotnet restore .\ContextMenuMgr.slnx --configfile .\NuGet.Config
-dotnet build .\ContextMenuMgr.slnx --no-restore
-```
-
-## Publish and Installer Build
-
-Run:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Configuration Release
-```
-
-### What `build.ps1` does
-
-The current script:
-
-1. restores the full solution
-2. publishes:
-   - Frontend
-   - Backend
-   - TrayHost
-3. generates installers for multiple architecture / distribution combinations
-
-The combinations are:
-
-- `win-x64`
-- `win-x86`
-- `win-arm64`
-- `self-contained`
-- `framework-dependent`
-
-Outputs:
-
-- publish output: `build\publish\`
-- installers: `build\dist\`
-- artifact manifest: `build\dist\artifacts.txt`
-
-## GitHub Actions
-
-The repository includes:
-
-- `.github/workflows/manual-release.yml`
-
-Workflow behavior:
-
-- supports manual dispatch
-- supports tag-based release flow
-- calls `build.ps1`
-- uploads build artifacts
-- creates a draft release
-- resolves release version/title from project version metadata
-
-## Runtime Data and Logs
-
-### Frontend
-
-- settings:
-  - `%LocalAppData%\ContextMenuMgr\frontend-settings.json`
-- logs:
-  - `%LocalAppData%\ContextMenuMgr\Logs\frontend-debug.log`
-  - `%LocalAppData%\ContextMenuMgr\Logs\frontend-crash.log`
-
-### Tray Host
-
-- log:
-  - `%LocalAppData%\ContextMenuMgr\Logs\trayhost.log`
-
-### Backend
-
-- log:
-  - `%ProgramData%\ContextMenuMgr\Logs\backend.log`
-- state store:
-  - `%ProgramData%\ContextMenuMgr\Data\context-menu-state.json`
-
-Note:
-
-- the public product name is `Context Menu Manager Plus`
-- the local data folder keeps the historical `ContextMenuMgr` name for compatibility
-
-## Runtime and Recovery Flow
-
-### Normal flow
-
-- the frontend starts and tries to connect to backend
-- once backend is reachable, the frontend can explicitly ask backend to ensure the tray host exists
-- backend then launches the tray host for the active user session
-
-### Approval notification flow
-
-- backend detects a new item
-- backend broadcasts a notification event
-- tray host receives it and shows a system notification
-- the user clicks the notification
-- tray host launches the frontend and opens the approvals page
-
-### Recovery expectations
-
-- if the backend/service exits unexpectedly:
-  - tray may disappear
-  - the frontend should remain usable
-- the user can go to Settings and run:
-  - install / repair service
-  to restore backend functionality
-
-## Notes
-
-- Some protected registry roots cannot have their ACL changed in ordinary ways; this is a Windows limitation, not necessarily an app bug
-- Security software may block delete, restore, or registry-write operations
-- Icon and display-name resolution is best-effort and cannot guarantee perfect coverage for every third-party extension
-- User-level items, packaged system items, and shell extensions do not all behave identically; logs are often more informative than the UI when diagnosing edge cases
 
 ## Reporting Issues
 

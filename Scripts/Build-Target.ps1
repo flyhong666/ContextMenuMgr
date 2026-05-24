@@ -20,7 +20,11 @@ param(
 
     [string] $Version = '',
 
-    [string] $LogPath = ''
+    [string] $LogPath = '',
+
+    [string] $PublishRoot = '',
+
+    [string] $DistRoot = ''
 )
 
 Set-StrictMode -Version Latest
@@ -55,8 +59,25 @@ try {
     $probeHostProject = Join-Path $repoRoot 'ContextMenuMgr.ProbeHost\ContextMenuMgr.ProbeHost.csproj'
     $nuGetConfig = Join-Path $repoRoot 'NuGet.Config'
     $installerIss = Join-Path $repoRoot 'Installer\build_Installer.iss'
-    $publishRoot = Join-Path $repoRoot 'build\publish'
-    $distRoot = Join-Path $repoRoot 'build\dist'
+    if ([string]::IsNullOrWhiteSpace($PublishRoot)) {
+        $publishRoot = Join-Path $repoRoot 'build\publish'
+    }
+    elseif ([System.IO.Path]::IsPathRooted($PublishRoot)) {
+        $publishRoot = $PublishRoot
+    }
+    else {
+        $publishRoot = Join-Path $repoRoot $PublishRoot
+    }
+
+    if ([string]::IsNullOrWhiteSpace($DistRoot)) {
+        $distRoot = Join-Path $repoRoot 'build\dist'
+    }
+    elseif ([System.IO.Path]::IsPathRooted($DistRoot)) {
+        $distRoot = $DistRoot
+    }
+    else {
+        $distRoot = Join-Path $repoRoot $DistRoot
+    }
     $artifactProductName = 'ContextMenuMgrPlus'
 
     Ensure-FileExists -Path $solutionPath -Description 'Solution'

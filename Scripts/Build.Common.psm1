@@ -105,6 +105,23 @@ function Ensure-FileExists {
     }
 }
 
+function Reset-DirectoryAttributes {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            try {
+                $_.Attributes = [System.IO.FileAttributes]::Normal
+            }
+            catch {
+            }
+        }
+}
+
 function Remove-DirectoryIfExists {
     param([Parameter(Mandatory)] [string] $Path)
 
@@ -112,36 +129,63 @@ function Remove-DirectoryIfExists {
         return
     }
 
-    try {
-        [System.IO.Directory]::Delete((Resolve-Path -LiteralPath $Path).Path, $true)
-        return
-    }
-    catch {
+    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
+    $lastError = $null
+
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
         try {
-            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            [System.IO.Directory]::Delete($resolvedPath, $true)
             return
         }
         catch {
+            $lastError = $_
+            Reset-DirectoryAttributes -Path $resolvedPath
+            Start-Sleep -Milliseconds (200 * $attempt)
         }
+    }
 
-        Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
-            ForEach-Object {
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $resolvedPath -Recurse -Force -Confirm:$false -ErrorAction Stop
+            return
+        }
+        catch {
+            $lastError = $_
+            Reset-DirectoryAttributes -Path $resolvedPath
+            Start-Sleep -Milliseconds (200 * $attempt)
+        }
+    }
+
+    Get-ChildItem -LiteralPath $resolvedPath -Recurse -Force -File -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
                 try {
                     $_.Attributes = [System.IO.FileAttributes]::Normal
+                    Remove-Item -LiteralPath $_.FullName -Force -Confirm:$false -ErrorAction Stop
+                    return
                 }
                 catch {
+                    $lastError = $_
+                    Start-Sleep -Milliseconds (200 * $attempt)
                 }
-
-                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
             }
+        }
 
-        Get-ChildItem -LiteralPath $Path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
-            ForEach-Object {
-                Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
-            }
+    Get-ChildItem -LiteralPath $resolvedPath -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending |
+        ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+        }
 
-        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+    try {
+        Remove-Item -LiteralPath $resolvedPath -Recurse -Force -Confirm:$false -ErrorAction Stop
+    }
+    catch {
+        $lastError = $_
+    }
+
+    if (Test-Path -LiteralPath $resolvedPath) {
+        throw "Unable to remove directory '$resolvedPath'. Close processes that may be using files under it and retry. Last error: $lastError"
     }
 }
 
@@ -376,6 +420,15 @@ function Publish-Application {
         -NuGetConfig $NuGetConfig `
         -ArtifactsPath $taskArtifactsRoot
 
+    # Frontend framework-dependent publish invokes ProbeHost publish for all architectures with --no-restore.
+    $frontendProbeHostRestoreArguments = $null
+    if ($distributionOptions.SelfContained -ne "true") {
+        $frontendProbeHostRestoreArguments = New-DotNetRestoreArguments `
+            -ProjectPath $ProbeHostProject `
+            -NuGetConfig $NuGetConfig `
+            -ArtifactsPath $taskArtifactsRoot
+    }
+
     $frontendPublishArguments = New-DotNetPublishArguments `
         -ProjectPath $FrontendProject `
         -Configuration $Configuration `
@@ -416,6 +469,9 @@ function Publish-Application {
         -InformationalVersion $Version
 
     Invoke-External -FilePath "dotnet" -Arguments $frontendRestoreArguments -ErrorMessage "dotnet restore failed for frontend ($platformLabel, $DistributionMode)"
+    if ($null -ne $frontendProbeHostRestoreArguments) {
+        Invoke-External -FilePath "dotnet" -Arguments $frontendProbeHostRestoreArguments -ErrorMessage "dotnet restore failed for frontend ProbeHost architecture assets ($platformLabel, $DistributionMode)"
+    }
     Invoke-External -FilePath "dotnet" -Arguments $frontendPublishArguments -ErrorMessage "dotnet publish failed for frontend ($platformLabel, $DistributionMode)"
 
     Invoke-External -FilePath "dotnet" -Arguments $backendRestoreArguments -ErrorMessage "dotnet restore failed for backend ($platformLabel, $DistributionMode)"
@@ -447,7 +503,7 @@ function Publish-Application {
             "--artifacts-path", $taskArtifactsRoot,
             "-p:BaseOutputPath=$baseOutputPath",
             "-p:UseAppHost=true",
-            "-p:PublishSingleFile=true",
+            "-p:PublishSingleFile=false",
             "-p:PublishTrimmed=false",
             "-p:InformationalVersion=$Version",
             "-o", $probeHostOutput
