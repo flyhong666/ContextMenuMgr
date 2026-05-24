@@ -585,6 +585,251 @@ ContextMenuMgr/
 ├─ ContextMenuMgr.slnx             # Solution
 ├─ README.md                       # Chinese README
 └─ README.en.md                    # English README
+````
+
+---
+
+## Executables And Artifacts
+
+Public-facing executables:
+
+* Frontend: `ContextMenuManagerPlus.exe`
+* Backend service: `ContextMenuManagerPlus.Service.exe`
+* Tray host: `ContextMenuManagerPlus.TrayHost.exe`
+
+Internal helper executable:
+
+* ProbeHost: `ContextMenuMgr.ProbeHost.exe`
+
+ProbeHost is usually placed under:
+
+```text
+ProbeHost/
+├─ x86/
+├─ x64/
+└─ arm64/
+```
+
+Different release packages include different ProbeHost architectures as needed.
+
+---
+
+## Requirements
+
+* Windows 10 / 11
+* .NET SDK 10
+* PowerShell 5.1 or later
+* Inno Setup 6
+
+  * the repo prefers the bundled compiler:
+
+    * `Installer\Inno Setup 6\ISCC.exe`
+
+---
+
+## Local Development Build
+
+```powershell
+dotnet restore .\ContextMenuMgr.slnx --configfile .\NuGet.Config
+dotnet build .\ContextMenuMgr.slnx --no-restore
+```
+
+If you only work on the frontend, you can also build the frontend project:
+
+```powershell
+dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj
+```
+
+The frontend build attempts to copy the backend, TrayHost, ProbeHost, and other required runtime artifacts for local debugging.
+
+---
+
+## Publish And Installer Build
+
+Run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Configuration Release
+```
+
+### What `build.ps1` does
+
+The build script:
+
+1. restores the solution
+2. publishes:
+
+   * Frontend
+   * Backend
+   * TrayHost
+   * ProbeHost
+3. builds artifacts for multiple architectures:
+
+   * `win-x64`
+   * `win-x86`
+   * `win-arm64`
+4. builds multiple distribution modes:
+
+   * `self-contained`
+   * `framework-dependent`
+5. invokes Inno Setup to generate installers
+
+ProbeHost is included by target package:
+
+* `win-x86`
+
+  * `x86`
+* `win-x64`
+
+  * `x64`
+  * `x86`
+* `win-arm64`
+
+  * `arm64`
+  * `x64`
+  * `x86`
+
+For release packages, ProbeHost is generally published as self-contained single-file helpers to avoid failures caused by missing .NET runtimes for a specific architecture.
+
+Default output directories:
+
+* publish output: `build\publish\`
+* installers: `build\dist\`
+
+`build\dist\` also contains:
+
+* `artifacts.txt`
+
+which lists the generated installers.
+
+---
+
+## GitHub Actions
+
+The repository includes:
+
+* `.github/workflows/manual-release.yml`
+
+Workflow behavior:
+
+* supports manual dispatch
+* supports tag-based releases
+* calls `build.ps1`
+* uploads build artifacts
+* creates a draft release
+* resolves release version and title from project version metadata
+
+---
+
+## Runtime Data, Logs, And State Store
+
+### Frontend
+
+Settings:
+
+```text
+%LocalAppData%\ContextMenuMgr\frontend-settings.json
+```
+
+Logs:
+
+```text
+%LocalAppData%\ContextMenuMgr\Logs\frontend-debug.log
+%LocalAppData%\ContextMenuMgr\Logs\frontend-crash.log
+```
+
+---
+
+### TrayHost
+
+Log:
+
+```text
+%LocalAppData%\ContextMenuMgr\Logs\trayhost.log
+```
+
+---
+
+### Backend
+
+Log:
+
+```text
+%ProgramData%\ContextMenuMgr\Logs\backend.log
+```
+
+State store:
+
+```text
+%ProgramData%\ContextMenuMgr\Data\context-menu-state.json
+```
+
+Notes:
+
+* the public product name is `Context Menu Manager Plus`
+* the local data folder keeps the historical `ContextMenuMgr` name for compatibility
+
+---
+
+## Runtime And Recovery Notes
+
+### Normal Flow
+
+1. the frontend starts
+2. the frontend connects to Backend Service
+3. the frontend asks backend to ensure TrayHost exists
+4. backend launches TrayHost for the current user session
+5. the frontend loads menu snapshots and displays them
+
+---
+
+### Approval Notification Flow
+
+1. Backend detects a new menu item
+2. Backend adds it to the approval queue
+3. Backend broadcasts a notification
+4. TrayHost receives the event and shows a system notification
+5. the user clicks the notification
+6. TrayHost launches Frontend
+7. Frontend opens the approvals page
+
+---
+
+### Recovery
+
+If Backend Service exits unexpectedly:
+
+* TrayHost may lose part of its functionality
+* Frontend should not be forcibly closed
+* users can open Settings and run:
+
+  * Install / repair service
+
+If registry protection blocks an operation:
+
+* disable the related protection in Settings first
+* finish editing or installing software
+* enable protection again if needed
+
+If ProbeHost Deep Analysis fails:
+
+* normal enable/disable behavior is usually not affected
+* diagnostics and logs may help
+* do not report it as a bug solely because menu text cannot be resolved
+
+---
+
+## Notes
+
+* This project modifies the registry. Use it carefully.
+* Delete, disable, ACL protection, and restore operations may be affected by system permissions, security software, or Windows protection mechanisms.
+* Some protected registry roots cannot have their ACL changed in ordinary ways. This is a Windows limitation.
+* Security software may block delete, restore, registry-write, or Shell Extension probing operations.
+* Icon, display-name, command-text, and CLSID metadata resolution are best-effort and cannot cover every third-party item perfectly.
+* Shell Extension Deep Analysis is best-effort. Failure is often expected.
+* User-level items, machine-level items, PackagedCom entries, ShellEx entries, and CLSID-based entries do not all behave the same way.
+* Enabling registry protection may prevent some installers or driver installers from writing context-menu-related entries.
+* Logs are usually more useful than UI messages when diagnosing edge cases.
 
 ## Reporting Issues
 
