@@ -100,6 +100,7 @@
                 <ui:Button
                     Click="CloseButton_Click"
                     Icon="{ui:SymbolIcon Symbol=Dismiss24}"
+                    MouseOverBackground="#C42B1C"
                     Style="{StaticResource ChromeTitleBarButton}" />
             </StackPanel>
         </Grid>
@@ -176,7 +177,7 @@
         <Grid Grid.Row="3" Margin="5,0,5,5">
             <ui:NavigationView
                 x:Name="RootNavigation"
-                IsBackButtonVisible="Collapsed"
+                IsBackButtonVisible="Auto"
                 IsPaneOpen="True"
                 IsPaneToggleVisible="False"
                 OpenPaneLength="257"
