@@ -2,6 +2,7 @@
     x:Class="ContextMenuMgr.Frontend.Views.CategoryPageView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:ContextMenuMgr.Frontend.Behaviors"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}">
@@ -250,65 +251,84 @@
                                     Visibility="{Binding HasActionFlyout, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <ui:DropDownButton.Flyout>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem Header="{Binding OtherAttributesTitle}" Visibility="{Binding HasOtherAttributesSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <MenuItem
+                                                Header="{Binding OtherAttributesTitle}"
+                                                behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
+                                                Visibility="{Binding HasOtherAttributesSection, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <MenuItem
                                                     Header="{Binding OnlyWithShiftLabel}"
                                                     IsCheckable="True"
                                                     IsChecked="{Binding OnlyWithShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}" />
+                                                    IsEnabled="{Binding CanEditShellAttributes}"
+                                                    StaysOpenOnClick="True" />
                                                 <MenuItem
                                                     Header="{Binding OnlyInExplorerLabel}"
                                                     IsCheckable="True"
                                                     IsChecked="{Binding OnlyInExplorer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}" />
+                                                    IsEnabled="{Binding CanEditShellAttributes}"
+                                                    StaysOpenOnClick="True" />
                                                 <MenuItem
                                                     Header="{Binding NoWorkingDirectoryLabel}"
                                                     IsCheckable="True"
                                                     IsChecked="{Binding NoWorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}" />
+                                                    IsEnabled="{Binding CanEditShellAttributes}"
+                                                    StaysOpenOnClick="True" />
                                                 <MenuItem
                                                     Header="{Binding NeverDefaultLabel}"
                                                     IsCheckable="True"
                                                     IsChecked="{Binding NeverDefault, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}" />
+                                                    IsEnabled="{Binding CanEditShellAttributes}"
+                                                    StaysOpenOnClick="True" />
                                                 <MenuItem
                                                     Header="{Binding ShowAsDisabledIfHiddenLabel}"
                                                     IsCheckable="True"
                                                     IsChecked="{Binding ShowAsDisabledIfHidden, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}" />
+                                                    IsEnabled="{Binding CanEditShellAttributes}"
+                                                    StaysOpenOnClick="True" />
                                             </MenuItem>
-                                            <MenuItem Header="{Binding DetailsTitle}" Visibility="{Binding HasDetailsActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <MenuItem
+                                                Header="{Binding DetailsTitle}"
+                                                behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
+                                                Visibility="{Binding HasDetailsActions, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                 <MenuItem
                                                     Command="{Binding ChangeTextCommand}"
                                                     Header="{Binding DetailsChangeTextLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding CanEditText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding SearchOnlineCommand}"
                                                     Header="{Binding DetailsSearchOnline}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding CanSearchOnline, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding ShowCommandTextCommand}"
                                                     Header="{Binding DetailsCommandTextLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding HasCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding OpenFilePropertiesCommand}"
                                                     Header="{Binding DetailsFilePropertiesLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding HasFileLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding OpenFileLocationCommand}"
                                                     Header="{Binding DetailsFileLocationLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding HasFileLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding OpenRegistryLocationCommand}"
                                                     Header="{Binding DetailsRegistryLocationLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding HasRegistryLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding ExportRegistryCommand}"
                                                     Header="{Binding DetailsExportRegistryLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding HasRegistryLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <MenuItem
                                                     Command="{Binding OpenClsidLocationCommand}"
                                                     Header="{Binding DetailsClsidLocationLabel}"
+                                                    StaysOpenOnClick="True"
                                                     Visibility="{Binding HasClsidLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             </MenuItem>
                                         </ContextMenu>
