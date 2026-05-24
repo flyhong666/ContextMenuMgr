@@ -29,11 +29,21 @@ public partial class FileTypesPageView : System.Windows.Controls.UserControl
         {
             newVm.PropertyChanged += OnViewModelPropertyChanged;
         }
+
+        ApplySelectedTabIndex();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == "SelectedTabIndex" && DataContext is ViewModels.FileTypesPageViewModel vm)
+        if (e.PropertyName == "SelectedTabIndex")
+        {
+            ApplySelectedTabIndex();
+        }
+    }
+
+    private void ApplySelectedTabIndex()
+    {
+        if (DataContext is ViewModels.FileTypesPageViewModel vm && vm.SelectedTabIndex >= 0)
         {
             MainTabControl.SelectedIndex = vm.SelectedTabIndex;
         }

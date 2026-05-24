@@ -87,6 +87,8 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public string FileTypesPageTitle => _localization.Translate("FileTypesPageTitle");
 
+    public string MenuAnalysisTitle => _localization.Translate("MenuAnalysisTitle");
+
     public string ShellNewPageTitle => _localization.Translate("ShellNewPageTitle");
 
     public string SendToPageTitle => _localization.Translate("SendToPageTitle");
@@ -204,6 +206,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ComputerCategoryName));
         OnPropertyChanged(nameof(RecycleBinCategoryName));
         OnPropertyChanged(nameof(FileTypesPageTitle));
+        OnPropertyChanged(nameof(MenuAnalysisTitle));
         OnPropertyChanged(nameof(ShellNewPageTitle));
         OnPropertyChanged(nameof(SendToPageTitle));
         OnPropertyChanged(nameof(WinXPageTitle));

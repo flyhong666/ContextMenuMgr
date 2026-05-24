@@ -163,6 +163,19 @@ public sealed class FileTypesPage : NavigationPageHost<FileTypesPageView>
 }
 
 /// <summary>
+/// Represents the file type menu analysis page.
+/// </summary>
+public sealed class FileTypeMenuAnalysisPage : NavigationPageHost<FileTypeMenuAnalysisPageView>
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileTypeMenuAnalysisPage"/> class.
+    /// </summary>
+    public FileTypeMenuAnalysisPage(FileTypeMenuAnalysisPageViewModel viewModel) : base(viewModel)
+    {
+    }
+}
+
+/// <summary>
 /// Represents the shell new page.
 /// </summary>
 public sealed class ShellNewPage : NavigationPageHost<SpecialMenuPageView>

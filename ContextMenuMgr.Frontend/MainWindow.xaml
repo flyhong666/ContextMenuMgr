@@ -236,6 +236,10 @@
                                 Icon="{ui:SymbolIcon Symbol=DocumentText24}"
                                 TargetPageType="{x:Type pages:FileTypesPage}" />
                             <ui:NavigationViewItem
+                                Content="{Binding MenuAnalysisTitle}"
+                                Icon="{ui:SymbolIcon Symbol=Search24}"
+                                TargetPageType="{x:Type pages:FileTypeMenuAnalysisPage}" />
+                            <ui:NavigationViewItem
                                 Content="{Binding ShellNewPageTitle}"
                                 Icon="{ui:SymbolIcon Symbol=DocumentAdd24}"
                                 TargetPageType="{x:Type pages:ShellNewPage}" />

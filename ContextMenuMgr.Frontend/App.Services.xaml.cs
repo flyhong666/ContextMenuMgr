@@ -58,6 +58,7 @@ public partial class App
         services.AddSingleton<ComputerContextMenuPageViewModel>();
         services.AddSingleton<RecycleBinContextMenuPageViewModel>();
         services.AddSingleton<FileTypesPageViewModel>();
+        services.AddSingleton<FileTypeMenuAnalysisPageViewModel>();
         services.AddSingleton<ShellNewPageViewModel>();
         services.AddSingleton<SendToPageViewModel>();
         services.AddSingleton<WinXPageViewModel>();
@@ -76,6 +77,7 @@ public partial class App
         services.AddSingleton<ComputerContextMenuPage>();
         services.AddSingleton<RecycleBinContextMenuPage>();
         services.AddSingleton<FileTypesPage>();
+        services.AddSingleton<FileTypeMenuAnalysisPage>();
         services.AddSingleton<ShellNewPage>();
         services.AddSingleton<SendToPage>();
         services.AddSingleton<WinXPage>();
