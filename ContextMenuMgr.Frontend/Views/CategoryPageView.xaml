@@ -134,6 +134,14 @@
                                                     </ui:TextBlock.Style>
                                                 </ui:TextBlock>
                                             </Border>
+                                            <ui:Button
+                                                Margin="6,0,0,0"
+                                                Padding="8,2"
+                                                Appearance="Secondary"
+                                                Command="{Binding DeepAnalyzeMenuItemCommand}"
+                                                Content="{Binding DeepAnalyzeMenuItemText}"
+                                                ToolTip="{Binding DeepAnalyzeMenuItemTooltip}"
+                                                Visibility="{Binding CanDeepAnalyzeMenuItem, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             <Border
                                                 Margin="6,0,0,0"
                                                 Padding="8,2"
@@ -173,6 +181,14 @@
                                     FontSize="11"
                                     Opacity="0.72"
                                     Text="{Binding RegistryPath}" />
+                                <ui:TextBlock
+                                    Margin="0,6,0,0"
+                                    FontFamily="Consolas"
+                                    FontSize="11"
+                                    Opacity="0.72"
+                                    Text="{Binding InlineCommandText}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding ShowInlineCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <ui:TextBlock
                                     Margin="0,8,0,0"
                                     Opacity="0.78"

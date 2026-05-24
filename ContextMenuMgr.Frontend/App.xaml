@@ -14,19 +14,17 @@
                 <ui:ControlsDictionary/>
             </ResourceDictionary.MergedDictionaries>
 
-            <Color x:Key="ContextMenuMgrPrimaryButtonForegroundColor">#FFFFFFFF</Color>
-
             <SolidColorBrush
                 x:Key="AccentButtonForeground"
-                Color="{StaticResource ContextMenuMgrPrimaryButtonForegroundColor}"/>
+                Color="{DynamicResource TextOnAccentFillColorPrimary}"/>
 
             <SolidColorBrush
                 x:Key="AccentButtonForegroundPointerOver"
-                Color="{StaticResource ContextMenuMgrPrimaryButtonForegroundColor}"/>
+                Color="{DynamicResource TextOnAccentFillColorPrimary}"/>
 
             <SolidColorBrush
                 x:Key="AccentButtonForegroundPressed"
-                Color="{StaticResource ContextMenuMgrPrimaryButtonForegroundColor}"/>
+                Color="{DynamicResource TextOnAccentFillColorPrimary}"/>
 
             <markup:XmlLanguage x:Key="CurrentLanguage">en-US</markup:XmlLanguage>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>

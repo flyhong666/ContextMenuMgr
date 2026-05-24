@@ -55,6 +55,14 @@ public sealed class FileLogger
             return;
         }
 
+        await WriteLineAsync(message, cancellationToken);
+    }
+
+    public Task LogOperationAsync(string message, CancellationToken cancellationToken = default)
+        => WriteLineAsync(message, cancellationToken);
+
+    private async Task WriteLineAsync(string message, CancellationToken cancellationToken = default)
+    {
         var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}";
 
         await _writeLock.WaitAsync(cancellationToken);

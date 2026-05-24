@@ -692,6 +692,177 @@
   <data name="DetailsCommandText" xml:space="preserve">
     <value>命令文字</value>
   </data>
+  <data name="InlineCommandTextFormat" xml:space="preserve">
+    <value>命令：{0}</value>
+  </data>
+  <data name="DeepAnalyzeMenuItemText" xml:space="preserve">
+    <value>深入分析</value>
+  </data>
+  <data name="DeepAnalyzeMenuItemTooltip" xml:space="preserve">
+    <value>嘗試載入並探測此 Shell Extension，解析它實際插入的選單文字。</value>
+  </data>
+  <data name="DeepAnalyzeResultTitle" xml:space="preserve">
+    <value>深入分析結果</value>
+  </data>
+  <data name="DeepAnalyzeRunningText" xml:space="preserve">
+    <value>正在解析實際選單文字……</value>
+  </data>
+  <data name="DeepAnalyzeFailedText" xml:space="preserve">
+    <value>無法解析實際選單文字。</value>
+  </data>
+  <data name="DeepAnalyzeProtocolFailedText" xml:space="preserve">
+    <value>分析行程輸出格式異常，無法讀取解析結果。</value>
+  </data>
+  <data name="DeepAnalyzeDisclaimer" xml:space="preserve">
+    <value>這是執行階段診斷結果，可能會因選取檔案、使用者工作階段和擴充本身行為而與 Explorer 實際選單略有差異。部分 Shell Extension 可能不會公開文字，擁有者繪製項目可能沒有文字，探測也可能因範例目標而失敗。</value>
+  </data>
+  <data name="DeepAnalyzeTimeoutText" xml:space="preserve">
+    <value>分析逾時。此 Shell Extension 可能回應較慢或無回應。</value>
+  </data>
+  <data name="DeepAnalyzeNativeAccessViolationText" xml:space="preserve">
+    <value>分析輔助行程在建立 Shell 右鍵選單時崩潰。所選 Shell Extension 或此範例內容中載入的其他擴充可能與探測環境不相容。目前輔助行程會探測範例目標的整個右鍵選單。</value>
+  </data>
+  <data name="DeepAnalyzeStackBufferOverrunText" xml:space="preserve">
+    <value>分析輔助行程偵測到原生堆疊緩衝區溢位後停止。所選 Shell Extension 或此範例內容中載入的其他擴充可能與探測環境不相容。</value>
+  </data>
+  <data name="DeepAnalyzeNativeCrashText" xml:space="preserve">
+    <value>分析輔助行程在傳回結果前崩潰。所選 Shell Extension 或此範例內容中載入的其他擴充可能與探測環境不相容。</value>
+  </data>
+  <data name="DeepAnalyzeManagedUnhandledExceptionText" xml:space="preserve">
+    <value>解析輔助行程發生未處理的受控例外狀況後停止。</value>
+  </data>
+  <data name="DeepAnalyzeProbeHostDependencyMissingText" xml:space="preserve">
+    <value>解析輔助行程缺少執行階段相依性，無法啟動。請重新建置或安裝完整套件。</value>
+  </data>
+  <data name="DeepAnalyzeDisplayNameLabel" xml:space="preserve">
+    <value>顯示名稱：</value>
+  </data>
+  <data name="DeepAnalyzeEntryKindLabel" xml:space="preserve">
+    <value>項目類型：</value>
+  </data>
+  <data name="DeepAnalyzeHandlerClsidLabel" xml:space="preserve">
+    <value>處理常式 CLSID：</value>
+  </data>
+  <data name="DeepAnalyzeHandlerFilePathLabel" xml:space="preserve">
+    <value>處理常式檔案路徑：</value>
+  </data>
+  <data name="DeepAnalyzeRegistryPathLabel" xml:space="preserve">
+    <value>登錄路徑：</value>
+  </data>
+  <data name="DeepAnalyzeCategoryLabel" xml:space="preserve">
+    <value>分類：</value>
+  </data>
+  <data name="DeepAnalyzeNoItemsText" xml:space="preserve">
+    <value>未傳回選單文字。</value>
+  </data>
+  <data name="DeepAnalyzeItemsFoundFormat" xml:space="preserve">
+    <value>已解析 {0} 個選單項目。</value>
+  </data>
+  <data name="DeepAnalyzeSamplePathFormat" xml:space="preserve">
+    <value>範例目標：{0}</value>
+  </data>
+  <data name="DeepAnalyzeArchitectureFormat" xml:space="preserve">
+    <value>ProbeHost 架構：{0}；系統架構：{1}；64 位元行程：{2}</value>
+  </data>
+  <data name="DeepAnalyzeHandlerFileExistsFormat" xml:space="preserve">
+    <value>處理常式檔案存在：{0}</value>
+  </data>
+  <data name="DeepAnalyzeHandlerMachineTypeFormat" xml:space="preserve">
+    <value>處理常式架構：{0}；相容性：{1}</value>
+  </data>
+  <data name="DeepAnalyzeWholeContextMenuButton" xml:space="preserve">
+    <value>查看完整選單探測結果</value>
+  </data>
+  <data name="DeepAnalyzeWholeContextMenuWarning" xml:space="preserve">
+    <value>以下結果來自完整右鍵選單，不一定都屬於目前選單項目。</value>
+  </data>
+  <data name="DeepAnalyzeSpecificHandlerModeText" xml:space="preserve">
+    <value>探測模式：單一處理常式。初始化成功時，下列項目來自所選處理常式。</value>
+  </data>
+  <data name="DeepAnalyzeSeparatorText" xml:space="preserve">
+    <value>（分隔符）</value>
+  </data>
+  <data name="DeepAnalyzeNoTextItem" xml:space="preserve">
+    <value>（無文字）</value>
+  </data>
+  <data name="DeepAnalysisWindowTitle" xml:space="preserve">
+    <value>深入分析結果</value>
+  </data>
+  <data name="DeepAnalysisRunning" xml:space="preserve">
+    <value>正在解析實際選單文字……</value>
+  </data>
+  <data name="DeepAnalysisSuccess" xml:space="preserve">
+    <value>已解析選單項目</value>
+  </data>
+  <data name="DeepAnalysisFailed" xml:space="preserve">
+    <value>深入分析失敗</value>
+  </data>
+  <data name="DeepAnalysisNoItems" xml:space="preserve">
+    <value>未傳回選單項目。</value>
+  </data>
+  <data name="DeepAnalysisProbeModeSpecific" xml:space="preserve">
+    <value>單一處理程序</value>
+  </data>
+  <data name="DeepAnalysisProbeModeWholeMenu" xml:space="preserve">
+    <value>完整選單探測</value>
+  </data>
+  <data name="DeepAnalysisDiagnosticsHeader" xml:space="preserve">
+    <value>診斷資訊</value>
+  </data>
+  <data name="DeepAnalysisCopyDiagnostics" xml:space="preserve">
+    <value>複製診斷資訊</value>
+  </data>
+  <data name="DeepAnalysisMissingX64ProbeHost" xml:space="preserve">
+    <value>此 Shell Extension 是 x64 架構，但找不到 x64 解析輔助行程。</value>
+  </data>
+  <data name="DeepAnalysisMissingX86ProbeHost" xml:space="preserve">
+    <value>此 Shell Extension 是 x86 架構，但找不到 x86 解析輔助行程。</value>
+  </data>
+  <data name="DeepAnalysisMissingArm64ProbeHost" xml:space="preserve">
+    <value>此 Shell Extension 是 ARM64 架構，但找不到 ARM64 解析輔助行程。</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerUnsupported" xml:space="preserve">
+    <value>此 Shell Extension 無法作為單一處理程序單獨初始化，可能依賴 Explorer 的完整選單彙總環境。</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerInitializeFailed" xml:space="preserve">
+    <value>此 Shell Extension 已建立，但在單獨初始化時拒絕了範例目標。</value>
+  </data>
+  <data name="DeepAnalysisQueryContextMenuFailed" xml:space="preserve">
+    <value>此 Shell Extension 已初始化，但在建立單獨的內容選單時失敗。</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerNoItems" xml:space="preserve">
+    <value>此 Shell Extension 已成功初始化，但沒有為範例目標插入任何選單項目。</value>
+  </data>
+  <data name="DeepAnalysisFailureNormalTitle" xml:space="preserve">
+    <value>無法解析實際選單文字</value>
+  </data>
+  <data name="DeepAnalysisFailureNormalMessage" xml:space="preserve">
+    <value>無法解析實際選單文字。這通常是正常現象：部分 Shell Extension 依賴 Explorer 的完整執行環境、特定檔案類型或擴充本身狀態，無法被單獨分析。這不影響選單項目開關功能，通常不需要回報為 Bug。</value>
+  </data>
+  <data name="DeepAnalysisNoBugReportHint" xml:space="preserve">
+    <value>除非應用程式當機或正常開關功能異常，通常不需要回報為 Bug。</value>
+  </data>
+  <data name="DeepAnalysisUnableToResolveTitle" xml:space="preserve">
+    <value>無法解析實際選單文字</value>
+  </data>
+  <data name="DeepAnalysisUnableToResolveNormalMessage" xml:space="preserve">
+    <value>無法解析實際選單文字。這通常是正常現象：部分 Shell Extension 依賴 Explorer 的完整執行環境、特定檔案類型或擴充本身狀態，無法被單獨分析。這不影響選單項目開關功能，通常不需要回報為 Bug。</value>
+  </data>
+  <data name="DeepAnalysisWholeMenuFallbackHint" xml:space="preserve">
+    <value>完整選單探測會顯示範例目標的整個右鍵選單，其中部分項目可能來自其他程式。</value>
+  </data>
+  <data name="DeepAnalysisUnsupportedCategory" xml:space="preserve">
+    <value>此分類不支援深入分析。</value>
+  </data>
+  <data name="DeepAnalysisExpectedFailureBadge" xml:space="preserve">
+    <value>預期限制</value>
+  </data>
+  <data name="DeepAnalysisMetadataTitle" xml:space="preserve">
+    <value>詳細資訊</value>
+  </data>
+  <data name="DeepAnalysisEntryKindShellExtension" xml:space="preserve">
+    <value>Shell Extension</value>
+  </data>
   <data name="DetailsFileProperties" xml:space="preserve">
     <value>檔案內容</value>
   </data>

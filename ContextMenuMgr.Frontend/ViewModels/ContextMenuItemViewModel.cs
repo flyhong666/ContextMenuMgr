@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
+using ContextMenuMgr.Frontend.Views;
 using System.Windows.Media;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
@@ -14,6 +15,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     private readonly IconPreviewService _iconPreviewService;
     private readonly LocalizationService _localization;
     private readonly ContextMenuItemActionsService _actionsService;
+    private readonly ContextMenuDeepAnalysisService? _deepAnalysisService;
     private readonly Func<ContextMenuItemViewModel, bool, Task<bool>>? _setEnabledAsync;
     private readonly Func<ContextMenuItemViewModel, ContextMenuShellAttribute, bool, Task<bool>>? _setShellAttributeAsync;
     private readonly Func<ContextMenuItemViewModel, string, Task<bool>>? _setDisplayTextAsync;
@@ -35,11 +37,13 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         Func<ContextMenuItemViewModel, bool, Task<bool>>? setEnabledAsync = null,
         Func<ContextMenuItemViewModel, ContextMenuShellAttribute, bool, Task<bool>>? setShellAttributeAsync = null,
         Func<ContextMenuItemViewModel, string, Task<bool>>? setDisplayTextAsync = null,
-        Func<ContextMenuItemViewModel, Task<bool>>? acknowledgeItemStateAsync = null)
+        Func<ContextMenuItemViewModel, Task<bool>>? acknowledgeItemStateAsync = null,
+        ContextMenuDeepAnalysisService? deepAnalysisService = null)
     {
         _iconPreviewService = iconPreviewService;
         _localization = localization;
         _actionsService = actionsService;
+        _deepAnalysisService = deepAnalysisService;
         _setEnabledAsync = setEnabledAsync;
         _setShellAttributeAsync = setShellAttributeAsync;
         _setDisplayTextAsync = setDisplayTextAsync;
@@ -92,6 +96,12 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public bool HasCommandText => !string.IsNullOrWhiteSpace(Entry.CommandText);
 
+    public bool ShowInlineCommandText => Entry.EntryKind == ContextMenuEntryKind.ShellVerb && HasCommandText;
+
+    public string? InlineCommandText => ShowInlineCommandText
+        ? _localization.Format("InlineCommandTextFormat", Entry.CommandText!)
+        : null;
+
     public bool HasOtherAttributesSection => Entry.EntryKind == ContextMenuEntryKind.ShellVerb && IsPresentInRegistry && !IsDeleted;
 
     public bool CanEditShellAttributes => HasOtherAttributesSection && !IsAttributesBusy;
@@ -108,6 +118,10 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public bool CanSearchOnline => !string.IsNullOrWhiteSpace(DisplayName) || !string.IsNullOrWhiteSpace(KeyName);
 
+    public bool CanDeepAnalyzeMenuItem => _deepAnalysisService is not null
+        && ContextMenuDeepAnalysisCapability.CanDeepAnalyze(Entry)
+        && !IsDeepAnalyzing;
+
     /// <summary>
     /// Gets or sets a value indicating whether enabled.
     /// </summary>
@@ -119,6 +133,10 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(SortDeletedWeight))]
     [NotifyPropertyChangedFor(nameof(SortAttentionWeight))]
     public partial bool IsEnabled { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
+    public partial bool IsDeepAnalyzing { get; private set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether deleted.
@@ -135,6 +153,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasOtherAttributesSection))]
     [NotifyPropertyChangedFor(nameof(CanEditShellAttributes))]
     [NotifyPropertyChangedFor(nameof(HasActionFlyout))]
+    [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
     public partial bool IsDeleted { get; private set; }
 
     /// <summary>
@@ -199,6 +218,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(CanEditShellAttributes))]
     [NotifyPropertyChangedFor(nameof(HasActionFlyout))]
     [NotifyPropertyChangedFor(nameof(CanReviewApproval))]
+    [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
     public partial bool IsPresentInRegistry { get; private set; }
 
     /// <summary>
@@ -403,6 +423,10 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public string DetailsClsidLocationLabel => _localization.Translate("DetailsClsidLocation");
 
+    public string DeepAnalyzeMenuItemText => _localization.Translate("DeepAnalyzeMenuItemText");
+
+    public string DeepAnalyzeMenuItemTooltip => _localization.Translate("DeepAnalyzeMenuItemTooltip");
+
     public string ApprovalRemoveConfirmationText => _localization.Format("ApprovalRemovePrompt", DisplayName);
 
     public string PermanentDeleteConfirmationText => _localization.Format("PermanentDeletePrompt", DisplayName);
@@ -459,6 +483,9 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasFileLocation));
         OnPropertyChanged(nameof(HasRegistryLocation));
         OnPropertyChanged(nameof(HasCommandText));
+        OnPropertyChanged(nameof(ShowInlineCommandText));
+        OnPropertyChanged(nameof(InlineCommandText));
+        OnPropertyChanged(nameof(CanDeepAnalyzeMenuItem));
         OnPropertyChanged(nameof(CanEditText));
         OnPropertyChanged(nameof(HasOtherAttributesSection));
         OnPropertyChanged(nameof(CanEditShellAttributes));
@@ -683,6 +710,51 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     private Task OpenClsidLocationAsync() => _actionsService.OpenClsidLocationAsync(this);
 
     [RelayCommand]
+    private async Task DeepAnalyzeMenuItemAsync()
+    {
+        if (!CanDeepAnalyzeMenuItem || _deepAnalysisService is null)
+        {
+            return;
+        }
+
+        var request = new ContextMenuDeepAnalysisRequest
+        {
+            OperationId = Guid.NewGuid(),
+            ItemId = Id,
+            DisplayName = DisplayName,
+            Category = Category,
+            EntryKind = Entry.EntryKind,
+            HandlerClsid = Entry.HandlerClsid,
+            HandlerFilePath = Entry.FilePath,
+            RegistryPath = Entry.RegistryPath,
+            BackendRegistryPath = Entry.BackendRegistryPath,
+            CommandText = Entry.CommandText,
+            IncludeExtendedVerbs = false,
+            ProbeMode = ContextMenuDeepAnalysisProbeMode.SpecificHandler
+        };
+
+        var dialogViewModel = new ContextMenuDeepAnalysisWindowViewModel(
+            _localization,
+            request,
+            analysisRequest => _deepAnalysisService.AnalyzeAsync(analysisRequest));
+        var dialog = new ContextMenuDeepAnalysisWindow(dialogViewModel)
+        {
+            Owner = System.Windows.Application.Current?.MainWindow
+        };
+
+        dialog.Show();
+        IsDeepAnalyzing = true;
+        try
+        {
+            await dialogViewModel.RunAsync();
+        }
+        finally
+        {
+            IsDeepAnalyzing = false;
+        }
+    }
+
+    [RelayCommand]
     private void CloseApprovalRemoveFlyout()
     {
         IsApprovalRemoveFlyoutOpen = false;
@@ -725,6 +797,9 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DetailsRegistryLocationLabel));
         OnPropertyChanged(nameof(DetailsExportRegistryLabel));
         OnPropertyChanged(nameof(DetailsClsidLocationLabel));
+        OnPropertyChanged(nameof(InlineCommandText));
+        OnPropertyChanged(nameof(DeepAnalyzeMenuItemText));
+        OnPropertyChanged(nameof(DeepAnalyzeMenuItemTooltip));
         OnPropertyChanged(nameof(ApprovalRemoveConfirmationText));
         OnPropertyChanged(nameof(PermanentDeleteConfirmationText));
         OnPropertyChanged(nameof(DismissDetectedChangeText));

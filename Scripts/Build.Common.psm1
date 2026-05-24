@@ -192,6 +192,35 @@ function Get-ArtifactPlatformLabel {
     }
 }
 
+function Get-ProbeHostArchitectureMap {
+    param([Parameter(Mandatory)] [string] $Platform)
+
+    switch ($Platform.ToLowerInvariant()) {
+        "win-x86" {
+            return @(@{ Runtime = "win-x86"; Label = "x86" })
+        }
+        "win-x64" {
+            return @(
+                @{ Runtime = "win-x64"; Label = "x64" },
+                @{ Runtime = "win-x86"; Label = "x86" }
+            )
+        }
+        "win-arm64" {
+            return @(
+                @{ Runtime = "win-arm64"; Label = "arm64" },
+                @{ Runtime = "win-x64"; Label = "x64" },
+                @{ Runtime = "win-x86"; Label = "x86" }
+            )
+        }
+        "anycpu" {
+            return @()
+        }
+        default {
+            throw "Unsupported platform '$Platform'. Supported values: anycpu, win-x64, win-x86, win-arm64."
+        }
+    }
+}
+
 function Get-InstallerArchitectureOptions {
     param([Parameter(Mandatory)] [string] $Platform)
 
@@ -322,6 +351,7 @@ function Publish-Application {
         [Parameter(Mandatory)] [string] $FrontendProject,
         [Parameter(Mandatory)] [string] $BackendProject,
         [Parameter(Mandatory)] [string] $TrayHostProject,
+        [Parameter(Mandatory)] [string] $ProbeHostProject,
         [Parameter(Mandatory)] [string] $PublishRoot,
         [Parameter(Mandatory)] [string] $NuGetConfig,
         [Parameter(Mandatory)] [string] $PublishGroup,
@@ -394,6 +424,40 @@ function Publish-Application {
     Invoke-External -FilePath "dotnet" -Arguments $trayHostRestoreArguments -ErrorMessage "dotnet restore failed for tray host ($platformLabel, $DistributionMode)"
     Invoke-External -FilePath "dotnet" -Arguments $trayHostPublishArguments -ErrorMessage "dotnet publish failed for tray host ($platformLabel, $DistributionMode)"
 
+    $baseOutputPath = Join-Path $taskArtifactsRoot "bin"
+    if (-not $baseOutputPath.EndsWith([System.IO.Path]::DirectorySeparatorChar.ToString())) {
+        $baseOutputPath += [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    foreach ($probeHostArchitecture in @(Get-ProbeHostArchitectureMap -Platform $Platform)) {
+        $probeHostRuntime = [string] $probeHostArchitecture.Runtime
+        $probeHostLabel = [string] $probeHostArchitecture.Label
+        $probeHostOutput = Join-Path $publishDir (Join-Path "ProbeHost" $probeHostLabel)
+        $probeHostRestoreArguments = New-DotNetRestoreArguments `
+            -ProjectPath $ProbeHostProject `
+            -RuntimeIdentifier $probeHostRuntime `
+            -NuGetConfig $NuGetConfig `
+            -ArtifactsPath $taskArtifactsRoot
+        $probeHostPublishArguments = @(
+            "publish", $ProbeHostProject,
+            "-c", $Configuration,
+            "-r", $probeHostRuntime,
+            "--self-contained", "true",
+            "--no-restore",
+            "--artifacts-path", $taskArtifactsRoot,
+            "-p:BaseOutputPath=$baseOutputPath",
+            "-p:UseAppHost=true",
+            "-p:PublishSingleFile=true",
+            "-p:PublishTrimmed=false",
+            "-p:InformationalVersion=$Version",
+            "-o", $probeHostOutput
+        )
+
+        Invoke-External -FilePath "dotnet" -Arguments $probeHostRestoreArguments -ErrorMessage "dotnet restore failed for ProbeHost ($probeHostLabel)"
+        Invoke-External -FilePath "dotnet" -Arguments $probeHostPublishArguments -ErrorMessage "dotnet publish failed for ProbeHost ($probeHostLabel)"
+        Ensure-FileExists -Path (Join-Path $probeHostOutput "ContextMenuMgr.ProbeHost.exe") -Description "ProbeHost executable ($probeHostLabel)"
+    }
+
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.exe") -Description "Frontend executable"
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.exe") -Description "Backend service executable"
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.dll") -Description "Backend service DLL"
@@ -442,6 +506,7 @@ function Invoke-InstallerBuildTarget {
         [Parameter(Mandatory)] [string] $FrontendProject,
         [Parameter(Mandatory)] [string] $BackendProject,
         [Parameter(Mandatory)] [string] $TrayHostProject,
+        [Parameter(Mandatory)] [string] $ProbeHostProject,
         [Parameter(Mandatory)] [string] $PublishRoot,
         [Parameter(Mandatory)] [string] $DistRoot,
         [Parameter(Mandatory)] [string] $Version,
@@ -461,6 +526,7 @@ function Invoke-InstallerBuildTarget {
         -FrontendProject $FrontendProject `
         -BackendProject $BackendProject `
         -TrayHostProject $TrayHostProject `
+        -ProbeHostProject $ProbeHostProject `
         -PublishRoot $PublishRoot `
         -NuGetConfig $NuGetConfig `
         -PublishGroup "installer" `
@@ -508,6 +574,7 @@ function Invoke-PortableFrameworkDependentBuildTarget {
         [Parameter(Mandatory)] [string] $FrontendProject,
         [Parameter(Mandatory)] [string] $BackendProject,
         [Parameter(Mandatory)] [string] $TrayHostProject,
+        [Parameter(Mandatory)] [string] $ProbeHostProject,
         [Parameter(Mandatory)] [string] $PublishRoot,
         [Parameter(Mandatory)] [string] $DistRoot,
         [Parameter(Mandatory)] [string] $Version,
@@ -522,6 +589,7 @@ function Invoke-PortableFrameworkDependentBuildTarget {
         -FrontendProject $FrontendProject `
         -BackendProject $BackendProject `
         -TrayHostProject $TrayHostProject `
+        -ProbeHostProject $ProbeHostProject `
         -PublishRoot $PublishRoot `
         -NuGetConfig $NuGetConfig `
         -PublishGroup "portable" `

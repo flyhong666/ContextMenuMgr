@@ -42,6 +42,8 @@ internal static class FrontendDebugLog
     /// </summary>
     public static void Info(string source, string message) => Write(AppLogLevel.Information, source, message);
 
+    public static void Operation(string source, string message) => Write(AppLogLevel.Information, source, message, force: true);
+
     /// <summary>
     /// Executes warning.
     /// </summary>
@@ -62,9 +64,9 @@ internal static class FrontendDebugLog
         Write(AppLogLevel.Error, source, builder.ToString());
     }
 
-    private static void Write(AppLogLevel level, string source, string message)
+    private static void Write(AppLogLevel level, string source, string message, bool force = false)
     {
-        if (level < _currentLevel)
+        if (!force && level < _currentLevel)
         {
             return;
         }

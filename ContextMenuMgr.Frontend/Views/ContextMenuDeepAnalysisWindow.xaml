@@ -1,0 +1,219 @@
+<ui:FluentWindow
+    x:Class="ContextMenuMgr.Frontend.Views.ContextMenuDeepAnalysisWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:contracts="clr-namespace:ContextMenuMgr.Contracts;assembly=ContextMenuMgr.Contracts"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="{Binding Title}"
+    Width="760"
+    Height="620"
+    MinWidth="560"
+    MinHeight="460"
+    WindowStartupLocation="CenterOwner">
+    <ui:FluentWindow.Resources>
+        <HierarchicalDataTemplate DataType="{x:Type contracts:ContextMenuDeepAnalysisMenuItem}" ItemsSource="{Binding Children}">
+            <StackPanel Margin="0,3" Orientation="Vertical">
+                <TextBlock FontWeight="SemiBold" Text="{Binding Text}" />
+                <TextBlock
+                    FontSize="11"
+                    Opacity="0.65"
+                    Text="{Binding CanonicalVerb}"
+                    Visibility="{Binding CanonicalVerb, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
+                <TextBlock
+                    FontSize="11"
+                    Opacity="0.65"
+                    Text="{Binding HelpText}"
+                    TextWrapping="Wrap"
+                    Visibility="{Binding HelpText, Converter={StaticResource NullOrEmptyToVisibilityConverter}}" />
+            </StackPanel>
+        </HierarchicalDataTemplate>
+    </ui:FluentWindow.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar
+            Grid.Row="0"
+            Title="{Binding Title}" />
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="18">
+                <TextBlock
+                    FontSize="22"
+                    FontWeight="SemiBold"
+                    Text="{Binding DisplayName}"
+                    TextWrapping="Wrap" />
+
+                <WrapPanel Margin="0,10,0,0">
+                    <Border
+                        Margin="0,0,8,6"
+                        Padding="8,3"
+                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                        CornerRadius="4">
+                        <TextBlock FontSize="12" Text="{Binding EntryKindText}" />
+                    </Border>
+                    <Border
+                        Margin="0,0,8,6"
+                        Padding="8,3"
+                        Background="{DynamicResource AccentFillColorSecondaryBrush}"
+                        CornerRadius="4">
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                            Text="{Binding ProbeModeText}" />
+                    </Border>
+                    <Border
+                        Margin="0,0,8,6"
+                        Padding="8,3"
+                        Background="{DynamicResource SystemFillColorNeutralBackgroundBrush}"
+                        CornerRadius="4"
+                        Visibility="{Binding ShowExpectedFailureBadge, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock FontSize="12" Text="{Binding ExpectedFailureBadgeText}" />
+                    </Border>
+                </WrapPanel>
+
+                <StackPanel Margin="0,12,0,0">
+                    <TextBlock
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Text="{Binding MetadataTitle}" />
+                    <Grid Margin="0,8,0,0" Visibility="{Binding HandlerFilePath, Converter={StaticResource NullOrEmptyToVisibilityConverter}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Opacity="0.68" Text="{Binding HandlerFilePathLabel}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            FontFamily="Consolas"
+                            FontSize="12"
+                            Text="{Binding HandlerFilePath}"
+                            TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid Margin="0,6,0,0" Visibility="{Binding RegistryPath, Converter={StaticResource NullOrEmptyToVisibilityConverter}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Opacity="0.68" Text="{Binding RegistryPathLabel}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            FontFamily="Consolas"
+                            FontSize="12"
+                            Text="{Binding RegistryPath}"
+                            TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid Margin="0,6,0,0" Visibility="{Binding HandlerClsid, Converter={StaticResource NullOrEmptyToVisibilityConverter}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Opacity="0.68" Text="{Binding HandlerClsidLabel}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            FontFamily="Consolas"
+                            FontSize="12"
+                            Text="{Binding HandlerClsid}"
+                            TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Margin="0,18,0,0" Visibility="{Binding IsRunning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ProgressBar Height="4" IsIndeterminate="True" />
+                    <TextBlock Margin="0,10,0,0" Text="{Binding RunningText}" />
+                </StackPanel>
+
+                <StackPanel Margin="0,18,0,0" Visibility="{Binding ShowResult, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Text="{Binding SuccessText}"
+                        Visibility="{Binding IsSuccess, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        Margin="0,8,0,0"
+                        Opacity="0.78"
+                        Text="{Binding WholeContextMenuWarning}"
+                        TextWrapping="Wrap"
+                        Visibility="{Binding ShowWholeContextMenuWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                    <StackPanel Visibility="{Binding IsFailure, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Text="{Binding FailureTitle}" />
+                        <TextBlock
+                            Margin="0,8,0,0"
+                            Opacity="0.86"
+                            Text="{Binding FailureMessage}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Margin="0,8,0,0"
+                            FontFamily="Consolas"
+                            FontSize="12"
+                            Opacity="0.62"
+                            Text="{Binding ErrorCode}"
+                            Visibility="{Binding ShowErrorCode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
+
+                    <TreeView
+                        Margin="0,12,0,0"
+                        ItemsSource="{Binding Items}"
+                        Visibility="{Binding HasItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        Margin="0,12,0,0"
+                        Opacity="0.7"
+                        Text="{Binding NoItemsText}"
+                        Visibility="{Binding ShowNoItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
+
+                <Expander
+                    Margin="0,14,0,0"
+                    Header="{Binding DiagnosticsHeader}"
+                    Visibility="{Binding ShowDiagnosticsExpander, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBox
+                            MinHeight="120"
+                            FontFamily="Consolas"
+                            FontSize="11"
+                            IsReadOnly="True"
+                            Text="{Binding DiagnosticsText, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            VerticalScrollBarVisibility="Auto" />
+                        <ui:Button
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Left"
+                            Appearance="Secondary"
+                            Command="{Binding CopyDiagnosticsCommand}"
+                            Content="{Binding CopyDiagnosticsText}" />
+                    </StackPanel>
+                </Expander>
+
+                <StackPanel Margin="0,18,0,0">
+                    <TextBlock
+                        Margin="0,0,0,8"
+                        HorizontalAlignment="Right"
+                        Opacity="0.65"
+                        Text="{Binding WholeContextMenuFallbackHint}"
+                        TextWrapping="Wrap"
+                        Visibility="{Binding CanRunWholeContextMenu, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                        <ui:Button
+                            Margin="0,0,8,0"
+                            Appearance="Secondary"
+                            Command="{Binding RunWholeContextMenuCommand}"
+                            Content="{Binding WholeContextMenuText}"
+                            ToolTip="{Binding WholeContextMenuFallbackHint}"
+                            Visibility="{Binding CanRunWholeContextMenu, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <ui:Button
+                            Appearance="Primary"
+                            Command="{Binding CloseCommand}"
+                            Content="{Binding CloseText}" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</ui:FluentWindow>

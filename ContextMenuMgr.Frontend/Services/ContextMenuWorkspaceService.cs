@@ -14,6 +14,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     private readonly IBackendClient _backendClient;
     private readonly IBackendServiceManager _backendServiceManager;
     private readonly ContextMenuItemActionsService _itemActionsService;
+    private readonly ContextMenuDeepAnalysisService _deepAnalysisService;
     private readonly IconPreviewService _iconPreviewService;
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
@@ -35,6 +36,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         IBackendClient backendClient,
         IBackendServiceManager backendServiceManager,
         ContextMenuItemActionsService itemActionsService,
+        ContextMenuDeepAnalysisService deepAnalysisService,
         IconPreviewService iconPreviewService,
         LocalizationService localization,
         FrontendSettingsService settingsService,
@@ -43,6 +45,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         _backendClient = backendClient;
         _backendServiceManager = backendServiceManager;
         _itemActionsService = itemActionsService;
+        _deepAnalysisService = deepAnalysisService;
         _iconPreviewService = iconPreviewService;
         _localization = localization;
         _settingsService = settingsService;
@@ -746,7 +749,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             }
             else
             {
-                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync));
+                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, _deepAnalysisService));
             }
         }
 
@@ -843,7 +846,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             return;
         }
 
-        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync));
+        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, _deepAnalysisService));
     }
 
     private void RemoveItem(string itemId)

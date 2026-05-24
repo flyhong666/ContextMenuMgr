@@ -52,6 +52,7 @@ try {
     $frontendProject = Join-Path $repoRoot 'ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj'
     $backendProject = Join-Path $repoRoot 'ContextMenuMgr.Backend\ContextMenuMgr.Backend.csproj'
     $trayHostProject = Join-Path $repoRoot 'ContextMenuMgr.TrayHost\ContextMenuMgr.TrayHost.csproj'
+    $probeHostProject = Join-Path $repoRoot 'ContextMenuMgr.ProbeHost\ContextMenuMgr.ProbeHost.csproj'
     $nuGetConfig = Join-Path $repoRoot 'NuGet.Config'
     $installerIss = Join-Path $repoRoot 'Installer\build_Installer.iss'
     $publishRoot = Join-Path $repoRoot 'build\publish'
@@ -62,6 +63,7 @@ try {
     Ensure-FileExists -Path $frontendProject -Description 'Frontend project'
     Ensure-FileExists -Path $backendProject -Description 'Backend project'
     Ensure-FileExists -Path $trayHostProject -Description 'Tray host project'
+    Ensure-FileExists -Path $probeHostProject -Description 'ProbeHost project'
     Ensure-FileExists -Path $nuGetConfig -Description 'NuGet config'
     Ensure-FileExists -Path $installerIss -Description 'Inno Setup script'
 
@@ -89,6 +91,7 @@ try {
                 -FrontendProject $frontendProject `
                 -BackendProject $backendProject `
                 -TrayHostProject $trayHostProject `
+                -ProbeHostProject $probeHostProject `
                 -PublishRoot $publishRoot `
                 -DistRoot $distRoot `
                 -Version $Version `
@@ -108,6 +111,7 @@ try {
                 -FrontendProject $frontendProject `
                 -BackendProject $backendProject `
                 -TrayHostProject $trayHostProject `
+                -ProbeHostProject $probeHostProject `
                 -PublishRoot $publishRoot `
                 -DistRoot $distRoot `
                 -Version $Version `

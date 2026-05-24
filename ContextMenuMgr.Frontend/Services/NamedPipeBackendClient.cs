@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.IO.Pipes;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using ContextMenuMgr.Contracts;
@@ -642,6 +643,8 @@ public sealed class NamedPipeBackendClient : IBackendClient
     private async Task<PipeResponse> SendRequestAsync(PipeRequest request, CancellationToken cancellationToken)
     {
         await _sendLock.WaitAsync(cancellationToken);
+        var stopwatch = Stopwatch.StartNew();
+        var correlationId = Guid.Empty;
         try
         {
             using var stream = new NamedPipeClientStream(".", PipeConstants.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -654,12 +657,17 @@ public sealed class NamedPipeBackendClient : IBackendClient
                 AutoFlush = true
             };
 
+            correlationId = Guid.NewGuid();
             var envelope = new PipeEnvelope
             {
                 MessageType = PipeMessageType.Request,
-                CorrelationId = Guid.NewGuid(),
+                CorrelationId = correlationId,
                 Request = request
             };
+
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                BuildOperationStartLog(correlationId, request));
 
             var payload = JsonSerializer.Serialize(envelope, JsonOptions);
             await writer.WriteLineAsync(payload).WaitAsync(cancellationToken);
@@ -697,23 +705,40 @@ public sealed class NamedPipeBackendClient : IBackendClient
 
                 if (!responseEnvelope.Response.Success)
                 {
+                    stopwatch.Stop();
                     FrontendDebugLog.Warning(
                         "NamedPipeBackendClient",
                         $"SendRequestAsync <- {request.Command} failed. ErrorCode={responseEnvelope.Response.ErrorCode ?? "<none>"}, Message={responseEnvelope.Response.Message}");
+                    FrontendDebugLog.Operation(
+                        "FrontendOperation",
+                        BuildOperationEndLog(correlationId, request, responseEnvelope.Response, stopwatch.ElapsedMilliseconds));
                     throw new BackendRequestException(responseEnvelope.Response.Message, responseEnvelope.Response.ErrorCode);
                 }
 
+                stopwatch.Stop();
+                FrontendDebugLog.Operation(
+                    "FrontendOperation",
+                    BuildOperationEndLog(correlationId, request, responseEnvelope.Response, stopwatch.ElapsedMilliseconds));
                 FrontendDebugLog.Info("NamedPipeBackendClient", $"SendRequestAsync <- {request.Command} succeeded.");
                 return responseEnvelope.Response;
             }
         }
         catch (TimeoutException ex)
         {
+            stopwatch.Stop();
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success=false, Error=Timeout, ElapsedMs={stopwatch.ElapsedMilliseconds}.");
             FrontendDebugLog.Warning("NamedPipeBackendClient", $"SendRequestAsync timed out for {request.Command}: {ex.Message}");
             throw;
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            FrontendDebugLog.Error(
+                "FrontendOperation",
+                ex,
+                $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success=false, Error={ex.GetType().Name}, ElapsedMs={stopwatch.ElapsedMilliseconds}.");
             FrontendDebugLog.Error("NamedPipeBackendClient", ex, $"SendRequestAsync failed for {request.Command}.");
             throw;
         }
@@ -722,6 +747,12 @@ public sealed class NamedPipeBackendClient : IBackendClient
             _sendLock.Release();
         }
     }
+
+    private static string BuildOperationStartLog(Guid correlationId, PipeRequest request)
+        => $"FrontendOperationStart: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, AutoStartEnabled={request.AutoStartEnabled}, Timestamp={DateTimeOffset.UtcNow:O}.";
+
+    private static string BuildOperationEndLog(Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
+        => $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, ErrorCode={response.ErrorCode ?? "<none>"}, Message={response.Message}, ElapsedMs={elapsedMs}, HasItem={response.Item is not null}, HasSpecialItem={response.SpecialItem is not null}.";
 
     private async Task NotificationLoopAsync(CancellationToken cancellationToken)
     {

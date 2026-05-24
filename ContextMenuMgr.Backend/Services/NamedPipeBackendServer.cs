@@ -194,6 +194,7 @@ public sealed class NamedPipeBackendServer
                 PipeResponse response;
                 var stopwatch = Stopwatch.StartNew();
                 await _logger.LogAsync(BuildRequestStartLog(connection.Id, envelope.CorrelationId, envelope.Request), cancellationToken);
+                await _logger.LogOperationAsync(BuildOperationStartLog(connection.Id, envelope.CorrelationId, envelope.Request), cancellationToken);
                 try
                 {
                     // Request handlers are allowed to fail independently; the pipe
@@ -218,6 +219,7 @@ public sealed class NamedPipeBackendServer
                 }
 
                 await _logger.LogAsync(BuildRequestEndLog(connection.Id, envelope.CorrelationId, envelope.Request, response, stopwatch.ElapsedMilliseconds), cancellationToken);
+                await _logger.LogOperationAsync(BuildOperationEndLog(connection.Id, envelope.CorrelationId, envelope.Request, response, stopwatch.ElapsedMilliseconds), cancellationToken);
 
                 await connection.SendAsync(
                     new PipeEnvelope
@@ -896,6 +898,12 @@ public sealed class NamedPipeBackendServer
 
     private static string BuildRequestEndLog(Guid connectionId, Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
         => $"PipeRequestEnd: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, Message={DiagnosticLogFormatter.FormatRegistryValueData(response.Message)}, ElapsedMs={elapsedMs}, HasItem={response.Item is not null}, HasSpecialItem={response.SpecialItem is not null}, ItemId={response.Item?.Id}, SpecialItemId={response.SpecialItem?.Id}.";
+
+    private static string BuildOperationStartLog(Guid connectionId, Guid correlationId, PipeRequest request)
+        => $"BackendOperationStart: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, Decision={request.Decision}, ShellAttribute={request.ShellAttribute}, AutoStartEnabled={request.AutoStartEnabled}, Timestamp={DateTimeOffset.UtcNow:O}.";
+
+    private static string BuildOperationEndLog(Guid connectionId, Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
+        => $"BackendOperationEnd: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, ErrorCode={response.ErrorCode ?? "<none>"}, Message={DiagnosticLogFormatter.FormatRegistryValueData(response.Message)}, ElapsedMs={elapsedMs}, ItemId={response.Item?.Id ?? request.ItemId}, SpecialItemId={response.SpecialItem?.Id}.";
 
     private sealed class PipeClientConnection : IDisposable
     {

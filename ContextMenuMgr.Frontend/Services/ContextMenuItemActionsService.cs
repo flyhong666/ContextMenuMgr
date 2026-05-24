@@ -268,12 +268,23 @@ public sealed class ContextMenuItemActionsService
 
     private async Task RunActionAsync(Func<Task> action, string titleKey)
     {
+        var startedAt = DateTimeOffset.UtcNow;
+        FrontendDebugLog.Operation(
+            "FrontendOperation",
+            $"FrontendLocalActionStart: Action={titleKey}, Timestamp={startedAt:O}.");
         try
         {
             await action();
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"FrontendLocalActionEnd: Action={titleKey}, Success=true, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
         }
         catch (Exception ex)
         {
+            FrontendDebugLog.Error(
+                "FrontendOperation",
+                ex,
+                $"FrontendLocalActionEnd: Action={titleKey}, Success=false, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             await FrontendMessageBox.ShowErrorAsync(
                 _localization.Format("DetailsActionFailed", ex.Message),
                 _localization.Translate(titleKey));

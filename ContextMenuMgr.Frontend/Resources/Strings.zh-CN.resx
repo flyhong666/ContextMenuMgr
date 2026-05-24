@@ -692,6 +692,177 @@
   <data name="DetailsCommandText" xml:space="preserve">
     <value>命令文本</value>
   </data>
+  <data name="InlineCommandTextFormat" xml:space="preserve">
+    <value>命令：{0}</value>
+  </data>
+  <data name="DeepAnalyzeMenuItemText" xml:space="preserve">
+    <value>深入分析</value>
+  </data>
+  <data name="DeepAnalyzeMenuItemTooltip" xml:space="preserve">
+    <value>尝试加载并探测该 Shell Extension，解析它实际插入的菜单文字。</value>
+  </data>
+  <data name="DeepAnalyzeResultTitle" xml:space="preserve">
+    <value>深入分析结果</value>
+  </data>
+  <data name="DeepAnalyzeRunningText" xml:space="preserve">
+    <value>正在解析实际菜单文字……</value>
+  </data>
+  <data name="DeepAnalyzeFailedText" xml:space="preserve">
+    <value>未能解析实际菜单文字。</value>
+  </data>
+  <data name="DeepAnalyzeProtocolFailedText" xml:space="preserve">
+    <value>分析进程输出格式异常，无法读取解析结果。</value>
+  </data>
+  <data name="DeepAnalyzeDisclaimer" xml:space="preserve">
+    <value>这是运行时诊断结果，可能会因选中文件、用户会话和扩展自身行为而与 Explorer 实际菜单略有差异。部分 Shell Extension 可能不会暴露文字，所有者绘制项目可能没有文字，探测也可能因示例目标而失败。</value>
+  </data>
+  <data name="DeepAnalyzeTimeoutText" xml:space="preserve">
+    <value>分析超时。该 Shell Extension 可能响应较慢或无响应。</value>
+  </data>
+  <data name="DeepAnalyzeNativeAccessViolationText" xml:space="preserve">
+    <value>分析辅助进程在创建 Shell 右键菜单时崩溃。所选 Shell Extension 或该示例上下文中加载的其他扩展可能与探测环境不兼容。当前辅助进程会探测示例目标的整个右键菜单。</value>
+  </data>
+  <data name="DeepAnalyzeStackBufferOverrunText" xml:space="preserve">
+    <value>分析辅助进程检测到本机栈缓冲区溢出后停止。所选 Shell Extension 或该示例上下文中加载的其他扩展可能与探测环境不兼容。</value>
+  </data>
+  <data name="DeepAnalyzeNativeCrashText" xml:space="preserve">
+    <value>分析辅助进程在返回结果前崩溃。所选 Shell Extension 或该示例上下文中加载的其他扩展可能与探测环境不兼容。</value>
+  </data>
+  <data name="DeepAnalyzeManagedUnhandledExceptionText" xml:space="preserve">
+    <value>解析辅助进程发生未处理的托管异常后停止。</value>
+  </data>
+  <data name="DeepAnalyzeProbeHostDependencyMissingText" xml:space="preserve">
+    <value>解析辅助进程缺少运行依赖，无法启动。请重新构建或安装完整程序包。</value>
+  </data>
+  <data name="DeepAnalyzeDisplayNameLabel" xml:space="preserve">
+    <value>显示名称：</value>
+  </data>
+  <data name="DeepAnalyzeEntryKindLabel" xml:space="preserve">
+    <value>项目类型：</value>
+  </data>
+  <data name="DeepAnalyzeHandlerClsidLabel" xml:space="preserve">
+    <value>处理程序 CLSID：</value>
+  </data>
+  <data name="DeepAnalyzeHandlerFilePathLabel" xml:space="preserve">
+    <value>处理程序文件路径：</value>
+  </data>
+  <data name="DeepAnalyzeRegistryPathLabel" xml:space="preserve">
+    <value>注册表路径：</value>
+  </data>
+  <data name="DeepAnalyzeCategoryLabel" xml:space="preserve">
+    <value>分类：</value>
+  </data>
+  <data name="DeepAnalyzeNoItemsText" xml:space="preserve">
+    <value>未返回菜单文字。</value>
+  </data>
+  <data name="DeepAnalyzeItemsFoundFormat" xml:space="preserve">
+    <value>已解析 {0} 个菜单项。</value>
+  </data>
+  <data name="DeepAnalyzeSamplePathFormat" xml:space="preserve">
+    <value>示例目标：{0}</value>
+  </data>
+  <data name="DeepAnalyzeArchitectureFormat" xml:space="preserve">
+    <value>ProbeHost 架构：{0}；系统架构：{1}；64 位进程：{2}</value>
+  </data>
+  <data name="DeepAnalyzeHandlerFileExistsFormat" xml:space="preserve">
+    <value>处理程序文件存在：{0}</value>
+  </data>
+  <data name="DeepAnalyzeHandlerMachineTypeFormat" xml:space="preserve">
+    <value>处理程序架构：{0}；兼容性：{1}</value>
+  </data>
+  <data name="DeepAnalyzeWholeContextMenuButton" xml:space="preserve">
+    <value>查看完整菜单探测结果</value>
+  </data>
+  <data name="DeepAnalyzeWholeContextMenuWarning" xml:space="preserve">
+    <value>以下结果来自完整右键菜单，不一定都属于当前菜单项。</value>
+  </data>
+  <data name="DeepAnalyzeSpecificHandlerModeText" xml:space="preserve">
+    <value>探测模式：单个处理程序。初始化成功时，下列条目来自所选处理程序。</value>
+  </data>
+  <data name="DeepAnalyzeSeparatorText" xml:space="preserve">
+    <value>（分隔符）</value>
+  </data>
+  <data name="DeepAnalyzeNoTextItem" xml:space="preserve">
+    <value>（无文字）</value>
+  </data>
+  <data name="DeepAnalysisWindowTitle" xml:space="preserve">
+    <value>深入分析结果</value>
+  </data>
+  <data name="DeepAnalysisRunning" xml:space="preserve">
+    <value>正在解析实际菜单文字……</value>
+  </data>
+  <data name="DeepAnalysisSuccess" xml:space="preserve">
+    <value>已解析菜单项</value>
+  </data>
+  <data name="DeepAnalysisFailed" xml:space="preserve">
+    <value>深入分析失败</value>
+  </data>
+  <data name="DeepAnalysisNoItems" xml:space="preserve">
+    <value>未返回菜单项。</value>
+  </data>
+  <data name="DeepAnalysisProbeModeSpecific" xml:space="preserve">
+    <value>单个处理程序</value>
+  </data>
+  <data name="DeepAnalysisProbeModeWholeMenu" xml:space="preserve">
+    <value>完整菜单探测</value>
+  </data>
+  <data name="DeepAnalysisDiagnosticsHeader" xml:space="preserve">
+    <value>诊断信息</value>
+  </data>
+  <data name="DeepAnalysisCopyDiagnostics" xml:space="preserve">
+    <value>复制诊断信息</value>
+  </data>
+  <data name="DeepAnalysisMissingX64ProbeHost" xml:space="preserve">
+    <value>该 Shell Extension 是 x64 架构，但未找到 x64 解析辅助进程。</value>
+  </data>
+  <data name="DeepAnalysisMissingX86ProbeHost" xml:space="preserve">
+    <value>该 Shell Extension 是 x86 架构，但未找到 x86 解析辅助进程。</value>
+  </data>
+  <data name="DeepAnalysisMissingArm64ProbeHost" xml:space="preserve">
+    <value>该 Shell Extension 是 ARM64 架构，但未找到 ARM64 解析辅助进程。</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerUnsupported" xml:space="preserve">
+    <value>该 Shell Extension 无法作为单个处理程序单独初始化，可能依赖 Explorer 的完整菜单聚合环境。</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerInitializeFailed" xml:space="preserve">
+    <value>该 Shell Extension 已创建，但在单独初始化时拒绝了示例目标。</value>
+  </data>
+  <data name="DeepAnalysisQueryContextMenuFailed" xml:space="preserve">
+    <value>该 Shell Extension 已初始化，但在构建单独的上下文菜单时失败。</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerNoItems" xml:space="preserve">
+    <value>该 Shell Extension 已成功初始化，但没有为示例目标插入任何菜单项。</value>
+  </data>
+  <data name="DeepAnalysisFailureNormalTitle" xml:space="preserve">
+    <value>未能解析实际菜单文字</value>
+  </data>
+  <data name="DeepAnalysisFailureNormalMessage" xml:space="preserve">
+    <value>未能解析实际菜单文字。这通常是正常现象：部分 Shell Extension 依赖 Explorer 的完整运行环境、特定文件类型或扩展自身状态，无法被单独分析。该结果不影响菜单项开关功能，通常不需要报告为 Bug。</value>
+  </data>
+  <data name="DeepAnalysisNoBugReportHint" xml:space="preserve">
+    <value>除非应用崩溃或正常开关功能异常，通常不需要报告为 Bug。</value>
+  </data>
+  <data name="DeepAnalysisUnableToResolveTitle" xml:space="preserve">
+    <value>未能解析实际菜单文字</value>
+  </data>
+  <data name="DeepAnalysisUnableToResolveNormalMessage" xml:space="preserve">
+    <value>未能解析实际菜单文字。这通常是正常现象：部分 Shell Extension 依赖 Explorer 的完整运行环境、特定文件类型或扩展自身状态，无法被单独分析。该结果不影响菜单项开关功能，通常不需要报告为 Bug。</value>
+  </data>
+  <data name="DeepAnalysisWholeMenuFallbackHint" xml:space="preserve">
+    <value>完整菜单探测会显示示例目标的整个右键菜单，其中部分条目可能来自其他程序。</value>
+  </data>
+  <data name="DeepAnalysisUnsupportedCategory" xml:space="preserve">
+    <value>此分类不支持深入分析。</value>
+  </data>
+  <data name="DeepAnalysisExpectedFailureBadge" xml:space="preserve">
+    <value>预期限制</value>
+  </data>
+  <data name="DeepAnalysisMetadataTitle" xml:space="preserve">
+    <value>详细信息</value>
+  </data>
+  <data name="DeepAnalysisEntryKindShellExtension" xml:space="preserve">
+    <value>Shell Extension</value>
+  </data>
   <data name="DetailsFileProperties" xml:space="preserve">
     <value>文件属性</value>
   </data>

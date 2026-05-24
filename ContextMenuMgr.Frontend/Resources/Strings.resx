@@ -692,6 +692,177 @@ Continue anyway? (Not recommended)</value>
   <data name="DetailsCommandText" xml:space="preserve">
     <value>Command text</value>
   </data>
+  <data name="InlineCommandTextFormat" xml:space="preserve">
+    <value>Command: {0}</value>
+  </data>
+  <data name="DeepAnalyzeMenuItemText" xml:space="preserve">
+    <value>Deep analysis</value>
+  </data>
+  <data name="DeepAnalyzeMenuItemTooltip" xml:space="preserve">
+    <value>Try to load/probe this shell extension and resolve the actual menu text it inserts.</value>
+  </data>
+  <data name="DeepAnalyzeResultTitle" xml:space="preserve">
+    <value>Deep analysis result</value>
+  </data>
+  <data name="DeepAnalyzeRunningText" xml:space="preserve">
+    <value>Resolving actual menu text...</value>
+  </data>
+  <data name="DeepAnalyzeFailedText" xml:space="preserve">
+    <value>Failed to resolve actual menu text.</value>
+  </data>
+  <data name="DeepAnalyzeProtocolFailedText" xml:space="preserve">
+    <value>The analysis process returned output in an unexpected format, so the result could not be read.</value>
+  </data>
+  <data name="DeepAnalyzeDisclaimer" xml:space="preserve">
+    <value>This is a runtime diagnostic result. It may differ from Explorer depending on selected files, user session, and shell extension behavior. Some shell extensions may not expose text, owner-draw items may appear without text, and probing may fail depending on the sample target.</value>
+  </data>
+  <data name="DeepAnalyzeTimeoutText" xml:space="preserve">
+    <value>The analysis timed out. The shell extension may be slow or unresponsive.</value>
+  </data>
+  <data name="DeepAnalyzeNativeAccessViolationText" xml:space="preserve">
+    <value>The analysis helper crashed while creating the shell context menu. The selected shell extension or another extension loaded for this sample may be incompatible with the probe environment. The helper currently probes the whole context menu for the sample.</value>
+  </data>
+  <data name="DeepAnalyzeStackBufferOverrunText" xml:space="preserve">
+    <value>The analysis helper stopped after detecting a native stack buffer overrun. The selected shell extension or another extension loaded for this sample may be incompatible with the probe environment.</value>
+  </data>
+  <data name="DeepAnalyzeNativeCrashText" xml:space="preserve">
+    <value>The analysis helper crashed before it could return a result. The selected shell extension or another extension loaded for this sample may be incompatible with the probe environment.</value>
+  </data>
+  <data name="DeepAnalyzeManagedUnhandledExceptionText" xml:space="preserve">
+    <value>The analysis helper stopped because of an unhandled managed exception.</value>
+  </data>
+  <data name="DeepAnalyzeProbeHostDependencyMissingText" xml:space="preserve">
+    <value>The analysis helper is missing a runtime dependency and cannot start. Rebuild or install the complete package.</value>
+  </data>
+  <data name="DeepAnalyzeDisplayNameLabel" xml:space="preserve">
+    <value>Display name:</value>
+  </data>
+  <data name="DeepAnalyzeEntryKindLabel" xml:space="preserve">
+    <value>Entry kind:</value>
+  </data>
+  <data name="DeepAnalyzeHandlerClsidLabel" xml:space="preserve">
+    <value>Handler CLSID:</value>
+  </data>
+  <data name="DeepAnalyzeHandlerFilePathLabel" xml:space="preserve">
+    <value>Handler file path:</value>
+  </data>
+  <data name="DeepAnalyzeRegistryPathLabel" xml:space="preserve">
+    <value>Registry path:</value>
+  </data>
+  <data name="DeepAnalyzeCategoryLabel" xml:space="preserve">
+    <value>Category:</value>
+  </data>
+  <data name="DeepAnalyzeNoItemsText" xml:space="preserve">
+    <value>No menu text was returned.</value>
+  </data>
+  <data name="DeepAnalyzeItemsFoundFormat" xml:space="preserve">
+    <value>Resolved {0} menu item(s).</value>
+  </data>
+  <data name="DeepAnalyzeSamplePathFormat" xml:space="preserve">
+    <value>Sample target: {0}</value>
+  </data>
+  <data name="DeepAnalyzeArchitectureFormat" xml:space="preserve">
+    <value>ProbeHost architecture: {0}; OS architecture: {1}; 64-bit process: {2}</value>
+  </data>
+  <data name="DeepAnalyzeHandlerFileExistsFormat" xml:space="preserve">
+    <value>Handler file exists: {0}</value>
+  </data>
+  <data name="DeepAnalyzeHandlerMachineTypeFormat" xml:space="preserve">
+    <value>Handler architecture: {0}; compatibility: {1}</value>
+  </data>
+  <data name="DeepAnalyzeWholeContextMenuButton" xml:space="preserve">
+    <value>View full menu probe</value>
+  </data>
+  <data name="DeepAnalyzeWholeContextMenuWarning" xml:space="preserve">
+    <value>The following results come from the full context menu and may not all belong to the current menu item.</value>
+  </data>
+  <data name="DeepAnalyzeSpecificHandlerModeText" xml:space="preserve">
+    <value>Probe mode: single handler. The listed entries are from the selected handler when initialization succeeds.</value>
+  </data>
+  <data name="DeepAnalyzeSeparatorText" xml:space="preserve">
+    <value>(separator)</value>
+  </data>
+  <data name="DeepAnalyzeNoTextItem" xml:space="preserve">
+    <value>(no text)</value>
+  </data>
+  <data name="DeepAnalysisWindowTitle" xml:space="preserve">
+    <value>Deep analysis result</value>
+  </data>
+  <data name="DeepAnalysisRunning" xml:space="preserve">
+    <value>Resolving actual menu text...</value>
+  </data>
+  <data name="DeepAnalysisSuccess" xml:space="preserve">
+    <value>Resolved menu items</value>
+  </data>
+  <data name="DeepAnalysisFailed" xml:space="preserve">
+    <value>Deep analysis failed</value>
+  </data>
+  <data name="DeepAnalysisNoItems" xml:space="preserve">
+    <value>No menu items were returned.</value>
+  </data>
+  <data name="DeepAnalysisProbeModeSpecific" xml:space="preserve">
+    <value>Single handler</value>
+  </data>
+  <data name="DeepAnalysisProbeModeWholeMenu" xml:space="preserve">
+    <value>Whole context menu</value>
+  </data>
+  <data name="DeepAnalysisDiagnosticsHeader" xml:space="preserve">
+    <value>Diagnostics</value>
+  </data>
+  <data name="DeepAnalysisCopyDiagnostics" xml:space="preserve">
+    <value>Copy diagnostics</value>
+  </data>
+  <data name="DeepAnalysisMissingX64ProbeHost" xml:space="preserve">
+    <value>The shell extension is x64, but the x64 analysis helper was not found.</value>
+  </data>
+  <data name="DeepAnalysisMissingX86ProbeHost" xml:space="preserve">
+    <value>The shell extension is x86, but the x86 analysis helper was not found.</value>
+  </data>
+  <data name="DeepAnalysisMissingArm64ProbeHost" xml:space="preserve">
+    <value>The shell extension is ARM64, but the ARM64 analysis helper was not found.</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerUnsupported" xml:space="preserve">
+    <value>This shell extension cannot be initialized as a single isolated handler. It may depend on Explorer's full context menu aggregation environment.</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerInitializeFailed" xml:space="preserve">
+    <value>The shell extension was created, but it rejected the sample target during isolated initialization.</value>
+  </data>
+  <data name="DeepAnalysisQueryContextMenuFailed" xml:space="preserve">
+    <value>The shell extension was initialized, but failed while building its isolated context menu.</value>
+  </data>
+  <data name="DeepAnalysisSpecificHandlerNoItems" xml:space="preserve">
+    <value>The shell extension initialized successfully but did not insert any menu items for the sample target.</value>
+  </data>
+  <data name="DeepAnalysisFailureNormalTitle" xml:space="preserve">
+    <value>Unable to resolve actual menu text</value>
+  </data>
+  <data name="DeepAnalysisFailureNormalMessage" xml:space="preserve">
+    <value>Unable to resolve the actual menu text. This is usually normal: some Shell Extensions depend on Explorer's full runtime environment, specific file types, or their own internal state and cannot be analyzed in isolation. This does not affect enable/disable behavior and usually does not need to be reported as a bug.</value>
+  </data>
+  <data name="DeepAnalysisNoBugReportHint" xml:space="preserve">
+    <value>This usually does not need to be reported as a bug unless the app crashes or normal enable/disable behavior is broken.</value>
+  </data>
+  <data name="DeepAnalysisUnableToResolveTitle" xml:space="preserve">
+    <value>Unable to resolve actual menu text</value>
+  </data>
+  <data name="DeepAnalysisUnableToResolveNormalMessage" xml:space="preserve">
+    <value>Unable to resolve the actual menu text. This is usually normal: some Shell Extensions depend on Explorer's full runtime environment, specific file types, or their own internal state and cannot be analyzed in isolation. This does not affect enable/disable behavior and usually does not need to be reported as a bug.</value>
+  </data>
+  <data name="DeepAnalysisWholeMenuFallbackHint" xml:space="preserve">
+    <value>Full menu probing shows the entire context menu for the sample target, so some entries may come from other programs.</value>
+  </data>
+  <data name="DeepAnalysisUnsupportedCategory" xml:space="preserve">
+    <value>Deep Analysis is not supported for this category.</value>
+  </data>
+  <data name="DeepAnalysisExpectedFailureBadge" xml:space="preserve">
+    <value>Expected limitation</value>
+  </data>
+  <data name="DeepAnalysisMetadataTitle" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="DeepAnalysisEntryKindShellExtension" xml:space="preserve">
+    <value>Shell Extension</value>
+  </data>
   <data name="DetailsFileProperties" xml:space="preserve">
     <value>File properties</value>
   </data>

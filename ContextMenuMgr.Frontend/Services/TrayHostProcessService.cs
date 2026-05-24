@@ -26,13 +26,24 @@ public sealed class TrayHostProcessService
     /// </summary>
     public bool EnsureRunning()
     {
+        var startedAt = DateTimeOffset.UtcNow;
+        FrontendDebugLog.Operation(
+            "FrontendOperation",
+            $"TrayHostEnsureRunningStart: Path={_trayHostExecutablePath}, Timestamp={startedAt:O}.");
+
         if (IsRunning())
         {
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"TrayHostEnsureRunningEnd: Success=true, AlreadyRunning=true, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             return true;
         }
 
         if (!File.Exists(_trayHostExecutablePath))
         {
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"TrayHostEnsureRunningEnd: Success=false, Reason=ExecutableMissing, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             return false;
         }
 
@@ -44,10 +55,17 @@ public sealed class TrayHostProcessService
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(_trayHostExecutablePath) ?? AppContext.BaseDirectory
             });
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"TrayHostEnsureRunningEnd: Success=true, AlreadyRunning=false, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            FrontendDebugLog.Error(
+                "FrontendOperation",
+                ex,
+                $"TrayHostEnsureRunningEnd: Success=false, Reason=StartFailed, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             return false;
         }
     }
@@ -78,6 +96,11 @@ public sealed class TrayHostProcessService
 
     private static async Task<bool> SendCommandAsync(TrayHostControlRequest request, CancellationToken cancellationToken)
     {
+        var startedAt = DateTimeOffset.UtcNow;
+        FrontendDebugLog.Operation(
+            "FrontendOperation",
+            $"TrayHostCommandStart: Command={request.Command}, LogLevel={request.LogLevel}, Timestamp={startedAt:O}.");
+
         try
         {
             using var stream = new NamedPipeClientStream(".", PipeConstants.TrayHostControlPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -97,10 +120,18 @@ public sealed class TrayHostProcessService
             }
 
             var response = JsonSerializer.Deserialize<TrayHostControlResponse>(line, JsonOptions);
-            return response?.Success == true;
+            var success = response?.Success == true;
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"TrayHostCommandEnd: Command={request.Command}, Success={success}, Message={response?.Message}, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
+            return success;
         }
-        catch
+        catch (Exception ex)
         {
+            FrontendDebugLog.Error(
+                "FrontendOperation",
+                ex,
+                $"TrayHostCommandEnd: Command={request.Command}, Success=false, Error={ex.GetType().Name}, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             return false;
         }
     }
