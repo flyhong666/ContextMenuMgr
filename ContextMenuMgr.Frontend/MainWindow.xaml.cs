@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ContextMenuMgr.Frontend.Services;
+using ContextMenuMgr.Frontend.ViewModels;
 using ContextMenuMgr.Frontend.Views.Pages;
 using Microsoft.Extensions.DependencyInjection;
 using Wpf.Ui;
@@ -101,6 +102,106 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         SystemCommands.CloseWindow(this);
+    }
+
+    private void GlobalSearchBox_QuerySubmitted(
+        Wpf.Ui.Controls.AutoSuggestBox sender,
+        Wpf.Ui.Controls.AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        args.Handled = true;
+
+        if (DataContext is not ShellViewModel viewModel)
+        {
+            return;
+        }
+
+        var result = viewModel.GlobalSearchResults.FirstOrDefault();
+        FrontendDebugLog.Info(
+            nameof(MainWindow),
+            "GlobalSearchQuerySubmitted: "
+            + $"Query='{SanitizeLogText(args.QueryText)}', "
+            + $"ResultCount={viewModel.GlobalSearchResults.Count}, "
+            + $"OpeningItemId={result?.Id ?? "<null>"}.");
+
+        if (result is not null)
+        {
+            OpenGlobalSearchResult(sender, result);
+        }
+    }
+
+    private void GlobalSearchBox_SuggestionChosen(
+        Wpf.Ui.Controls.AutoSuggestBox sender,
+        Wpf.Ui.Controls.AutoSuggestBoxSuggestionChosenEventArgs args)
+    {
+        args.Handled = true;
+
+        if (args.SelectedItem is not GlobalSearchResultViewModel result)
+        {
+            return;
+        }
+
+        FrontendDebugLog.Info(
+            nameof(MainWindow),
+            "GlobalSearchSuggestionChosen: "
+            + $"ItemId={result.Id}, "
+            + $"TargetPage={result.TargetPageType.Name}.");
+        OpenGlobalSearchResult(sender, result);
+    }
+
+    private void GlobalSearchBox_TextChanged(
+        Wpf.Ui.Controls.AutoSuggestBox sender,
+        Wpf.Ui.Controls.AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != Wpf.Ui.Controls.AutoSuggestionBoxTextChangeReason.UserInput)
+        {
+            return;
+        }
+
+        args.Handled = true;
+
+        if (DataContext is not ShellViewModel viewModel)
+        {
+            sender.IsSuggestionListOpen = false;
+            return;
+        }
+
+        viewModel.UpdateGlobalSearchText(args.Text);
+        sender.ItemsSource = viewModel.GlobalSearchResults;
+        sender.IsSuggestionListOpen = !string.IsNullOrWhiteSpace(args.Text)
+                                      && viewModel.GlobalSearchResults.Count > 0;
+
+        FrontendDebugLog.Info(
+            nameof(MainWindow),
+            "GlobalSearchAutoSuggestTextChanged: "
+            + $"Reason={args.Reason}, "
+            + $"Text='{SanitizeLogText(args.Text)}', "
+            + "Handled=True, "
+            + $"ResultCount={viewModel.GlobalSearchResults.Count}, "
+            + $"PopupOpen={sender.IsSuggestionListOpen}.");
+    }
+
+    private void OpenGlobalSearchResult(
+        Wpf.Ui.Controls.AutoSuggestBox sender,
+        GlobalSearchResultViewModel result)
+    {
+        if (DataContext is not ShellViewModel viewModel)
+        {
+            return;
+        }
+
+        if (viewModel.OpenGlobalSearchResultCommand.CanExecute(result))
+        {
+            viewModel.OpenGlobalSearchResultCommand.Execute(result);
+        }
+
+        sender.IsSuggestionListOpen = false;
+    }
+
+    private static string SanitizeLogText(string? text)
+    {
+        return (text ?? string.Empty)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
     private void UpdateMaximizeButtonIcon()

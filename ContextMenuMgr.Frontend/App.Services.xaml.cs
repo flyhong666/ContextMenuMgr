@@ -30,6 +30,8 @@ public partial class App
         services.AddSingleton<EnhanceMenuRuleService>();
         services.AddSingleton<DetailedEditRuleService>();
         services.AddSingleton<Windows11ContextMenuService>();
+        services.AddSingleton<ContextMenuGlobalSearchService>();
+        services.AddSingleton<GlobalSearchNavigationFilterService>();
         services.AddSingleton<ContextMenuItemActionsService>();
         services.AddSingleton<ContextMenuDeepAnalysisService>();
         services.AddSingleton<ListPlaceholderDebugStateService>();

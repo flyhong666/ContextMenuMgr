@@ -165,6 +165,21 @@
   <data name="SearchLabel" xml:space="preserve">
     <value>篩選</value>
   </data>
+  <data name="GlobalSearchPlaceholder" xml:space="preserve">
+    <value>搜尋選單項目……</value>
+  </data>
+  <data name="GlobalSearchJump" xml:space="preserve">
+    <value>跳轉</value>
+  </data>
+  <data name="GlobalSearchNoResults" xml:space="preserve">
+    <value>沒有符合的選單項目</value>
+  </data>
+  <data name="GlobalSearchWin11Scope" xml:space="preserve">
+    <value>Win11 新選單</value>
+  </data>
+  <data name="GlobalSearchClassicScope" xml:space="preserve">
+    <value>傳統選單</value>
+  </data>
   <data name="LogLevelLabel" xml:space="preserve">
     <value>記錄檔等級</value>
   </data>

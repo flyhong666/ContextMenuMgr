@@ -165,6 +165,21 @@
   <data name="SearchLabel" xml:space="preserve">
     <value>Filter</value>
   </data>
+  <data name="GlobalSearchPlaceholder" xml:space="preserve">
+    <value>Search menu items...</value>
+  </data>
+  <data name="GlobalSearchJump" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="GlobalSearchNoResults" xml:space="preserve">
+    <value>No matching menu items</value>
+  </data>
+  <data name="GlobalSearchWin11Scope" xml:space="preserve">
+    <value>Win11 new menu</value>
+  </data>
+  <data name="GlobalSearchClassicScope" xml:space="preserve">
+    <value>Classic menu</value>
+  </data>
   <data name="LogLevelLabel" xml:space="preserve">
     <value>Log level</value>
   </data>

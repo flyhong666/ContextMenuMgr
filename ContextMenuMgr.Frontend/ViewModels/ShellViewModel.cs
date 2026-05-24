@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
+using Wpf.Ui;
 using Wpf.Ui.Controls;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
@@ -18,6 +19,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly LocalizationService _localization;
     private readonly Windows11ContextMenuService _windows11Service;
+    private readonly ContextMenuGlobalSearchService _globalSearchService;
+    private readonly GlobalSearchNavigationFilterService _globalSearchFilterService;
+    private readonly INavigationService _navigationService;
     private readonly ExplorerRestartStateService _explorerRestartState;
     private readonly IBackendClient _backendClient;
     private readonly InfoBadge _approvalsBadge = new() { Visibility = Visibility.Collapsed };
@@ -29,12 +33,18 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
         Windows11ContextMenuService windows11Service,
+        ContextMenuGlobalSearchService globalSearchService,
+        GlobalSearchNavigationFilterService globalSearchFilterService,
+        INavigationService navigationService,
         ExplorerRestartStateService explorerRestartState,
         IBackendClient backendClient)
     {
         _workspace = workspace;
         _localization = localization;
         _windows11Service = windows11Service;
+        _globalSearchService = globalSearchService;
+        _globalSearchFilterService = globalSearchFilterService;
+        _navigationService = navigationService;
         _explorerRestartState = explorerRestartState;
         _backendClient = backendClient;
 
@@ -46,6 +56,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             item.PropertyChanged += OnWorkspaceItemPropertyChanged;
         }
+        _globalSearchService.CandidatesChanged += OnGlobalSearchCandidatesChanged;
         _explorerRestartState.PropertyChanged += OnExplorerRestartStatePropertyChanged;
 
         UpdateApprovalBadge();
@@ -113,6 +124,18 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public string RestartExplorerText => _localization.Translate("RestartExplorer");
 
+    public string GlobalSearchPlaceholder => _localization.Translate("GlobalSearchPlaceholder");
+
+    public string GlobalSearchNoResults => _localization.Translate("GlobalSearchNoResults");
+
+    public ObservableCollection<GlobalSearchResultViewModel> GlobalSearchResults { get; } = [];
+
+    [ObservableProperty]
+    public partial string GlobalSearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsGlobalSearchSuggestionListOpen { get; set; }
+
     public event EventHandler<ContextMenuEntry>? PendingApprovalDetected;
 
     /// <summary>
@@ -122,6 +145,11 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     {
         await _workspace.InitializeAsync(suppressBootstrapPrompt);
         UpdateApprovalBadge();
+
+        if (_windows11Service.IsSupported)
+        {
+            _ = _windows11Service.EnsureLoadedAsync(CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -145,6 +173,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             item.PropertyChanged -= OnWorkspaceItemPropertyChanged;
         }
+        _globalSearchService.CandidatesChanged -= OnGlobalSearchCandidatesChanged;
         _explorerRestartState.PropertyChanged -= OnExplorerRestartStatePropertyChanged;
     }
 
@@ -187,6 +216,55 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    private void OpenGlobalSearchResult(GlobalSearchResultViewModel? result)
+    {
+        if (result is null)
+        {
+            return;
+        }
+
+        FrontendDebugLog.Info(
+            nameof(ShellViewModel),
+            "GlobalSearchOpenResult: "
+            + $"ItemId={result.Id}, "
+            + $"DisplayName='{SanitizeLogText(result.DisplayName)}', "
+            + $"TargetPageType={result.TargetPageType.Name}, "
+            + $"Category={result.Category?.ToString() ?? "<null>"}, "
+            + $"IsWindows11={result.IsWindows11}, "
+            + $"TargetFilterText='{SanitizeLogText(result.TargetFilterText)}'.");
+
+        _globalSearchFilterService.RequestFilter(
+            result.TargetPageType,
+            result.Category,
+            result.IsWindows11,
+            result.TargetFilterText,
+            result.Id);
+        _navigationService.Navigate(result.TargetPageType);
+        IsGlobalSearchSuggestionListOpen = false;
+    }
+
+    public void OpenFirstGlobalSearchResult()
+    {
+        OpenGlobalSearchResult(GlobalSearchResults.FirstOrDefault());
+    }
+
+    public void UpdateGlobalSearchText(string text)
+    {
+        if (string.Equals(GlobalSearchText, text, StringComparison.Ordinal))
+        {
+            RefreshGlobalSearchResults();
+            return;
+        }
+
+        GlobalSearchText = text;
+    }
+
+    partial void OnGlobalSearchTextChanged(string value)
+    {
+        RefreshGlobalSearchResults();
+    }
+
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(WindowTitle));
@@ -216,6 +294,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SettingsTitle));
         OnPropertyChanged(nameof(RestartExplorerText));
         OnPropertyChanged(nameof(LegacyContextMenuItemsName));
+        OnPropertyChanged(nameof(GlobalSearchPlaceholder));
+        OnPropertyChanged(nameof(GlobalSearchNoResults));
+        RefreshGlobalSearchResults();
         UpdateApprovalBadge();
     }
 
@@ -275,6 +356,37 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             UpdateApprovalBadge();
         }
+    }
+
+    private void OnGlobalSearchCandidatesChanged(object? sender, EventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(RefreshGlobalSearchResults);
+    }
+
+    private void RefreshGlobalSearchResults()
+    {
+        GlobalSearchResults.Clear();
+        foreach (var result in _globalSearchService.Search(GlobalSearchText))
+        {
+            GlobalSearchResults.Add(result);
+        }
+
+        IsGlobalSearchSuggestionListOpen = !string.IsNullOrWhiteSpace(GlobalSearchText)
+                                           && GlobalSearchResults.Count > 0;
+
+        FrontendDebugLog.Info(
+            nameof(ShellViewModel),
+            "GlobalSearchUpdated: "
+            + $"Text='{SanitizeLogText(GlobalSearchText)}', "
+            + $"ResultCount={GlobalSearchResults.Count}, "
+            + $"SuggestionListOpen={IsGlobalSearchSuggestionListOpen}.");
+    }
+
+    private static string SanitizeLogText(string? text)
+    {
+        return (text ?? string.Empty)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
     private void OnPendingApprovalDetected(object? sender, ContextMenuEntry e)

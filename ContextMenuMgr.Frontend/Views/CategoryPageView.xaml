@@ -50,360 +50,363 @@
                 ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type viewModels:ContextMenuItemViewModel}">
-                    <Border
-                        Margin="0,0,0,10"
-                        Padding="12"
-                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                        BorderBrush="{DynamicResource CardStrokeColorSecondaryBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorSecondaryBrush}" />
-                                <Setter Property="BorderThickness" Value="1" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding HasDetectedChange}" Value="True">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                                        <Setter Property="BorderThickness" Value="2" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                        <Border
+                            Margin="0,0,0,10"
+                            Padding="12"
+                            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                            BorderBrush="{DynamicResource CardStrokeColorSecondaryBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorSecondaryBrush}" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasDetectedChange}" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                            <Setter Property="BorderThickness" Value="2" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Opacity="{Binding CardOpacity}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
+                                <StackPanel Opacity="{Binding CardOpacity}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
 
-                                    <Border
-                                        Width="28"
-                                        Height="28"
-                                        Margin="0,0,10,0"
-                                        VerticalAlignment="Top"
-                                        Background="{DynamicResource ControlFillColorTertiaryBrush}"
-                                        BorderBrush="{DynamicResource ControlStrokeColorSecondaryBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="8">
-                                        <Image
-                                            Width="20"
-                                            Height="20"
-                                            HorizontalAlignment="Center"
+                                        <Border
+                                            Width="28"
+                                            Height="28"
+                                            Margin="0,0,10,0"
                                             VerticalAlignment="Center"
-                                            Source="{Binding IconSource}" />
-                                    </Border>
+                                            Background="{DynamicResource ControlFillColorTertiaryBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeColorSecondaryBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8">
+                                            <Image
+                                                Width="20"
+                                                Height="20"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Source="{Binding IconSource}" />
+                                        </Border>
 
-                                    <StackPanel Grid.Column="1">
-                                        <WrapPanel>
-                                            <ui:TextBlock
-                                                FontSize="15"
-                                                FontWeight="SemiBold"
-                                                Text="{Binding DisplayName}" />
-                                            <Border
-                                                Margin="8,0,0,0"
-                                                Padding="8,2"
-                                                CornerRadius="4">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
-                                                                <Setter Property="Background" Value="{DynamicResource SystemFillColorNeutralBackgroundBrush}" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
+                                        <StackPanel Grid.Column="1">
+                                            <WrapPanel>
                                                 <ui:TextBlock
-                                                    FontSize="11"
-                                                    Text="{Binding StateLabel}">
-                                                    <ui:TextBlock.Style>
-                                                        <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="ui:TextBlock">
-                                                            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                                    VerticalAlignment="Center"
+                                                    FontSize="15"
+                                                    FontWeight="SemiBold"
+                                                    Text="{Binding DisplayName}" />
+                                                <Border
+                                                    Height="23"
+                                                    Margin="8,0,0,0"
+                                                    Padding="8,2"
+                                                    VerticalAlignment="Center"
+                                                    CornerRadius="4">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsEnabled}" Value="False">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorNeutralBackgroundBrush}" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
-                                                    </ui:TextBlock.Style>
-                                                </ui:TextBlock>
-                                            </Border>
-                                            <ui:Button
-                                                Margin="6,0,0,0"
-                                                Padding="8,2"
-                                                Appearance="Secondary"
-                                                Command="{Binding DeepAnalyzeMenuItemCommand}"
-                                                Content="{Binding DeepAnalyzeMenuItemText}"
-                                                ToolTip="{Binding DeepAnalyzeMenuItemTooltip}"
-                                                Visibility="{Binding CanDeepAnalyzeMenuItem, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                            <Border
-                                                Margin="6,0,0,0"
-                                                Padding="8,2"
-                                                Background="{DynamicResource AccentFillColorDefaultBrush}"
-                                                CornerRadius="4"
-                                                Visibility="{Binding IsPendingApproval, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <ui:TextBlock
-                                                    FontSize="11"
-                                                    Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
-                                                    Text="{Binding PendingApprovalBadgeText}" />
-                                            </Border>
-                                            <Border
-                                                Margin="6,0,0,0"
-                                                Padding="8,2"
-                                                Background="{DynamicResource AccentFillColorSecondaryBrush}"
-                                                CornerRadius="4"
-                                                Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <ui:TextBlock
-                                                    FontSize="11"
-                                                    Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
-                                                    Text="{Binding DetectedChangeBadgeText}" />
-                                            </Border>
-                                        </WrapPanel>
-
-                                        <ui:TextBlock
-                                            Margin="0,3,0,0"
-                                            FontSize="11"
-                                            Opacity="0.6"
-                                            Text="{Binding KeyName}"
-                                            Visibility="{Binding ShowKeyName, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <ui:TextBlock
-                                    Margin="0,6,0,0"
-                                    FontFamily="Consolas"
-                                    FontSize="11"
-                                    Opacity="0.72"
-                                    Text="{Binding RegistryPath}" />
-                                <ui:TextBlock
-                                    Margin="0,6,0,0"
-                                    FontFamily="Consolas"
-                                    FontSize="11"
-                                    Opacity="0.72"
-                                    Text="{Binding InlineCommandText}"
-                                    TextWrapping="Wrap"
-                                    Visibility="{Binding ShowInlineCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ui:TextBlock
-                                    Margin="0,8,0,0"
-                                    Opacity="0.78"
-                                    Text="{Binding Notes}"
-                                    TextWrapping="Wrap"
-                                    Visibility="{Binding ShowNotes, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ui:TextBlock
-                                    Margin="0,6,0,0"
-                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                    Text="{Binding DetectedChangeText}"
-                                    TextWrapping="Wrap"
-                                    Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <DockPanel Margin="0,6,0,0" Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <ui:Button
-                                        Width="22"
-                                        Height="22"
-                                        Margin="0,0,6,0"
-                                        Padding="0"
-                                        Appearance="Transparent"
-                                        Command="{Binding DismissDetectedChangeCommand}"
-                                        DockPanel.Dock="Right"
-                                        Icon="{ui:SymbolIcon Symbol=Dismiss24}"
-                                        ToolTip="{Binding DismissAttentionText}"
-                                        Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                    <ui:TextBlock
-                                        Foreground="#C75000"
-                                        Text="{Binding ConsistencyText}"
-                                        TextWrapping="Wrap" />
-                                </DockPanel>
-                                <ui:TextBlock
-                                    Margin="0,6,0,0"
-                                    Opacity="0.6"
-                                    Text="{Binding DataContext.RegistryMissingText, RelativeSource={RelativeSource AncestorType=Page}}"
-                                    Visibility="{Binding IsPresentInRegistry, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                <ui:TextBlock
-                                    Margin="0,6,0,0"
-                                    Opacity="0.6"
-                                    Text="{Binding DeletedAtText}"
-                                    Visibility="{Binding IsDeleted, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            </StackPanel>
-
-                            <StackPanel
-                                Grid.Column="1"
-                                Margin="12,0,0,0"
-                                HorizontalAlignment="Right">
-                                <ui:ToggleSwitch
-                                    MinWidth="72"
-                                    Margin="0,0,0,8"
-                                    Content="{Binding ToggleLabel}"
-                                    IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                    IsEnabled="{Binding CanToggle}"
-                                    Visibility="{Binding ShowToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <ui:Button
-                                    MinWidth="88"
-                                    Padding="12,5"
-                                    Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                    CommandParameter="{Binding}"
-                                    Content="{Binding DataContext.DeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
-                                    Icon="{ui:SymbolIcon Symbol=Delete24}"
-                                    Visibility="{Binding IsDeleted, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
-                                <ui:Button
-                                    MinWidth="88"
-                                    Padding="12,5"
-                                    Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                    CommandParameter="{Binding}"
-                                    Content="{Binding PrimaryActionLabel}"
-                                    Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
-                                    Visibility="{Binding IsDeleted, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                                <ui:DropDownButton
-                                    MinWidth="88"
-                                    Margin="0,8,0,0"
-                                    Appearance="Secondary"
-                                    Content="{Binding MoreActionsText}"
-                                    Icon="{ui:SymbolIcon Symbol=MoreHorizontal24}"
-                                    Visibility="{Binding HasActionFlyout, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <ui:DropDownButton.Flyout>
-                                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem
-                                                Header="{Binding OtherAttributesTitle}"
-                                                behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
-                                                Visibility="{Binding HasOtherAttributesSection, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <MenuItem
-                                                    Header="{Binding OnlyWithShiftLabel}"
-                                                    IsCheckable="True"
-                                                    IsChecked="{Binding OnlyWithShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}"
-                                                    StaysOpenOnClick="True" />
-                                                <MenuItem
-                                                    Header="{Binding OnlyInExplorerLabel}"
-                                                    IsCheckable="True"
-                                                    IsChecked="{Binding OnlyInExplorer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}"
-                                                    StaysOpenOnClick="True" />
-                                                <MenuItem
-                                                    Header="{Binding NoWorkingDirectoryLabel}"
-                                                    IsCheckable="True"
-                                                    IsChecked="{Binding NoWorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}"
-                                                    StaysOpenOnClick="True" />
-                                                <MenuItem
-                                                    Header="{Binding NeverDefaultLabel}"
-                                                    IsCheckable="True"
-                                                    IsChecked="{Binding NeverDefault, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}"
-                                                    StaysOpenOnClick="True" />
-                                                <MenuItem
-                                                    Header="{Binding ShowAsDisabledIfHiddenLabel}"
-                                                    IsCheckable="True"
-                                                    IsChecked="{Binding ShowAsDisabledIfHidden, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                    IsEnabled="{Binding CanEditShellAttributes}"
-                                                    StaysOpenOnClick="True" />
-                                            </MenuItem>
-                                            <MenuItem
-                                                Header="{Binding DetailsTitle}"
-                                                behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
-                                                Visibility="{Binding HasDetailsActions, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <MenuItem
-                                                    Command="{Binding ChangeTextCommand}"
-                                                    Header="{Binding DetailsChangeTextLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding CanEditText, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding SearchOnlineCommand}"
-                                                    Header="{Binding DetailsSearchOnline}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding CanSearchOnline, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding ShowCommandTextCommand}"
-                                                    Header="{Binding DetailsCommandTextLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding HasCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding OpenFilePropertiesCommand}"
-                                                    Header="{Binding DetailsFilePropertiesLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding HasFileLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding OpenFileLocationCommand}"
-                                                    Header="{Binding DetailsFileLocationLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding HasFileLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding OpenRegistryLocationCommand}"
-                                                    Header="{Binding DetailsRegistryLocationLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding HasRegistryLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding ExportRegistryCommand}"
-                                                    Header="{Binding DetailsExportRegistryLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding HasRegistryLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding OpenClsidLocationCommand}"
-                                                    Header="{Binding DetailsClsidLocationLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding HasClsidLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                            </MenuItem>
-                                        </ContextMenu>
-                                    </ui:DropDownButton.Flyout>
-                                </ui:DropDownButton>
-                                <Grid Margin="0,8,0,0" Visibility="{Binding CanPermanentlyDelete, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                    <ui:Flyout
-                                        Margin="0,0,0,15"
-                                        IsOpen="{Binding IsPermanentDeleteFlyoutOpen, Mode=TwoWay}"
-                                        Placement="Top">
-                                        <StackPanel Width="280">
-                                            <ui:TextBlock
-                                                HorizontalAlignment="Left"
-                                                Text="{Binding PermanentDeleteConfirmationText}"
-                                                TextWrapping="Wrap" />
-                                            <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                                                    </Border.Style>
+                                                    <ui:TextBlock
+                                                        VerticalAlignment="Center"
+                                                        FontSize="11"
+                                                        Text="{Binding StateLabel}">
+                                                        <ui:TextBlock.Style>
+                                                            <Style BasedOn="{StaticResource {x:Type TextBlock}}" TargetType="ui:TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </ui:TextBlock.Style>
+                                                    </ui:TextBlock>
+                                                </Border>
                                                 <ui:Button
-                                                    Margin="0,0,8,0"
-                                                    Appearance="Primary"
-                                                    Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                                    CommandParameter="{Binding}"
-                                                    Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
-                                                    Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}" />
-                                                <ui:Button
+                                                    Margin="10,0,0,0"
                                                     Appearance="Secondary"
-                                                    Command="{Binding ClosePermanentDeleteFlyoutCommand}"
-                                                    Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=Page}}"
-                                                    Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
-                                            </StackPanel>
+                                                    Command="{Binding DeepAnalyzeMenuItemCommand}"
+                                                    Content="{Binding DeepAnalyzeMenuItemText}"
+                                                    ToolTip="{Binding DeepAnalyzeMenuItemTooltip}"
+                                                    Visibility="{Binding CanDeepAnalyzeMenuItem, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <Border
+                                                    Margin="6,0,0,0"
+                                                    Padding="8,2"
+                                                    Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                                    CornerRadius="4"
+                                                    Visibility="{Binding IsPendingApproval, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <ui:TextBlock
+                                                        FontSize="11"
+                                                        Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                        Text="{Binding PendingApprovalBadgeText}" />
+                                                </Border>
+                                                <Border
+                                                    Margin="6,0,0,0"
+                                                    Padding="8,2"
+                                                    Background="{DynamicResource AccentFillColorSecondaryBrush}"
+                                                    CornerRadius="4"
+                                                    Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <ui:TextBlock
+                                                        FontSize="11"
+                                                        Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                        Text="{Binding DetectedChangeBadgeText}" />
+                                                </Border>
+                                            </WrapPanel>
+
+                                            <ui:TextBlock
+                                                Margin="0,3,0,0"
+                                                FontSize="11"
+                                                Opacity="0.6"
+                                                Text="{Binding KeyName}"
+                                                Visibility="{Binding ShowKeyName, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                         </StackPanel>
-                                    </ui:Flyout>
+                                    </Grid>
+
+                                    <ui:TextBlock
+                                        Margin="0,6,0,0"
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Opacity="0.72"
+                                        Text="{Binding RegistryPath}" />
+                                    <ui:TextBlock
+                                        Margin="0,6,0,0"
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Opacity="0.72"
+                                        Text="{Binding InlineCommandText}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding ShowInlineCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,8,0,0"
+                                        Opacity="0.78"
+                                        Text="{Binding Notes}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding ShowNotes, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,6,0,0"
+                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                        Text="{Binding DetectedChangeText}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <DockPanel Margin="0,6,0,0" Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ui:Button
+                                            Width="22"
+                                            Height="22"
+                                            Margin="0,0,6,0"
+                                            Padding="0"
+                                            Appearance="Transparent"
+                                            Command="{Binding DismissDetectedChangeCommand}"
+                                            DockPanel.Dock="Right"
+                                            Icon="{ui:SymbolIcon Symbol=Dismiss24}"
+                                            ToolTip="{Binding DismissAttentionText}"
+                                            Visibility="{Binding CanDismissAttention, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        <ui:TextBlock
+                                            Foreground="#C75000"
+                                            Text="{Binding ConsistencyText}"
+                                            TextWrapping="Wrap" />
+                                    </DockPanel>
+                                    <ui:TextBlock
+                                        Margin="0,6,0,0"
+                                        Opacity="0.6"
+                                        Text="{Binding DataContext.RegistryMissingText, RelativeSource={RelativeSource AncestorType=Page}}"
+                                        Visibility="{Binding IsPresentInRegistry, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,6,0,0"
+                                        Opacity="0.6"
+                                        Text="{Binding DeletedAtText}"
+                                        Visibility="{Binding IsDeleted, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                </StackPanel>
+
+                                <StackPanel
+                                    Grid.Column="1"
+                                    Margin="12,0,0,0"
+                                    HorizontalAlignment="Right">
+                                    <ui:ToggleSwitch
+                                        MinWidth="72"
+                                        Margin="0,0,0,8"
+                                        Content="{Binding ToggleLabel}"
+                                        IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        IsEnabled="{Binding CanToggle}"
+                                        Visibility="{Binding ShowToggle, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <ui:Button
                                         MinWidth="88"
                                         Padding="12,5"
-                                        Appearance="Secondary"
-                                        Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                        Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                         CommandParameter="{Binding}"
-                                        Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
-                                        Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}" />
-                                </Grid>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                                        Content="{Binding DataContext.DeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
+                                        Icon="{ui:SymbolIcon Symbol=Delete24}"
+                                        Visibility="{Binding IsDeleted, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                    <ui:Button
+                                        MinWidth="88"
+                                        Padding="12,5"
+                                        Command="{Binding DataContext.DeleteOrUndoCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                        CommandParameter="{Binding}"
+                                        Content="{Binding PrimaryActionLabel}"
+                                        Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
+                                        Visibility="{Binding IsDeleted, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                                    <ui:DropDownButton
+                                        MinWidth="88"
+                                        Margin="0,8,0,0"
+                                        Appearance="Secondary"
+                                        Content="{Binding MoreActionsText}"
+                                        Icon="{ui:SymbolIcon Symbol=MoreHorizontal24}"
+                                        Visibility="{Binding HasActionFlyout, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ui:DropDownButton.Flyout>
+                                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem
+                                                    behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
+                                                    Header="{Binding OtherAttributesTitle}"
+                                                    Visibility="{Binding HasOtherAttributesSection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <MenuItem
+                                                        Header="{Binding OnlyWithShiftLabel}"
+                                                        IsCheckable="True"
+                                                        IsChecked="{Binding OnlyWithShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsEnabled="{Binding CanEditShellAttributes}"
+                                                        StaysOpenOnClick="True" />
+                                                    <MenuItem
+                                                        Header="{Binding OnlyInExplorerLabel}"
+                                                        IsCheckable="True"
+                                                        IsChecked="{Binding OnlyInExplorer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsEnabled="{Binding CanEditShellAttributes}"
+                                                        StaysOpenOnClick="True" />
+                                                    <MenuItem
+                                                        Header="{Binding NoWorkingDirectoryLabel}"
+                                                        IsCheckable="True"
+                                                        IsChecked="{Binding NoWorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsEnabled="{Binding CanEditShellAttributes}"
+                                                        StaysOpenOnClick="True" />
+                                                    <MenuItem
+                                                        Header="{Binding NeverDefaultLabel}"
+                                                        IsCheckable="True"
+                                                        IsChecked="{Binding NeverDefault, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsEnabled="{Binding CanEditShellAttributes}"
+                                                        StaysOpenOnClick="True" />
+                                                    <MenuItem
+                                                        Header="{Binding ShowAsDisabledIfHiddenLabel}"
+                                                        IsCheckable="True"
+                                                        IsChecked="{Binding ShowAsDisabledIfHidden, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        IsEnabled="{Binding CanEditShellAttributes}"
+                                                        StaysOpenOnClick="True" />
+                                                </MenuItem>
+                                                <MenuItem
+                                                    behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
+                                                    Header="{Binding DetailsTitle}"
+                                                    Visibility="{Binding HasDetailsActions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <MenuItem
+                                                        Command="{Binding ChangeTextCommand}"
+                                                        Header="{Binding DetailsChangeTextLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding CanEditText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding SearchOnlineCommand}"
+                                                        Header="{Binding DetailsSearchOnline}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding CanSearchOnline, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding ShowCommandTextCommand}"
+                                                        Header="{Binding DetailsCommandTextLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding HasCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding OpenFilePropertiesCommand}"
+                                                        Header="{Binding DetailsFilePropertiesLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding HasFileLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding OpenFileLocationCommand}"
+                                                        Header="{Binding DetailsFileLocationLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding HasFileLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding OpenRegistryLocationCommand}"
+                                                        Header="{Binding DetailsRegistryLocationLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding HasRegistryLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding ExportRegistryCommand}"
+                                                        Header="{Binding DetailsExportRegistryLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding HasRegistryLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding OpenClsidLocationCommand}"
+                                                        Header="{Binding DetailsClsidLocationLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding HasClsidLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                </MenuItem>
+                                            </ContextMenu>
+                                        </ui:DropDownButton.Flyout>
+                                    </ui:DropDownButton>
+                                    <Grid Margin="0,8,0,0" Visibility="{Binding CanPermanentlyDelete, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ui:Flyout
+                                            Margin="0,0,0,15"
+                                            IsOpen="{Binding IsPermanentDeleteFlyoutOpen, Mode=TwoWay}"
+                                            Placement="Top">
+                                            <StackPanel Width="280">
+                                                <ui:TextBlock
+                                                    HorizontalAlignment="Left"
+                                                    Text="{Binding PermanentDeleteConfirmationText}"
+                                                    TextWrapping="Wrap" />
+                                                <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                                                    <ui:Button
+                                                        Margin="0,0,8,0"
+                                                        Appearance="Primary"
+                                                        Command="{Binding DataContext.ConfirmPermanentDeleteCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                        CommandParameter="{Binding}"
+                                                        Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                        Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}" />
+                                                    <ui:Button
+                                                        Appearance="Secondary"
+                                                        Command="{Binding ClosePermanentDeleteFlyoutCommand}"
+                                                        Content="{Binding DataContext.CancelText, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                        Icon="{ui:SymbolIcon Symbol=Dismiss24}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </ui:Flyout>
+                                        <ui:Button
+                                            MinWidth="88"
+                                            Padding="12,5"
+                                            Appearance="Secondary"
+                                            Command="{Binding DataContext.OpenPermanentDeleteFlyoutCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                            CommandParameter="{Binding}"
+                                            Content="{Binding DataContext.PermanentDeleteText, RelativeSource={RelativeSource AncestorType=Page}}"
+                                            Icon="{ui:SymbolIcon Symbol=DeleteDismiss24}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
 
             <Border
-                Panel.ZIndex="100"
                 Padding="24,18"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
+                Panel.ZIndex="100"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="12"
                 IsHitTestVisible="False"
                 Visibility="{Binding ShowListPlaceholder, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <StackPanel HorizontalAlignment="Center" MinWidth="180">
+                <StackPanel MinWidth="180" HorizontalAlignment="Center">
                     <ProgressBar
                         Width="120"
                         Height="4"
@@ -419,8 +422,8 @@
                     <ui:TextBlock
                         Margin="0,10,0,0"
                         HorizontalAlignment="Center"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         FontSize="15"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Opacity="0.86">
                         <ui:TextBlock.Style>
                             <Style TargetType="ui:TextBlock">

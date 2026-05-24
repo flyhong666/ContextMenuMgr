@@ -19,6 +19,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     private readonly LocalizationService _localization;
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
+    private readonly GlobalSearchNavigationFilterService _globalSearchFilterService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Windows11ContextMenuPageViewModel"/> class.
@@ -27,12 +28,14 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         Windows11ContextMenuService service,
         LocalizationService localization,
         ContextMenuWorkspaceService workspace,
-        ListPlaceholderDebugStateService placeholderDebug)
+        ListPlaceholderDebugStateService placeholderDebug,
+        GlobalSearchNavigationFilterService globalSearchFilterService)
     {
         _service = service;
         _localization = localization;
         _workspace = workspace;
         _placeholderDebug = placeholderDebug;
+        _globalSearchFilterService = globalSearchFilterService;
 
         ItemsView = new ListCollectionView(Items);
         ItemsView.Filter = FilterItem;
@@ -41,6 +44,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         _localization.LanguageChanged += OnLanguageChanged;
         _service.ItemsChanged += OnItemsChanged;
         _placeholderDebug.PropertyChanged += OnPlaceholderDebugPropertyChanged;
+        _globalSearchFilterService.FilterRequested += OnGlobalSearchFilterRequested;
         _workspace.Items.CollectionChanged += OnWorkspaceItemsChanged;
         foreach (var item in _workspace.Items)
         {
@@ -58,6 +62,8 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
                 _ = EnsureLoadedAsync();
             }
         }
+
+        ApplyPendingGlobalSearchFilter();
     }
 
     /// <summary>
@@ -142,6 +148,47 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     {
         ItemsView.Refresh();
         RefreshListPlaceholderState();
+    }
+
+    private void OnGlobalSearchFilterRequested(object? sender, GlobalSearchFilterRequestedEventArgs e)
+    {
+        if (!e.IsWindows11)
+        {
+            return;
+        }
+
+        ApplyGlobalSearchFilter(e.FilterText, e.ItemId);
+        _globalSearchFilterService.ConsumePendingWindows11Request();
+    }
+
+    private void ApplyPendingGlobalSearchFilter()
+    {
+        var pending = _globalSearchFilterService.ConsumePendingWindows11Request();
+        if (pending is not null)
+        {
+            ApplyGlobalSearchFilter(pending.FilterText, pending.ItemId);
+        }
+    }
+
+    private void ApplyGlobalSearchFilter(string filterText, string? itemId)
+    {
+        if (string.IsNullOrWhiteSpace(filterText))
+        {
+            return;
+        }
+
+        SearchText = filterText;
+        ItemsView.Refresh();
+        RefreshListPlaceholderState();
+
+        FrontendDebugLog.Info(
+            nameof(Windows11ContextMenuPageViewModel),
+            "GlobalSearchFilterApplied: "
+            + "Page/ViewModel=Windows11ContextMenuPageViewModel, "
+            + "Category=<null>, "
+            + "IsWindows11=True, "
+            + $"ItemId={itemId ?? "<null>"}, "
+            + $"FilterText='{SanitizeLogText(filterText)}'.");
     }
 
     partial void OnIsLoadingChanged(bool value)
@@ -237,28 +284,15 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
 
     private bool FilterItem(object obj)
     {
-        if (obj is not Windows11ContextMenuItemViewModel item)
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(SearchText))
-        {
-            return true;
-        }
-
-        var search = SearchText.Trim();
-        return Contains(item.DisplayName, search)
-               || Contains(item.PackageFamilyName, search)
-               || Contains(item.PublisherName, search)
-               || Contains(item.ContextTypesText, search)
-               || Contains(item.ComServerPath, search);
+        return obj is Windows11ContextMenuItemViewModel item
+               && ContextMenuSearchMatcher.MatchesWindows11Item(item, SearchText);
     }
 
-    private static bool Contains(string? value, string search)
+    private static string SanitizeLogText(string? text)
     {
-        return !string.IsNullOrWhiteSpace(value)
-               && value.Contains(search, StringComparison.OrdinalIgnoreCase);
+        return (text ?? string.Empty)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -269,6 +303,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         _localization.LanguageChanged -= OnLanguageChanged;
         _service.ItemsChanged -= OnItemsChanged;
         _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
+        _globalSearchFilterService.FilterRequested -= OnGlobalSearchFilterRequested;
         _workspace.Items.CollectionChanged -= OnWorkspaceItemsChanged;
         foreach (var item in _workspace.Items)
         {

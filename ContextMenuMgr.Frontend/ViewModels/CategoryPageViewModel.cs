@@ -17,6 +17,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
+    private readonly GlobalSearchNavigationFilterService _globalSearchFilterService;
     private readonly HashSet<string> _loggedDesktopCompatibilityItemIds = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -27,17 +28,20 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
         FrontendSettingsService settingsService,
-        ListPlaceholderDebugStateService placeholderDebug)
+        ListPlaceholderDebugStateService placeholderDebug,
+        GlobalSearchNavigationFilterService globalSearchFilterService)
     {
         Category = category;
         _workspace = workspace;
         _localization = localization;
         _settingsService = settingsService;
         _placeholderDebug = placeholderDebug;
+        _globalSearchFilterService = globalSearchFilterService;
         _localization.LanguageChanged += OnLanguageChanged;
         _settingsService.SettingsChanged += OnSettingsChanged;
         _workspace.PropertyChanged += OnWorkspacePropertyChanged;
         _placeholderDebug.PropertyChanged += OnPlaceholderDebugPropertyChanged;
+        _globalSearchFilterService.FilterRequested += OnGlobalSearchFilterRequested;
         _workspace.Items.CollectionChanged += OnItemsCollectionChanged;
         foreach (var item in _workspace.Items)
         {
@@ -52,6 +56,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
         RefreshLocalizedText();
         RefreshListPlaceholderState();
+        ApplyPendingGlobalSearchFilter();
     }
 
     /// <summary>
@@ -233,6 +238,47 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         RefreshListPlaceholderState();
     }
 
+    private void OnGlobalSearchFilterRequested(object? sender, GlobalSearchFilterRequestedEventArgs e)
+    {
+        if (e.Category != Category)
+        {
+            return;
+        }
+
+        ApplyGlobalSearchFilter(e.FilterText, e.ItemId);
+        _globalSearchFilterService.ConsumePendingRequest(Category);
+    }
+
+    private void ApplyPendingGlobalSearchFilter()
+    {
+        var pending = _globalSearchFilterService.ConsumePendingRequest(Category);
+        if (pending is not null)
+        {
+            ApplyGlobalSearchFilter(pending.FilterText, pending.ItemId);
+        }
+    }
+
+    private void ApplyGlobalSearchFilter(string filterText, string? itemId)
+    {
+        if (string.IsNullOrWhiteSpace(filterText))
+        {
+            return;
+        }
+
+        SearchText = filterText;
+        ItemsView.Refresh();
+        RefreshListPlaceholderState();
+
+        FrontendDebugLog.Info(
+            nameof(CategoryPageViewModel),
+            "GlobalSearchFilterApplied: "
+            + "Page/ViewModel=CategoryPageViewModel, "
+            + $"Category={Category}, "
+            + "IsWindows11=False, "
+            + $"ItemId={itemId ?? "<null>"}, "
+            + $"FilterText='{SanitizeLogText(filterText)}'.");
+    }
+
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
         RefreshLocalizedText();
@@ -280,27 +326,14 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
     private bool MatchesSearch(ContextMenuItemViewModel item)
     {
-        if (string.IsNullOrWhiteSpace(SearchText))
-        {
-            return true;
-        }
-
-        var search = SearchText.Trim();
-        return Contains(item.DisplayName, search)
-               || Contains(item.KeyName, search)
-               || Contains(item.Subtitle, search)
-               || Contains(item.RegistryPath, search)
-               || Contains(item.ShellPathTail, search)
-               || Contains(item.Entry.HandlerClsid, search)
-               || Contains(item.Entry.FilePath, search)
-               || Contains(item.Entry.CommandText, search)
-               || Contains(item.Notes, search);
+        return ContextMenuSearchMatcher.MatchesClassicItem(item, SearchText);
     }
 
-    private static bool Contains(string? value, string search)
+    private static string SanitizeLogText(string? text)
     {
-        return !string.IsNullOrWhiteSpace(value)
-               && value.Contains(search, StringComparison.OrdinalIgnoreCase);
+        return (text ?? string.Empty)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
     private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -360,6 +393,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
         _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
+        _globalSearchFilterService.FilterRequested -= OnGlobalSearchFilterRequested;
         _workspace.Items.CollectionChanged -= OnItemsCollectionChanged;
         foreach (var item in _workspace.Items)
         {
