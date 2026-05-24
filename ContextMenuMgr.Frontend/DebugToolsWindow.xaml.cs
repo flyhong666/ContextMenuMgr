@@ -33,22 +33,22 @@ public partial class DebugToolsWindow : Wpf.Ui.Controls.FluentWindow
         Closed += (_, _) => _localization.LanguageChanged -= OnLanguageChanged;
     }
 
-    private void OnForceUpdatePromptClick(object sender, System.Windows.RoutedEventArgs e)
+    private void OnForceUpdatePromptClick(object sender, RoutedEventArgs e)
     {
         _updateCheckService.ShowDebugUpdatePrompt();
     }
 
-    private void OnSimulateLoadingClick(object sender, System.Windows.RoutedEventArgs e)
+    private void OnSimulateLoadingClick(object sender, RoutedEventArgs e)
     {
         _placeholderDebug.SimulateLoading();
     }
 
-    private void OnSimulateEmptyClick(object sender, System.Windows.RoutedEventArgs e)
+    private void OnSimulateEmptyClick(object sender, RoutedEventArgs e)
     {
         _placeholderDebug.SimulateEmpty();
     }
 
-    private void OnClearSimulatedStateClick(object sender, System.Windows.RoutedEventArgs e)
+    private void OnClearSimulatedStateClick(object sender, RoutedEventArgs e)
     {
         _placeholderDebug.Clear();
     }

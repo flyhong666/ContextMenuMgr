@@ -151,7 +151,7 @@ public class MenuItemFormDialog
             WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
             ResizeMode = System.Windows.ResizeMode.NoResize;
             ExtendsContentIntoTitleBar = true;
-            WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
+            WindowBackdropType = WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
             Background = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ApplicationBackgroundBrush"];
             WindowChromeTitleBarFactory.Apply(this);
@@ -240,7 +240,7 @@ public class MenuItemFormDialog
                 Margin = new System.Windows.Thickness(0, 20, 0, 0)
             };
 
-            var okButton = new Wpf.Ui.Controls.Button
+            var okButton = new Button
             {
                 Content = localization.Translate("DialogConfirm"),
                 MinWidth = 100,
@@ -250,7 +250,7 @@ public class MenuItemFormDialog
                 Icon = new SymbolIcon { Symbol = SymbolRegular.Checkmark24 }
             };
 
-            var cancelButton = new Wpf.Ui.Controls.Button
+            var cancelButton = new Button
             {
                 Content = localization.Translate("DialogCancel"),
                 MinWidth = 100,
@@ -307,7 +307,7 @@ public class MenuItemFormDialog
                 Opacity = 0.6,
                 Margin = new System.Windows.Thickness(0, 0, 0, 4)
             };
-            var textBox = new Wpf.Ui.Controls.TextBox
+            var textBox = new TextBox
             {
                 Text = initialValue,
                 Padding = new System.Windows.Thickness(10, 6, 10, 6),
@@ -338,14 +338,14 @@ public class MenuItemFormDialog
                 Opacity = 0.6,
                 Margin = new System.Windows.Thickness(0, 0, 0, 4)
             };
-            var textBox = new Wpf.Ui.Controls.TextBox
+            var textBox = new TextBox
             {
                 Text = initialValue,
                 Padding = new System.Windows.Thickness(10, 6, 10, 6),
                 MinWidth = 400,
                 Width = 400
             };
-            var button = new Wpf.Ui.Controls.Button
+            var button = new Button
             {
                 Content = buttonText,
                 MinWidth = 80,
@@ -453,7 +453,7 @@ public class MenuItemFormDialog
             WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
             ResizeMode = System.Windows.ResizeMode.NoResize;
             ExtendsContentIntoTitleBar = true;
-            WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
+            WindowBackdropType = WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
             Background = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ApplicationBackgroundBrush"];
             WindowChromeTitleBarFactory.Apply(this);
@@ -506,7 +506,7 @@ public class MenuItemFormDialog
                 Margin = new System.Windows.Thickness(0, 20, 0, 0)
             };
 
-            var okButton = new Wpf.Ui.Controls.Button
+            var okButton = new Button
             {
                 Content = localization.Translate("DialogConfirm"),
                 MinWidth = 100,
@@ -516,7 +516,7 @@ public class MenuItemFormDialog
                 Icon = new SymbolIcon { Symbol = SymbolRegular.Checkmark24 }
             };
 
-            var cancelButton = new Wpf.Ui.Controls.Button
+            var cancelButton = new Button
             {
                 Content = localization.Translate("DialogCancel"),
                 MinWidth = 100,
@@ -609,7 +609,7 @@ public class MenuItemFormDialog
                 Padding = new System.Windows.Thickness(10, 6, 10, 6),
                 MinWidth = 400
             };
-            var button = new Wpf.Ui.Controls.Button
+            var button = new Button
             {
                 Content = buttonText,
                 MinWidth = 80,

@@ -179,7 +179,7 @@ public sealed class ContextMenuItemActionsService
                 return;
             }
 
-            var fileDialog = new Microsoft.Win32.SaveFileDialog
+            var fileDialog = new SaveFileDialog
             {
                 Filter = "Registry Files (*.reg)|*.reg",
                 FileName = $"{SanitizeFileName(item.DisplayName)}.reg",

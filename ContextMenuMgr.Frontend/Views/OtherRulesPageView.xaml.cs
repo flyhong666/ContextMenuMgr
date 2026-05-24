@@ -7,7 +7,7 @@ namespace ContextMenuMgr.Frontend.Views;
 /// <summary>
 /// Represents the other Rules Page View.
 /// </summary>
-public partial class OtherRulesPageView : System.Windows.Controls.Page
+public partial class OtherRulesPageView : Page
 {
     // WPF-UI's NavigationView wraps page content in a DynamicScrollViewer that gives
     // content infinite height, causing split-panel tabs to scroll together instead of

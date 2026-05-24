@@ -153,7 +153,7 @@ internal static class WinXHasher
 
         Guid GetCLSID(nint key);
 
-        ComTypes.FILETIME GetFileTime(nint key);
+        FILETIME GetFileTime(nint key);
 
         int GetInt32(nint key);
 

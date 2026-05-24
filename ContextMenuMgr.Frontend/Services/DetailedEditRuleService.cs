@@ -145,7 +145,7 @@ public sealed class DetailedEditRuleService
             {
                 throw new BackendRequestException(
                     _localization.Translate("RegistryProtectionBlocksEditMessage"),
-                    ContextMenuMgr.Contracts.PipeErrorCodes.RegistryWriteProtectionEnabled);
+                    Contracts.PipeErrorCodes.RegistryWriteProtectionEnabled);
             }
 
             await _backendClient.SetDetailedEditRuleValueAsync(

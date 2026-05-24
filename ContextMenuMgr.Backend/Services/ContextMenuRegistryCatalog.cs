@@ -3976,7 +3976,7 @@ public sealed class ContextMenuRegistryCatalog
         try
         {
             IntPtr tokenHandle;
-            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
             if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
             {
                 return false;
@@ -4025,7 +4025,7 @@ public sealed class ContextMenuRegistryCatalog
         try
         {
             IntPtr tokenHandle;
-            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
             if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
             {
                 return false;
@@ -4074,7 +4074,7 @@ public sealed class ContextMenuRegistryCatalog
         try
         {
             IntPtr tokenHandle;
-            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
+            var processHandle = Process.GetCurrentProcess().SafeHandle;
             if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
             {
                 return false;

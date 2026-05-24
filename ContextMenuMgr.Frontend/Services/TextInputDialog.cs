@@ -19,7 +19,7 @@ public static class TextInputDialog
         return Task.FromResult(window.ShowDialog() == true ? window.ResultText : null);
     }
 
-    private sealed class TextInputFluentWindow : Wpf.Ui.Controls.FluentWindow
+    private sealed class TextInputFluentWindow : FluentWindow
     {
         private readonly System.Windows.Controls.TextBox _textBox;
 
@@ -36,7 +36,7 @@ public static class TextInputDialog
             WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
             ResizeMode = System.Windows.ResizeMode.NoResize;
             ExtendsContentIntoTitleBar = true;
-            WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType.Mica;
+            WindowBackdropType = WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
             Background = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ApplicationBackgroundBrush"];
             WindowChromeTitleBarFactory.Apply(this);
@@ -52,7 +52,7 @@ public static class TextInputDialog
                 Text = initialText
             };
 
-            var okButton = new Wpf.Ui.Controls.Button
+            var okButton = new Button
             {
                  Content = "OK",
                 MinWidth = 88,
@@ -62,7 +62,7 @@ public static class TextInputDialog
                 Icon = new SymbolIcon { Symbol = SymbolRegular.Checkmark24 }
             };
 
-            var cancelButton = new Wpf.Ui.Controls.Button
+            var cancelButton = new Button
             {
                 Content = "Cancel",
                 MinWidth = 88,

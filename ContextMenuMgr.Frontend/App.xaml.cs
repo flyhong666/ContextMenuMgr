@@ -13,7 +13,7 @@ namespace ContextMenuMgr.Frontend;
 /// <summary>
 /// Represents the app.
 /// </summary>
-public partial class App : System.Windows.Application
+public partial class App : Application
 {
     private const string SingleInstanceMutexName = @"Global\PLFJY.ContextMenuManagerPlus.SingleInstance";
     private const string ProtocolScheme = "contextmenumgrplus";
@@ -472,11 +472,11 @@ public partial class App : System.Windows.Application
 
         WriteLog(builder.ToString());
 
-        System.Windows.MessageBox.Show(
+        MessageBox.Show(
             $"应用发生未处理异常，详细信息已写入：\n{LogFilePath}\n\n{exception.Message}",
             "Context Menu Manager Plus",
-            System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Error);
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
     }
 
     private static void HandleFatalMessage(string source, string message)

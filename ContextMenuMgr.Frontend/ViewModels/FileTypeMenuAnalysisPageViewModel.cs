@@ -61,7 +61,7 @@ public partial class FileTypeMenuAnalysisPageViewModel : ObservableObject, IDisp
     [RelayCommand]
     private async Task AnalyzeFileAsync()
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { DereferenceLinks = false };
+        var dialog = new OpenFileDialog { DereferenceLinks = false };
         if (dialog.ShowDialog() == true)
         {
             await AnalyzePathAsync(dialog.FileName);

@@ -5,7 +5,7 @@ namespace ContextMenuMgr.Frontend.Views;
 /// <summary>
 /// Represents the approvals Page View.
 /// </summary>
-public partial class ApprovalsPageView : System.Windows.Controls.Page
+public partial class ApprovalsPageView : Page
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="ApprovalsPageView"/> class.

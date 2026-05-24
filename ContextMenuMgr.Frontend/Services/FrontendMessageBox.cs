@@ -21,7 +21,7 @@ public static class FrontendMessageBox
         string? closeButtonText = null)
     {
         var localization = ResolveLocalization();
-        var owner = System.Windows.Application.Current?.MainWindow;
+        var owner = Application.Current?.MainWindow;
         var previousFocusedElement = ClearFocusAndGetPrevious(owner);
         var messageBox = new MessageBox
         {
@@ -45,7 +45,7 @@ public static class FrontendMessageBox
         string? closeButtonText = null)
     {
         var localization = ResolveLocalization();
-        var owner = System.Windows.Application.Current?.MainWindow;
+        var owner = Application.Current?.MainWindow;
         var previousFocusedElement = ClearFocusAndGetPrevious(owner);
         var messageBox = new MessageBox
         {
@@ -70,7 +70,7 @@ public static class FrontendMessageBox
         string? closeButtonText = null)
     {
         var localization = ResolveLocalization();
-        var owner = System.Windows.Application.Current?.MainWindow;
+        var owner = Application.Current?.MainWindow;
         var previousFocusedElement = ClearFocusAndGetPrevious(owner);
         var messageBox = new MessageBox
         {
@@ -122,7 +122,7 @@ public static class FrontendMessageBox
 
     private static LocalizationService? ResolveLocalization()
     {
-        return System.Windows.Application.Current is App app
+        return Application.Current is App app
             ? app.TryGetService<LocalizationService>()
             : null;
     }
