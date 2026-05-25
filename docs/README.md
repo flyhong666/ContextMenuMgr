@@ -15,5 +15,6 @@
 - [SpecialMenu 实现说明](./special-menus.md)
 - [Windows 11 新右键菜单实现说明](./windows11-context-menu.md)
 - [Deep Analysis 与 ProbeHost 实现说明](./deep-analysis-probehost.md)
+- [前端与 WPF-UI 实现说明](./frontend-wpf-ui.md)
 - [构建与发布说明](./build-and-release.md)
 - [排错指南](./troubleshooting.md)
