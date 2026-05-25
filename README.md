@@ -835,6 +835,10 @@ ProbeHost 会按目标发布包携带对应架构：
 - 复现步骤
 - 截图或录屏
 
+## 贡献指南
+
+本项目中内置有开发文档（位于 `docs/` 目录下），并附带有 `AGENTS.md`、`CLAUDE.md`，可以直接利用主流的 Agent 工具为本项目做出贡献
+
 ## License
 
 本项目遵循 GPL V3.0 协议开源，See [LICENSE](./LICENSE).

@@ -843,6 +843,10 @@ When opening an issue, it is very helpful to include:
 - reproduction steps
 - screenshot or screen recording
 
+## Contribution Guide
+
+This project includes built-in development documentation (located in the `docs/` directory), along with `AGENTS.md` and `CLAUDE.md`. You can use majority Agent tools to contribute to this project.
+
 ## License
 
 This project is licensed under GPL v3.0. See [LICENSE](./LICENSE).
