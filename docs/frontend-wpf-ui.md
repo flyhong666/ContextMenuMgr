@@ -1,0 +1,367 @@
+# 前端与 WPF-UI 实现说明
+
+相关文档：
+
+- [ContextMenuMgr 开发者指南](./developer-guide.md)
+- [进程、权限与用户上下文链路](./process-and-privilege-flows.md)
+- [AI 与维护者接手 Playbook](./ai-maintainer-playbook.md)
+- [排错指南](./troubleshooting.md)
+
+## 1. 本文目的
+
+本文记录 ContextMenuMgr 前端层的 WPF / WPF-UI 实现经验，补充 `developer-guide.md` 中的前端概览。
+
+很多前端问题看起来像后端状态、注册表刷新或服务链路问题，实际根因可能是 WPF / WPF-UI 控件组合方式、主题资源、模板、Popup、NavigationView 或 Page/UserControl 边界不正确。遇到按钮颜色、搜索下拉、页面滚动、Popup 绑定、页面初始化崩溃等问题时，优先按本文排查前端结构，不要直接改 Backend Service、Registry catalog 或权限链路。
+
+## 2. 前端主要入口
+
+| 文件 / 类型 | 职责 | 注意事项 |
+| --- | --- | --- |
+| `App.xaml` | 应用级资源字典、WPF-UI `ThemesDictionary` / `ControlsDictionary`、全局样式、语言资源、通用 converter | 主题相关资源优先用 `DynamicResource`；全局样式不要强行覆盖控件模板内部状态。 |
+| `App.Services.xaml.cs` | 前端 DI 注册入口 | 新增前端服务或 ViewModel 时优先通过 DI 注入。 |
+| `MainWindow.xaml` | `ui:FluentWindow` 主窗口、标题栏、全局搜索、InfoBar、NavigationView | 标题栏 hit test、AutoSuggestBox、NavigationView 都在这里汇合。 |
+| `MainWindow.xaml.cs` | 导航初始化、InfoBar 初始化、全局搜索事件、标题栏按钮、导航滚动 reset | 可以协调控件行为，但不应承载菜单业务逻辑。 |
+| `ShellViewModel.cs` | 主窗口级状态、导航文本、全局搜索命令、刷新和重启 Explorer 命令 | 只负责前端协调和命令入口，不直接写注册表。 |
+| `NavigationPages.cs` | WPF-UI NavigationView 使用的页面类型 | 导航项的 `TargetPageType` 应指向 Page 类型。 |
+
+前端是 UI 层。它通过 `NamedPipeBackendClient` 请求 Backend Service，通过 `BackendServiceManager` 触发服务安装/修复等 UAC bootstrapper 操作，通过 `ContextMenuDeepAnalysisService` 启动 ProbeHost。前端不应该直接执行高权限注册表操作，也不应该直接加载第三方 Shell Extension DLL。
+
+## 3. App.xaml 资源字典与全局样式
+
+`App.xaml` 是 WPF-UI 主题和全局样式的核心入口。当前结构中包含：
+
+- `ui:ThemesDictionary Theme="Light"`
+- `ui:ControlsDictionary`
+- `AccentButtonForeground` / `AccentButtonForegroundPointerOver` / `AccentButtonForegroundPressed`
+- `CurrentLanguage`
+- 全局 `Window` / `Page` / `Label` / `TextBlock` 样式
+- `CardBorderStyle`
+- `ChromeTitleBarButton`
+- `ScrollableListBoxItemStyle`
+- `DisplayOnlyListViewItemStyle`
+
+### 3.1 主题资源必须用 DynamicResource
+
+WPF-UI 的主题资源会在运行时切换。凡是颜色、Brush、控件前景色、背景色、边框色，只要希望跟随主题变化，就应使用 `DynamicResource`。
+
+推荐：
+
+```xml
+Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+```
+
+避免在普通 UI 中硬编码黑色、白色或固定背景色。只有非常明确的特殊状态才应硬编码颜色。
+
+### 3.2 不要用根容器 Foreground 解决所有文字颜色
+
+WPF 的 `Foreground` 继承对普通 `TextBlock` 有效，但 WPF-UI 控件内部往往有自己的模板、状态资源和触发器。把 `Foreground` 放在 `Page`、`Grid` 或根容器上，不一定能影响：
+
+- `ui:Button` 内部文字；
+- `ui:ToggleSwitch` 的状态文字；
+- `ui:AutoSuggestBox` Popup 内项目；
+- `ui:NavigationViewItem`；
+- 控件模板中的 `TextBlock`。
+
+如果某个 WPF-UI 控件文字颜色不对，优先检查控件自身的 `Appearance`、WPF-UI 主题资源、项目全局样式是否 `BasedOn` 正确，以及是否把专用 style 用到了错误场景。
+
+### 3.3 场景专用 Style 不要跨场景复用
+
+`ChromeTitleBarButton` 是标题栏按钮样式，适合最小化、最大化、关闭按钮，不应该复用到普通页面按钮、Popup 里的按钮或 AutoSuggestBox item template 中。
+
+`ScrollableListBoxItemStyle` 和 `DisplayOnlyListViewItemStyle` 适合“列表只负责展示、选中视觉由内部卡片控制”的场景。它们移除了默认外壳，不应无脑套到需要默认选中、键盘焦点或辅助功能反馈的列表。
+
+如果出现类似 `PressedForeground property not found on ContentPresenter` 的绑定错误，优先检查是否把依赖特定 `TemplatedParent` 的 Button style 放进了 Popup 或 DataTemplate。
+
+## 4. 主题系统
+
+主题由 `FrontendThemeService` 统一管理。它负责读取 `FrontendSettingsService` 中保存的主题偏好、启动时应用主题、手动切换 Light / Dark、跟随系统时启用 `SystemThemeWatcher`，并在切换时写日志。
+
+### 4.1 启动时必须应用一次保存主题
+
+`App.xaml` 里的 `ThemesDictionary Theme="Light"` 只是初始资源字典。真正的用户偏好由 `FrontendThemeService.Initialize(Window mainWindow)` 在主窗口创建时应用。
+
+规则：
+
+- 固定 Light：调用 `ApplicationThemeManager.Apply(ApplicationTheme.Light, WindowBackdropType.Mica, updateAccent: true)`；
+- 固定 Dark：调用 `ApplicationThemeManager.Apply(ApplicationTheme.Dark, WindowBackdropType.Mica, updateAccent: true)`；
+- 跟随系统：调用 `ApplicationThemeManager.ApplySystemTheme(updateAccent: true)`，并启用 `SystemThemeWatcher.Watch(...)`。
+
+如果启动后短暂显示错误主题，优先检查 `themeService.Initialize(this)` 调用时机、保存设置是否读取正确、是否有其它代码后续调用 `ApplySystemTheme()`，以及相关 Brush 是否使用 `DynamicResource`。
+
+### 4.2 SystemThemeWatcher 不能无条件启用
+
+`SystemThemeWatcher` 只应在用户选择“跟随系统”时启用。如果用户选择固定 Light 或固定 Dark，却仍然保持 system watcher，系统主题变化可能覆盖用户设置。
+
+新增主题相关 UI 时不要绕过 `FrontendThemeService` 直接调用 WPF-UI 主题 API。
+
+## 5. FluentWindow 与自定义 TitleBar
+
+主窗口使用 `ui:FluentWindow`，并启用：
+
+- `ExtendsContentIntoTitleBar="True"`
+- `WindowStyle="None"`
+- `WindowBackdropType="Mica"`
+- 自定义 `TitleBarRoot`
+- `WindowChromeTitleBarFactory.Apply(this, 44)`
+
+标题栏区域有特殊 hit test 行为。放在标题栏里的按钮、搜索框、链接或其它可交互控件，必须设置：
+
+```xml
+shell:WindowChrome.IsHitTestVisibleInChrome="True"
+```
+
+否则可能表现为按钮点不了、搜索框无法聚焦、窗口拖动异常、hover / pressed 状态不触发。
+
+### 5.1 标题栏布局不要互相覆盖
+
+`MainWindow.xaml` 的标题栏布局应保持清晰的列分配：
+
+```text
+Icon | Title | GlobalSearchBox | HeaderActions | WindowButtons
+```
+
+不要用过大的 `Grid.ColumnSpan` 让全局搜索框覆盖右侧按钮或窗口控制按钮。遇到标题栏点击异常时，优先检查 `Grid.Column` / `Grid.ColumnSpan`、`Width` / `MaxWidth`、hit test 属性，以及控件是否被透明元素盖住。
+
+## 6. NavigationView 与页面导航
+
+主导航使用 WPF-UI `NavigationView`。入口在 `MainWindow.xaml`：
+
+- `RootNavigation.SetServiceProvider(serviceProvider)`；
+- `navigationService.SetNavigationControl(RootNavigation)`；
+- `NavigationViewItem.TargetPageType` 指向页面类型；
+- `NavigationPages.cs` 定义各个导航页类型。
+
+### 6.1 导航页用 Page，可嵌入内容用 UserControl
+
+WPF 的 `Page` 不是普通控件。`Page` 应由 `Window`、`Frame` 或导航容器承载，不应直接塞进 `Border.Child`、`Grid.Children`、`TabItem.Content` 或普通 `ContentControl`。
+
+如果把 `Page` 当普通控件嵌入，可能在 `InitializeComponent()` 阶段抛出：
+
+```text
+InvalidOperationException: Page can only have Window or Frame as parent.
+```
+
+正确模式：
+
+```text
+SpecialMenuContentView : UserControl  // 可嵌入、可复用
+SpecialMenuPageView    : Page         // 导航页 wrapper
+```
+
+一套 UI 如果既要作为导航页显示，又要嵌进其它页面的 TabItem，应拆成 UserControl 内容层 + Page wrapper。不要用 `Frame` 包一层来逃避这个问题，除非确实需要嵌套导航。
+
+## 7. NavigationView 滚动与页面内部滚动
+
+WPF-UI 的 `NavigationView` 内容区域内部可能存在共享的外层 `ScrollViewer`。如果不处理，切换页面后可能出现“新页面继承上一页滚动位置”的现象。
+
+当前 `MainWindow.xaml.cs` 的做法是：
+
+- 在 `RootNavigation.Navigated` 后延迟执行滚动 reset；
+- 查找 `NavigationViewContentPresenter`；
+- 只重置由该 presenter 模板拥有的外层 `ScrollViewer`；
+- 避免触碰页面内部自己的 `ListBox`、`ListView`、`ScrollViewer`。
+
+边界规则：
+
+```text
+外层 NavigationView 滚动：可以在导航后重置
+页面内部列表滚动：由页面自己控制，不要被 MainWindow 乱动
+```
+
+OtherRules 这类复杂页面要区分外层导航滚动、TabControl 页面滚动、左侧列表滚动和右侧详情滚动。不要因为滚动异常去改后端、注册表或菜单状态逻辑。
+
+## 8. AutoSuggestBox 与全局搜索
+
+标题栏全局搜索使用 WPF-UI `AutoSuggestBox`，但本项目不使用 WPF-UI 的默认过滤逻辑。
+
+原因是本项目需要多字段搜索、自定义评分、经典菜单和 Win11 菜单合并、菜单项真实图标、跳转目标页面，以及跳转后给目标页面设置筛选文本。
+
+### 8.1 必须拦截 TextChanged 默认过滤
+
+WPF-UI `AutoSuggestBox` 在用户输入后会触发 `TextChanged`。如果事件没有设置 `args.Handled = true`，控件会使用 `OriginalItemsSource` 做默认过滤，并重新设置自己的 `ItemsSource`。
+
+本项目的规则：
+
+```csharp
+if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+{
+    args.Handled = true;
+    viewModel.UpdateGlobalSearchText(args.Text);
+    sender.ItemsSource = viewModel.GlobalSearchResults;
+    sender.IsSuggestionListOpen = !string.IsNullOrWhiteSpace(args.Text)
+                                  && viewModel.GlobalSearchResults.Count > 0;
+}
+```
+
+如果“搜索结果已经算出来，按 Enter 也能跳转，但下拉框不显示”，优先检查 `TextChanged` 是否绑定、`args.Handled` 是否设置、`ItemsSource` 是否被默认过滤覆盖、`IsSuggestionListOpen` 是否被过早关闭。
+
+### 8.2 SuggestionChosen 和 QuerySubmitted 的区别
+
+WPF-UI `AutoSuggestBoxSuggestionChosenEventArgs` 使用 `SelectedItem`。
+
+WPF-UI `AutoSuggestBoxQuerySubmittedEventArgs` 只有 `QueryText`，不要假设它有 WinUI/UWP 风格的 `ChosenSuggestion`。
+
+本项目规则：
+
+- 鼠标或键盘选择下拉项：走 `SuggestionChosen`，从 `args.SelectedItem` 取 `GlobalSearchResultViewModel`；
+- 直接按 Enter：走 `QuerySubmitted`，打开当前结果列表第一项；
+- `UpdateTextOnSelect="False"`，避免选择后控件自动把文本改成 item string；
+- 跳转由 `ShellViewModel.OpenGlobalSearchResultCommand` 处理。
+
+### 8.3 搜索结果行不要放复杂按钮
+
+AutoSuggestBox 的建议列表在 Popup / 内部 ListView 中渲染。Popup 不在普通视觉树里，DataTemplate 内不应依赖：
+
+- `RelativeSource AncestorType=Window`
+- `ElementName=RootNavigation`
+- 从 Popup 里找 `ShellViewModel`
+- 标题栏专用 Button style
+- 依赖错误 `TemplatedParent` 的复杂 Button 模板
+
+当前搜索结果行右侧“跳转”只是文本提示。真正跳转由选择整行触发。
+
+## 9. Popup / DataTemplate / Binding 边界
+
+WPF 的 Popup 通常会脱离原视觉树。WPF-UI 的 AutoSuggestBox、Flyout、InfoBar 内部也可能引入额外模板边界。
+
+在 Popup / Flyout 的 DataTemplate 内，推荐只绑定 item ViewModel 自身属性：
+
+```xml
+Text="{Binding DisplayName}"
+Source="{Binding IconSource}"
+Text="{Binding StateLabel}"
+```
+
+不推荐依赖外层窗口或 NavigationView 的 ancestor binding。更稳的做法是让 item template 只负责显示，选择事件在外层控件 code-behind 处理，或把必要命令明确放到 item ViewModel。
+
+如果出现 `PressedForeground property not found on ContentPresenter`，通常说明某个 Button style 或模板被放到了错误上下文中。排查方向是 XAML Style / Template，而不是后端业务逻辑。
+
+## 10. Button、Badge 与 Foreground
+
+WPF-UI Button 的前景色由控件模板、`Appearance` 和主题资源共同决定。
+
+Primary / Accent Button 的文字颜色应该使用 WPF-UI 的 accent text 资源，例如：
+
+```xml
+Color="{DynamicResource TextOnAccentFillColorPrimary}"
+```
+
+不要试图通过根容器 `Foreground="White"` 解决所有 Primary Button 的文字颜色。那通常只会影响普通文本，不一定影响 Button 模板内部状态。
+
+状态标签建议使用 `Border + TextBlock`，并显式绑定动态资源。启用 / 禁用状态可以明确绑定不同 brush。不要硬编码黑白，也不要依赖父级 Foreground 继承。
+
+## 11. 图标
+
+本项目有两类图标：
+
+| 图标类型 | 来源 | 用途 |
+| --- | --- | --- |
+| 导航 / 分类图标 | WPF-UI `SymbolIcon` | NavigationView、按钮、fallback 图标 |
+| 菜单项真实图标 | `IconPreviewService` | 菜单项卡片、全局搜索结果 |
+
+全局搜索结果应优先显示菜单项真实图标，而不是分类图标。
+
+真实菜单项图标通常来自：
+
+- `ContextMenuEntry.IconPath`
+- `ContextMenuEntry.IconIndex`
+- `ContextMenuEntry.FilePath` fallback
+- `IconPreviewService.GetIcon(...)`
+
+`SymbolIcon` 只能作为 fallback 或导航分类图标。
+
+## 12. 页面筛选、占位状态与加载状态
+
+页面内筛选和全局搜索不是同一个状态。
+
+| 功能 | 位置 | 作用 |
+| --- | --- | --- |
+| 全局搜索 | MainWindow TitleBar | 搜索已加载候选项并跳转到对应页面 |
+| 页面筛选 | Category / Win11 页面内部 | 在当前页面中过滤列表 |
+| 加载 / 空状态 | 页面 UI | 告诉用户当前正在加载或确实没有数据 |
+
+全局搜索跳转后，通过 `GlobalSearchNavigationFilterService` 请求目标页面把筛选框设置为选中菜单项名称。这样用户进入目标页面后尽可能只看到该项。
+
+加载中 / 空状态是前端 UI 状态，不应触发后端状态修改。
+
+## 13. InfoBar、错误提示与用户友好失败
+
+`MainWindow.xaml` 中的 `RootInfoBar` 由 `InfoBarService` 管理。它适合展示全局、非阻塞、用户可读的状态，例如服务状态提醒、需要重启 Explorer、更新提示或某些操作失败的简短说明。
+
+Deep Analysis 失败、ProbeHost crash、Shell Extension 不兼容等属于可预期的 best-effort 失败，前端应展示用户友好文案，而不是默认提示“请报告 Bug”。
+
+规则：
+
+- 用户界面展示简短、可理解的原因；
+- 详细诊断放日志或诊断区域；
+- 不把完整堆栈直接暴露给普通用户；
+- 但不要吞掉对开发者有价值的错误码、路径、架构信息。
+
+## 14. 本地化
+
+`App.xaml` 中通过 `CurrentLanguage` 资源和全局 Style 给 `Window` / `Page` / `Label` / `TextBlock` 设置 `Language`。
+
+新增用户可见文本时应：
+
+- 放入 `Resources/Strings.resx`；
+- 同步 `Strings.zh-CN.resx`；
+- 同步 `Strings.zh-TW.resx`；
+- 在 ViewModel 或 LocalizationService 中引用；
+- 不要在 XAML 或 C# 中硬编码长期用户可见文本。
+
+技术日志可以保留英文 key，但面向用户的窗口标题、按钮、提示、错误消息应走本地化资源。
+
+## 15. 前端排错速查表
+
+| 现象 | 优先检查 | 不要先改 |
+| --- | --- | --- |
+| 主题启动时不对 | `FrontendThemeService.Initialize`、保存的 theme preference、`DynamicResource` | 后端服务 / 注册表菜单逻辑 |
+| TextBlock 前景色是黑色 | `App.xaml` 全局 `TextBlock` style、资源 key、是否在控件模板内 | Registry / Backend |
+| Primary Button 文字颜色不对 | WPF-UI Button theme resources、Accent foreground resource、Button style `BasedOn` | 根容器强制 Foreground |
+| AutoSuggestBox 搜得到但不显示下拉 | `TextChanged.Handled`、`ItemsSource`、`OriginalItemsSource` 默认过滤 | 后端扫描 |
+| AutoSuggestBox 点击不跳转 | `SuggestionChosen.SelectedItem`、`QuerySubmitted.QueryText`、`OpenGlobalSearchResultCommand` | 搜索候选池重建逻辑 |
+| Popup 里 Binding 报错 | DataTemplate ancestor binding、错误 Button style、Popup 视觉树边界 | Backend / Registry |
+| NavigationView 切页滚动位置继承 | `MainWindow.QueueNavigationScrollReset`、外层 `NavigationViewContentPresenter` ScrollViewer | 页面数据加载 |
+| “Page 只能具有 Window 或 Frame 父级” | 是否把 `Page` 嵌进 `Border` / `TabItem`；应拆 `UserControl` | 滚动代码 / 后端 |
+| OtherRules 双栏滚动异常 | 页面内部 ScrollViewer、外层 NavigationView scroll reset、TabControl selection handling | Registry catalog |
+| 全局搜索跳转后目标页面未筛选 | `GlobalSearchNavigationFilterService`、目标页面 ViewModel 订阅 | 后端 snapshot |
+| 图标显示成分类图标 | `IconPreviewService`、`IconPath` / `IconIndex` / `FilePath` | NavigationView symbol 配置 |
+| 加载中 / 空状态显示不对 | 页面 loading/empty state property、placeholder binding、调试状态服务 | 后端菜单开关 |
+
+## 16. 开发规则
+
+修改前端时请先检查：
+
+- [ ] 新页面如果用于导航，根类型可以是 `Page`。
+- [ ] 可嵌入复用的内容必须是 `UserControl`，不要把 `Page` 塞进普通容器。
+- [ ] 主题相关颜色和 Brush 使用 `DynamicResource`。
+- [ ] 标题栏里的可交互控件设置 `WindowChrome.IsHitTestVisibleInChrome=True`。
+- [ ] 修改 AutoSuggestBox 时确认 `TextChanged` 对自定义过滤设置 `Handled=True`。
+- [ ] Popup / Flyout / AutoSuggestBox DataTemplate 不依赖外层视觉树 ancestor。
+- [ ] 不把 `ChromeTitleBarButton` 这类专用 Style 用到普通按钮或 Popup item。
+- [ ] 不用根容器 `Foreground` 强行修 WPF-UI 控件内部文字颜色。
+- [ ] 不因为 UI 状态问题去改 Backend Service、Registry catalog 或权限链路。
+- [ ] 新增用户可见文本同步 Resources。
+- [ ] 新增全局搜索展示字段时不引入每次输入后端查询或文件 IO。
+- [ ] 修改滚动逻辑时区分 NavigationView 外层滚动和页面内部滚动。
+
+## 17. 什么时候需要更新本文
+
+如果修改以下内容，应同步更新本文：
+
+- WPF-UI 版本；
+- `App.xaml` 全局样式；
+- 主题服务；
+- 主窗口标题栏；
+- NavigationView 页面结构；
+- Page / UserControl 复用结构；
+- AutoSuggestBox 全局搜索；
+- Popup / Flyout 模板；
+- 全局搜索结果 item template；
+- 页面加载 / 空状态；
+- 图标解析和展示策略；
+- 前端本地化规则。
+
+前端问题的排查文档要以当前 XAML 和 ViewModel 实现为准，不要只复述 WPF-UI 官方文档。
