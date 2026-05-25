@@ -9,10 +9,10 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     Title="{Binding WindowTitle}"
-    Width="1270"
-    Height="480"
-    MinWidth="1220"
-    MinHeight="760"
+    Width="960"
+    Height="540"
+    MinWidth="830"
+    MinHeight="410"
     d:DataContext="{d:DesignInstance Type=viewModels:MainViewModel}"
     ui:Design.Background="{DynamicResource ApplicationBackgroundBrush}"
     ui:Design.Foreground="{DynamicResource TextFillColorPrimaryBrush}"
@@ -24,10 +24,7 @@
     mc:Ignorable="d">
     <ui:FluentWindow.Resources>
         <DataTemplate x:Key="GlobalSearchResultTemplate" DataType="{x:Type viewModels:GlobalSearchResultViewModel}">
-            <Grid
-                MinWidth="390"
-                Margin="0,2"
-                VerticalAlignment="Center">
+            <Grid Margin="0,2" VerticalAlignment="Center">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
