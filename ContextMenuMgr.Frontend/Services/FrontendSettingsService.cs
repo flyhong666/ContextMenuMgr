@@ -162,6 +162,24 @@ public sealed class FrontendSettingsService
         Save();
     }
 
+    /// <summary>
+    /// Updates main window placement.
+    /// </summary>
+    public void UpdateMainWindowPlacement(
+        double left,
+        double top,
+        double width,
+        double height,
+        string state)
+    {
+        Current.MainWindowLeft = left;
+        Current.MainWindowTop = top;
+        Current.MainWindowWidth = width;
+        Current.MainWindowHeight = height;
+        Current.MainWindowState = state;
+        Save();
+    }
+
     private FrontendSettings Load()
     {
         try

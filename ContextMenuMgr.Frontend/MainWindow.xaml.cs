@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,6 +20,7 @@ namespace ContextMenuMgr.Frontend;
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly UpdateCheckService _updateCheckService;
+    private readonly MainWindowPlacementService _windowPlacementService;
 #if DEBUG
     private readonly IServiceProvider _serviceProvider;
     private DebugToolsWindow? _debugToolsWindow;
@@ -34,9 +36,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         INavigationService navigationService,
         IInfoBarService infoBarService,
         UpdateCheckService updateCheckService,
-        FrontendThemeService themeService)
+        FrontendThemeService themeService,
+        MainWindowPlacementService windowPlacementService)
     {
         _updateCheckService = updateCheckService;
+        _windowPlacementService = windowPlacementService;
 #if DEBUG
         _serviceProvider = serviceProvider;
 #endif
@@ -55,6 +59,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         PreviewKeyDown += OnPreviewKeyDown;
 #endif
         StateChanged += (_, _) => UpdateMaximizeButtonIcon();
+        Closing += OnClosing;
+        _windowPlacementService.ApplySavedPlacement(this);
+        UpdateMaximizeButtonIcon();
         Loaded += OnLoaded;
     }
 
@@ -216,6 +223,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         var targetPageType = _pendingPageType ?? typeof(FileContextMenuPage);
         RootNavigation.Navigate(targetPageType);
         _updateCheckService.StartInitialCheck();
+    }
+
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        _windowPlacementService.SavePlacement(this);
     }
 
     private void OnRootNavigationNavigated(

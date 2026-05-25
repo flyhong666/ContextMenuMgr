@@ -124,6 +124,10 @@ Icon | Title | GlobalSearchBox | HeaderActions | WindowButtons
 
 不要用过大的 `Grid.ColumnSpan` 让全局搜索框覆盖右侧按钮或窗口控制按钮。遇到标题栏点击异常时，优先检查 `Grid.Column` / `Grid.ColumnSpan`、`Width` / `MaxWidth`、hit test 属性，以及控件是否被透明元素盖住。
 
+### 5.2 主窗口位置持久化
+
+`MainWindow` 的位置和大小通过 `FrontendSettingsService` 持久化到前端设置文件。窗口关闭时保存 normal restore bounds；最大化关闭时保存 `RestoreBounds` 和 `Maximized` 状态，启动时先恢复 normal bounds，再恢复最大化状态。不要保存或恢复 `Minimized` 状态，恢复前必须用当前 virtual screen 校验保存坐标，避免外接显示器断开后窗口出现在不可见区域。
+
 ## 6. NavigationView 与页面导航
 
 主导航使用 WPF-UI `NavigationView`。入口在 `MainWindow.xaml`：

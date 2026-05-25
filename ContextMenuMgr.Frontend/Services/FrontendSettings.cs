@@ -49,4 +49,29 @@ public sealed class FrontendSettings
     /// Gets or sets the open More Explorer.
     /// </summary>
     public bool OpenMoreExplorer { get; set; }
+
+    /// <summary>
+    /// Gets or sets the main window restore bounds left coordinate.
+    /// </summary>
+    public double? MainWindowLeft { get; set; }
+
+    /// <summary>
+    /// Gets or sets the main window restore bounds top coordinate.
+    /// </summary>
+    public double? MainWindowTop { get; set; }
+
+    /// <summary>
+    /// Gets or sets the main window restore bounds width.
+    /// </summary>
+    public double? MainWindowWidth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the main window restore bounds height.
+    /// </summary>
+    public double? MainWindowHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets the main window state to restore.
+    /// </summary>
+    public string? MainWindowState { get; set; }
 }
