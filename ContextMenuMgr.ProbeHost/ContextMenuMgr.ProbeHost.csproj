@@ -16,15 +16,15 @@
     <Title>Context Menu Manager Plus Probe Host</Title>
     <Description>Isolated shell extension probe host for Context Menu Manager Plus.</Description>
     <Company>PLFJY</Company>
-    <FileVersion>1.6.6.0</FileVersion>
+    <FileVersion>1.6.7.0</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <InformationalVersion>1.6.6</InformationalVersion>
+    <InformationalVersion>1.6.7</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Beta'">
-    <FileVersion>1.6.6.0</FileVersion>
-    <InformationalVersion>1.6.6-Beta</InformationalVersion>
+    <FileVersion>1.6.7.0</FileVersion>
+    <InformationalVersion>1.6.7-Beta</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
