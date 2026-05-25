@@ -1,8 +1,22 @@
 param(
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $true, ParameterSetName = "Root")]
     [string] $Root,
 
-    [string[]] $Labels = @("x86", "x64", "arm64")
+    [Parameter(ParameterSetName = "Root")]
+    [string[]] $Labels = @("x86", "x64", "arm64"),
+
+    [Parameter(ParameterSetName = "Root", ValueFromRemainingArguments = $true)]
+    [string[]] $AdditionalLabels = @(),
+
+    [Parameter(Mandatory = $true, ParameterSetName = "File")]
+    [string] $Path,
+
+    [Parameter(Mandatory = $true, ParameterSetName = "File")]
+    [ValidateSet("x86", "x64", "arm64")]
+    [string] $Label,
+
+    [Parameter(ParameterSetName = "File")]
+    [string] $MSBuildPlatform = ""
 )
 
 Set-StrictMode -Version Latest
@@ -50,12 +64,44 @@ $expectedMachines = @{
     arm64 = 0xAA64
 }
 
+function Get-ExpectedMachine {
+    param([Parameter(Mandatory = $true)] [string] $ArchitectureLabel)
+
+    if (-not $expectedMachines.ContainsKey($ArchitectureLabel)) {
+        throw "Unsupported ProbeHost architecture label '$ArchitectureLabel'. Expected one of: x86, x64, arm64."
+    }
+
+    return [uint16] $expectedMachines[$ArchitectureLabel]
+}
+
+if ($PSCmdlet.ParameterSetName -eq "File") {
+    $machine = Get-PeMachine -Path $Path
+    $expected = Get-ExpectedMachine -ArchitectureLabel $Label
+    if ($machine -ne $expected) {
+        throw @"
+Native ProbeHost architecture mismatch after build:
+Label=$Label
+MSBuildPlatform=$MSBuildPlatform
+ExpectedMachine=0x$($expected.ToString('X4'))
+ActualMachine=0x$($machine.ToString('X4'))
+Path=$Path
+"@
+    }
+
+    Write-Host "Native ProbeHost architecture verified after build: Label=$Label MSBuildPlatform=$MSBuildPlatform Machine=0x$($machine.ToString('X4')) Path=$Path"
+    exit 0
+}
+
+if ($AdditionalLabels.Count -gt 0) {
+    $Labels = @($Labels) + @($AdditionalLabels)
+}
+
 foreach ($label in $Labels) {
     $path = Join-Path $Root (Join-Path $label "ContextMenuMgr.ProbeHost.exe")
     $machine = Get-PeMachine -Path $path
-    $expected = [uint16] $expectedMachines[$label]
+    $expected = Get-ExpectedMachine -ArchitectureLabel $label
     if ($machine -ne $expected) {
-        throw "ProbeHost architecture mismatch: expected $label at $path, but detected 0x$($machine.ToString('X4'))."
+        throw "ProbeHost architecture mismatch: expected $label at $path, expected machine 0x$($expected.ToString('X4')), but detected 0x$($machine.ToString('X4'))."
     }
 
     Write-Host "ProbeHost architecture verified: $label => 0x$($machine.ToString('X4'))"

@@ -74,6 +74,19 @@ dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj -p:ForceRe
 
 `dotnet clean` / `dotnet rebuild` 会清理 native ProbeHost 输出和 obj 目录。
 
+本地 native ProbeHost 输出和中间目录按架构隔离，不共用 `OutDir` 或 `IntDir`：
+
+```text
+artifacts\probehost-native\<Configuration>\x86\
+artifacts\probehost-native\<Configuration>\x64\
+artifacts\probehost-native\<Configuration>\arm64\
+artifacts\probehost-native\<Configuration>\obj\x86\
+artifacts\probehost-native\<Configuration>\obj\x64\
+artifacts\probehost-native\<Configuration>\obj\arm64\
+```
+
+`Build-NativeProbeHost.ps1` 会把 label 映射到 MSBuild Platform：`x86 -> Win32`、`x64 -> x64`、`arm64 -> ARM64`。每个 label 构建或增量跳过后都会立即读取目标 exe 的 PE Machine 并验证：`x86 -> 0x014C`、`x64 -> 0x8664`、`arm64 -> 0xAA64`。
+
 ## 5. Release 发布
 
 `build.ps1` 负责组合多个平台和分发模式。`Scripts/Build.Common.psm1` 中的关键步骤包括：
@@ -105,6 +118,15 @@ dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj -p:ForceRe
 常见错误包括：目录标签和 PE 架构不一致、只发布主架构缺少 x86 fallback、机器缺少 C++ build tools 或 ARM64 工具链。
 
 当前 Release 脚本使用 MSBuild 构建 `ContextMenuMgr.ProbeHost.vcxproj`，按 `Win32`、`x64`、`ARM64` 平台生成单个 `ContextMenuMgr.ProbeHost.exe`，再复制到 `ProbeHost\<arch>`。不再对 ProbeHost 运行 `dotnet publish`，也不会发布 `.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录内的 `ContextMenuMgr.Contracts.dll`。
+
+Release 构建同样按发布目标和 architecture label 隔离 native ProbeHost 中间目录。例如 `installer\self-contained\win-x64` 的 native obj 位于：
+
+```text
+build\publish\_artifacts\installer\self-contained\win-x64\probehost-native-obj\x64\
+build\publish\_artifacts\installer\self-contained\win-x64\probehost-native-obj\x86\
+```
+
+发布输出仍位于最终发布目录下的 `ProbeHost\<arch>\ContextMenuMgr.ProbeHost.exe`。每个 label 的 MSBuild 构建完成后会立即验证该 exe 的 PE Machine，随后仍执行 `Verify-ProbeHostArchitecture.ps1 -Root <ProbeHostRoot> -Labels ...` 做整体发布目录校验。
 
 ProbeHost 使用 vendored `nlohmann/json` 单头文件解析 request/result JSON：
 

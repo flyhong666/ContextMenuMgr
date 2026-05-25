@@ -189,6 +189,17 @@ function Remove-DirectoryIfExists {
     }
 }
 
+function Add-TrailingDirectorySeparator {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if ($Path.EndsWith("\", [System.StringComparison]::Ordinal) -or
+        $Path.EndsWith("/", [System.StringComparison]::Ordinal)) {
+        return $Path
+    }
+
+    return $Path + [System.IO.Path]::DirectorySeparatorChar
+}
+
 function Resolve-IsccPath {
     param([Parameter(Mandatory)] [string] $RepoRoot)
 
@@ -304,6 +315,73 @@ function Get-NativeProbeHostPlatform {
     }
 }
 
+function Get-NativeProbeHostExpectedMachine {
+    param([Parameter(Mandatory)] [string] $Label)
+
+    switch ($Label.ToLowerInvariant()) {
+        "x86" { return [uint16] 0x014C }
+        "x64" { return [uint16] 0x8664 }
+        "arm64" { return [uint16] 0xAA64 }
+        default { throw "Unsupported ProbeHost architecture label '$Label'." }
+    }
+}
+
+function Get-PeMachine {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "ProbeHost executable is missing: $Path"
+    }
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        if ($stream.Length -lt 0x40) {
+            throw "ProbeHost executable is too small to contain a PE header: $Path"
+        }
+
+        $reader = [System.IO.BinaryReader]::new($stream)
+        $stream.Position = 0x3C
+        $peHeaderOffset = $reader.ReadInt32()
+        if ($peHeaderOffset -le 0 -or $peHeaderOffset + 6 -gt $stream.Length) {
+            throw "ProbeHost executable has an invalid PE header offset: $Path"
+        }
+
+        $stream.Position = $peHeaderOffset
+        $signature = $reader.ReadUInt32()
+        if ($signature -ne 0x00004550) {
+            throw "ProbeHost executable is missing a PE signature: $Path"
+        }
+
+        return $reader.ReadUInt16()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+function Test-NativeProbeHostArchitectureAfterBuild {
+    param(
+        [Parameter(Mandatory)] [string] $Label,
+        [Parameter(Mandatory)] [string] $MSBuildPlatform,
+        [Parameter(Mandatory)] [string] $Path
+    )
+
+    $expected = Get-NativeProbeHostExpectedMachine -Label $Label
+    $actual = Get-PeMachine -Path $Path
+    if ($actual -ne $expected) {
+        throw @"
+Native ProbeHost architecture mismatch after build:
+Label=$Label
+MSBuildPlatform=$MSBuildPlatform
+ExpectedMachine=0x$($expected.ToString('X4'))
+ActualMachine=0x$($actual.ToString('X4'))
+Path=$Path
+"@
+    }
+
+    return $actual
+}
+
 function Get-NlohmannJsonLicensePath {
     param([Parameter(Mandatory)] [string] $NativeProbeHostProject)
 
@@ -322,8 +400,12 @@ function Invoke-NativeProbeHostBuild {
     )
 
     $platform = Get-NativeProbeHostPlatform -Label $Label
-    New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-    New-Item -ItemType Directory -Path $IntermediateDirectory -Force | Out-Null
+    $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+    $resolvedIntermediateDirectory = [System.IO.Path]::GetFullPath($IntermediateDirectory)
+    $msbuildOutputDirectory = Add-TrailingDirectorySeparator -Path $resolvedOutputDirectory
+    $msbuildIntermediateDirectory = Add-TrailingDirectorySeparator -Path $resolvedIntermediateDirectory
+    New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $resolvedIntermediateDirectory -Force | Out-Null
 
     Invoke-External `
         -FilePath $MSBuildPath `
@@ -334,10 +416,24 @@ function Invoke-NativeProbeHostBuild {
             "/t:Build",
             "/p:Configuration=$Configuration",
             "/p:Platform=$platform",
-            "/p:OutDir=$OutputDirectory\",
-            "/p:IntDir=$IntermediateDirectory\"
+            "/p:OutDir=$msbuildOutputDirectory",
+            "/p:IntDir=$msbuildIntermediateDirectory"
         ) `
         -ErrorMessage "MSBuild failed for native ProbeHost ($Label)"
+
+    $targetExe = Join-Path $resolvedOutputDirectory "ContextMenuMgr.ProbeHost.exe"
+    $detectedMachine = Test-NativeProbeHostArchitectureAfterBuild `
+        -Label $Label `
+        -MSBuildPlatform $platform `
+        -Path $targetExe
+
+    Write-Host "Native ProbeHost build output:"
+    Write-Host "  Label=$Label"
+    Write-Host "  MSBuildPlatform=$platform"
+    Write-Host "  OutputDirectory=$resolvedOutputDirectory"
+    Write-Host "  IntermediateDirectory=$resolvedIntermediateDirectory"
+    Write-Host "  TargetExe=$targetExe"
+    Write-Host "  DetectedPEMachine=0x$($detectedMachine.ToString('X4'))"
 }
 
 function Get-InstallerArchitectureOptions {

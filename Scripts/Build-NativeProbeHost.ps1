@@ -60,6 +60,61 @@ function Get-ArchitectureLabel {
     }
 }
 
+function Get-ExpectedMachine {
+    param([Parameter(Mandatory = $true)] [string] $ArchitectureLabel)
+
+    switch ($ArchitectureLabel) {
+        "x86" { return [uint16] 0x014C }
+        "x64" { return [uint16] 0x8664 }
+        "arm64" { return [uint16] 0xAA64 }
+        default { throw "Unsupported ProbeHost architecture label '$ArchitectureLabel'." }
+    }
+}
+
+function Add-TrailingDirectorySeparator {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    if ($Path.EndsWith("\", [System.StringComparison]::Ordinal) -or
+        $Path.EndsWith("/", [System.StringComparison]::Ordinal)) {
+        return $Path
+    }
+
+    return $Path + [System.IO.Path]::DirectorySeparatorChar
+}
+
+function Get-PeMachine {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "ProbeHost executable is missing: $Path"
+    }
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        if ($stream.Length -lt 0x40) {
+            throw "ProbeHost executable is too small to contain a PE header: $Path"
+        }
+
+        $reader = [System.IO.BinaryReader]::new($stream)
+        $stream.Position = 0x3C
+        $peHeaderOffset = $reader.ReadInt32()
+        if ($peHeaderOffset -le 0 -or $peHeaderOffset + 6 -gt $stream.Length) {
+            throw "ProbeHost executable has an invalid PE header offset: $Path"
+        }
+
+        $stream.Position = $peHeaderOffset
+        $signature = $reader.ReadUInt32()
+        if ($signature -ne 0x00004550) {
+            throw "ProbeHost executable is missing a PE signature: $Path"
+        }
+
+        return $reader.ReadUInt16()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Test-NativeProbeHostUpToDate {
     param(
         [Parameter(Mandatory = $true)] [string] $ProjectPath,
@@ -94,9 +149,53 @@ function Test-NativeProbeHostUpToDate {
     return $targetTimestamp -gt $latestInputTimestamp
 }
 
+function Test-NativeProbeHostArchitecture {
+    param(
+        [Parameter(Mandatory = $true)] [string] $ArchitectureLabel,
+        [Parameter(Mandatory = $true)] [string] $MSBuildPlatform,
+        [Parameter(Mandatory = $true)] [string] $TargetExe
+    )
+
+    $expected = Get-ExpectedMachine -ArchitectureLabel $ArchitectureLabel
+    $actual = Get-PeMachine -Path $TargetExe
+    if ($actual -ne $expected) {
+        throw @"
+Native ProbeHost architecture mismatch after build:
+Label=$ArchitectureLabel
+MSBuildPlatform=$MSBuildPlatform
+ExpectedMachine=0x$($expected.ToString('X4'))
+ActualMachine=0x$($actual.ToString('X4'))
+Path=$TargetExe
+"@
+    }
+
+    return $actual
+}
+
+function Write-NativeProbeHostBuildSummary {
+    param(
+        [Parameter(Mandatory = $true)] [string] $ArchitectureLabel,
+        [Parameter(Mandatory = $true)] [string] $MSBuildPlatform,
+        [Parameter(Mandatory = $true)] [string] $OutputDirectory,
+        [Parameter(Mandatory = $true)] [string] $IntermediateDirectory,
+        [Parameter(Mandatory = $true)] [string] $TargetExe,
+        [Parameter(Mandatory = $true)] [uint16] $DetectedMachine
+    )
+
+    Write-Host "Native ProbeHost build output:"
+    Write-Host "  Label=$ArchitectureLabel"
+    Write-Host "  MSBuildPlatform=$MSBuildPlatform"
+    Write-Host "  OutputDirectory=$OutputDirectory"
+    Write-Host "  IntermediateDirectory=$IntermediateDirectory"
+    Write-Host "  TargetExe=$TargetExe"
+    Write-Host "  DetectedPEMachine=0x$($DetectedMachine.ToString('X4'))"
+}
+
 $resolvedProject = (Resolve-Path -LiteralPath $Project).Path
 $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $resolvedIntermediateDirectory = [System.IO.Path]::GetFullPath($IntermediateDirectory)
+$msbuildOutputDirectory = Add-TrailingDirectorySeparator -Path $resolvedOutputDirectory
+$msbuildIntermediateDirectory = Add-TrailingDirectorySeparator -Path $resolvedIntermediateDirectory
 $architectureLabel = Get-ArchitectureLabel -Platform $Platform
 $targetExe = Join-Path $resolvedOutputDirectory "ContextMenuMgr.ProbeHost.exe"
 $forceRebuildEnabled = [System.Convert]::ToBoolean($ForceRebuild)
@@ -113,6 +212,14 @@ if ($forceRebuildEnabled) {
 
 if (-not $forceRebuildEnabled -and (Test-NativeProbeHostUpToDate -ProjectPath $resolvedProject -TargetExe $targetExe)) {
     Write-Host "Native ProbeHost $architectureLabel is up to date; skipping build."
+    $detectedMachine = Test-NativeProbeHostArchitecture -ArchitectureLabel $architectureLabel -MSBuildPlatform $Platform -TargetExe $targetExe
+    Write-NativeProbeHostBuildSummary `
+        -ArchitectureLabel $architectureLabel `
+        -MSBuildPlatform $Platform `
+        -OutputDirectory $resolvedOutputDirectory `
+        -IntermediateDirectory $resolvedIntermediateDirectory `
+        -TargetExe $targetExe `
+        -DetectedMachine $detectedMachine
     exit 0
 }
 
@@ -120,16 +227,28 @@ New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $resolvedIntermediateDirectory -Force | Out-Null
 
 $msbuild = Resolve-MSBuildPath
-& $msbuild `
-    $resolvedProject `
-    /nologo `
-    /m `
-    /t:Build `
-    "/p:Configuration=$Configuration" `
-    "/p:Platform=$Platform" `
-    "/p:OutDir=$resolvedOutputDirectory\" `
-    "/p:IntDir=$resolvedIntermediateDirectory\"
+$arguments = @(
+    $resolvedProject,
+    "/nologo",
+    "/m",
+    "/t:Build",
+    "/p:Configuration=$Configuration",
+    "/p:Platform=$Platform",
+    "/p:OutDir=$msbuildOutputDirectory",
+    "/p:IntDir=$msbuildIntermediateDirectory"
+)
+
+& $msbuild @arguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "MSBuild failed for native ProbeHost platform $Platform. ExitCode=$LASTEXITCODE"
 }
+
+$detectedMachine = Test-NativeProbeHostArchitecture -ArchitectureLabel $architectureLabel -MSBuildPlatform $Platform -TargetExe $targetExe
+Write-NativeProbeHostBuildSummary `
+    -ArchitectureLabel $architectureLabel `
+    -MSBuildPlatform $Platform `
+    -OutputDirectory $resolvedOutputDirectory `
+    -IntermediateDirectory $resolvedIntermediateDirectory `
+    -TargetExe $targetExe `
+    -DetectedMachine $detectedMachine
