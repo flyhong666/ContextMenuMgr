@@ -212,6 +212,34 @@ function Resolve-IsccPath {
     throw "Unable to locate ISCC.exe. Install Inno Setup 6 or place it under Installer\Inno Setup 6\ISCC.exe."
 }
 
+function Resolve-MSBuildPath {
+    $command = Get-Command "MSBuild.exe" -ErrorAction SilentlyContinue
+    if ($command -and $command.Source) {
+        return $command.Source
+    }
+
+    $vswhereCandidates = @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+        "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($vswhere in $vswhereCandidates) {
+        if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+            continue
+        }
+
+        $installationPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($installationPath)) {
+            $candidate = Join-Path $installationPath.Trim() "MSBuild\Current\Bin\MSBuild.exe"
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return $candidate
+            }
+        }
+    }
+
+    throw "Unable to locate MSBuild.exe. Install Visual Studio Build Tools with the C++ workload."
+}
+
 function Get-RuntimeIdentifier {
     param([Parameter(Mandatory)] [string] $Platform)
 
@@ -263,6 +291,53 @@ function Get-ProbeHostArchitectureMap {
             throw "Unsupported platform '$Platform'. Supported values: anycpu, win-x64, win-x86, win-arm64."
         }
     }
+}
+
+function Get-NativeProbeHostPlatform {
+    param([Parameter(Mandatory)] [string] $Label)
+
+    switch ($Label.ToLowerInvariant()) {
+        "x86" { return "Win32" }
+        "x64" { return "x64" }
+        "arm64" { return "ARM64" }
+        default { throw "Unsupported ProbeHost architecture label '$Label'." }
+    }
+}
+
+function Get-NlohmannJsonLicensePath {
+    param([Parameter(Mandatory)] [string] $NativeProbeHostProject)
+
+    $projectDirectory = Split-Path -Parent $NativeProbeHostProject
+    return Join-Path $projectDirectory "third_party\nlohmann\nlohmann-json-LICENSE.MIT"
+}
+
+function Invoke-NativeProbeHostBuild {
+    param(
+        [Parameter(Mandatory)] [string] $MSBuildPath,
+        [Parameter(Mandatory)] [string] $NativeProbeHostProject,
+        [Parameter(Mandatory)] [string] $Configuration,
+        [Parameter(Mandatory)] [string] $Label,
+        [Parameter(Mandatory)] [string] $OutputDirectory,
+        [Parameter(Mandatory)] [string] $IntermediateDirectory
+    )
+
+    $platform = Get-NativeProbeHostPlatform -Label $Label
+    New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $IntermediateDirectory -Force | Out-Null
+
+    Invoke-External `
+        -FilePath $MSBuildPath `
+        -Arguments @(
+            $NativeProbeHostProject,
+            "/nologo",
+            "/m",
+            "/t:Build",
+            "/p:Configuration=$Configuration",
+            "/p:Platform=$platform",
+            "/p:OutDir=$OutputDirectory\",
+            "/p:IntDir=$IntermediateDirectory\"
+        ) `
+        -ErrorMessage "MSBuild failed for native ProbeHost ($Label)"
 }
 
 function Get-InstallerArchitectureOptions {
@@ -420,15 +495,6 @@ function Publish-Application {
         -NuGetConfig $NuGetConfig `
         -ArtifactsPath $taskArtifactsRoot
 
-    # Frontend framework-dependent publish invokes ProbeHost publish for all architectures with --no-restore.
-    $frontendProbeHostRestoreArguments = $null
-    if ($distributionOptions.SelfContained -ne "true") {
-        $frontendProbeHostRestoreArguments = New-DotNetRestoreArguments `
-            -ProjectPath $ProbeHostProject `
-            -NuGetConfig $NuGetConfig `
-            -ArtifactsPath $taskArtifactsRoot
-    }
-
     $frontendPublishArguments = New-DotNetPublishArguments `
         -ProjectPath $FrontendProject `
         -Configuration $Configuration `
@@ -437,6 +503,10 @@ function Publish-Application {
         -OutputPath $publishDir `
         -ArtifactsPath $taskArtifactsRoot `
         -InformationalVersion $Version
+
+    if ($Platform -ne "anycpu") {
+        $frontendPublishArguments += "-p:SkipProbeHostArchitectureBuild=true"
+    }
 
     $backendRestoreArguments = New-DotNetRestoreArguments `
         -ProjectPath $BackendProject `
@@ -469,9 +539,6 @@ function Publish-Application {
         -InformationalVersion $Version
 
     Invoke-External -FilePath "dotnet" -Arguments $frontendRestoreArguments -ErrorMessage "dotnet restore failed for frontend ($platformLabel, $DistributionMode)"
-    if ($null -ne $frontendProbeHostRestoreArguments) {
-        Invoke-External -FilePath "dotnet" -Arguments $frontendProbeHostRestoreArguments -ErrorMessage "dotnet restore failed for frontend ProbeHost architecture assets ($platformLabel, $DistributionMode)"
-    }
     Invoke-External -FilePath "dotnet" -Arguments $frontendPublishArguments -ErrorMessage "dotnet publish failed for frontend ($platformLabel, $DistributionMode)"
 
     Invoke-External -FilePath "dotnet" -Arguments $backendRestoreArguments -ErrorMessage "dotnet restore failed for backend ($platformLabel, $DistributionMode)"
@@ -480,38 +547,51 @@ function Publish-Application {
     Invoke-External -FilePath "dotnet" -Arguments $trayHostRestoreArguments -ErrorMessage "dotnet restore failed for tray host ($platformLabel, $DistributionMode)"
     Invoke-External -FilePath "dotnet" -Arguments $trayHostPublishArguments -ErrorMessage "dotnet publish failed for tray host ($platformLabel, $DistributionMode)"
 
-    $baseOutputPath = Join-Path $taskArtifactsRoot "bin"
-    if (-not $baseOutputPath.EndsWith([System.IO.Path]::DirectorySeparatorChar.ToString())) {
-        $baseOutputPath += [System.IO.Path]::DirectorySeparatorChar
+    $msBuildPath = $null
+    $probeHostLicense = Get-NlohmannJsonLicensePath -NativeProbeHostProject $ProbeHostProject
+    Ensure-FileExists -Path $probeHostLicense -Description "nlohmann/json license notice"
+    $probeHostLabels = @()
+    foreach ($probeHostArchitecture in @(Get-ProbeHostArchitectureMap -Platform $Platform)) {
+        $probeHostLabel = [string] $probeHostArchitecture.Label
+        $probeHostLabels += $probeHostLabel
+        $probeHostOutput = Join-Path $publishDir (Join-Path "ProbeHost" $probeHostLabel)
+        $probeHostIntermediate = Join-Path $taskArtifactsRoot (Join-Path "probehost-native-obj" $probeHostLabel)
+        if ($null -eq $msBuildPath) {
+            $msBuildPath = Resolve-MSBuildPath
+        }
+
+        Invoke-NativeProbeHostBuild `
+            -MSBuildPath $msBuildPath `
+            -NativeProbeHostProject $ProbeHostProject `
+            -Configuration $Configuration `
+            -Label $probeHostLabel `
+            -OutputDirectory $probeHostOutput `
+            -IntermediateDirectory $probeHostIntermediate
+        Ensure-FileExists -Path (Join-Path $probeHostOutput "ContextMenuMgr.ProbeHost.exe") -Description "ProbeHost executable ($probeHostLabel)"
     }
 
-    foreach ($probeHostArchitecture in @(Get-ProbeHostArchitectureMap -Platform $Platform)) {
-        $probeHostRuntime = [string] $probeHostArchitecture.Runtime
-        $probeHostLabel = [string] $probeHostArchitecture.Label
-        $probeHostOutput = Join-Path $publishDir (Join-Path "ProbeHost" $probeHostLabel)
-        $probeHostRestoreArguments = New-DotNetRestoreArguments `
-            -ProjectPath $ProbeHostProject `
-            -RuntimeIdentifier $probeHostRuntime `
-            -NuGetConfig $NuGetConfig `
-            -ArtifactsPath $taskArtifactsRoot
-        $probeHostPublishArguments = @(
-            "publish", $ProbeHostProject,
-            "-c", $Configuration,
-            "-r", $probeHostRuntime,
-            "--self-contained", "true",
-            "--no-restore",
-            "--artifacts-path", $taskArtifactsRoot,
-            "-p:BaseOutputPath=$baseOutputPath",
-            "-p:UseAppHost=true",
-            "-p:PublishSingleFile=false",
-            "-p:PublishTrimmed=false",
-            "-p:InformationalVersion=$Version",
-            "-o", $probeHostOutput
-        )
+    $thirdPartyNoticeDir = Join-Path $publishDir "ThirdPartyNotices"
+    New-Item -ItemType Directory -Path $thirdPartyNoticeDir -Force | Out-Null
+    Copy-Item -LiteralPath $probeHostLicense -Destination (Join-Path $thirdPartyNoticeDir "nlohmann-json-LICENSE.MIT") -Force
+    Ensure-FileExists -Path (Join-Path $thirdPartyNoticeDir "nlohmann-json-LICENSE.MIT") -Description "nlohmann/json license notice"
 
-        Invoke-External -FilePath "dotnet" -Arguments $probeHostRestoreArguments -ErrorMessage "dotnet restore failed for ProbeHost ($probeHostLabel)"
-        Invoke-External -FilePath "dotnet" -Arguments $probeHostPublishArguments -ErrorMessage "dotnet publish failed for ProbeHost ($probeHostLabel)"
-        Ensure-FileExists -Path (Join-Path $probeHostOutput "ContextMenuMgr.ProbeHost.exe") -Description "ProbeHost executable ($probeHostLabel)"
+    $probeHostRoot = Join-Path $publishDir "ProbeHost"
+    if (Test-Path -LiteralPath $probeHostRoot -PathType Container) {
+        $verifier = Join-Path (Split-Path -Parent $PSScriptRoot) "Scripts\Verify-ProbeHostArchitecture.ps1"
+        if (-not (Test-Path -LiteralPath $verifier -PathType Leaf)) {
+            $verifier = Join-Path $PSScriptRoot "Verify-ProbeHostArchitecture.ps1"
+        }
+
+        $verifyArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $verifier, "-Root", $probeHostRoot)
+        if ($probeHostLabels.Count -gt 0) {
+            $verifyArguments += "-Labels"
+            $verifyArguments += $probeHostLabels
+        }
+
+        Invoke-External `
+            -FilePath "powershell" `
+            -Arguments $verifyArguments `
+            -ErrorMessage "ProbeHost architecture verification failed"
     }
 
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.exe") -Description "Frontend executable"

@@ -25,7 +25,7 @@
 | Restart Explorer Bug | `process-and-privilege-flows.md`、`troubleshooting.md` | 是否拿到前端用户 SessionId；是否只处理同 Session 的 `explorer.exe`。 |
 | Deep Analysis / ProbeHost Bug | `deep-analysis-probehost.md`、`build-and-release.md` | ProbeHost 架构、依赖、request/result、stderr、失败是否属于预期限制。 |
 | 全局搜索 Bug | `developer-guide.md`、`troubleshooting.md` | 当前候选池只覆盖传统右键菜单分类和 Win11；跳转后是否消费 pending filter。 |
-| 构建 / 发布 Bug | `build-and-release.md`、`deep-analysis-probehost.md` | ProbeHost 多架构目录、`PublishSingleFile=false`、installer/portable 参数。 |
+| 构建 / 发布 Bug | `build-and-release.md`、`deep-analysis-probehost.md` | native ProbeHost 多架构目录、MSBuild/C++ toolchain、installer/portable 参数。 |
 | UI / 主题 / 本地化 Bug | `developer-guide.md`、`troubleshooting.md` | `FrontendSettingsService`、`FrontendThemeService`、`LocalizationService` 的启动顺序和设置路径。 |
 | 新增 Feature | `developer-guide.md`、`process-and-privilege-flows.md`，再读对应专题 | 先选正确链路和模块，再决定是否新增 `PipeCommand`、服务逻辑或前端页面。 |
 

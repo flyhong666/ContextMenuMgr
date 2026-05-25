@@ -20,9 +20,11 @@
     <BackendTargetFramework>net10.0-windows</BackendTargetFramework>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <BackendOutputDir>$(MSBuildThisFileDirectory)..\artifacts\backend\$(Configuration)\$(BackendTargetFramework)\</BackendOutputDir>
-    <ProbeHostProject>$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\ContextMenuMgr.ProbeHost.csproj</ProbeHostProject>
-    <ProbeHostArchitectureOutputRoot>$(MSBuildThisFileDirectory)..\artifacts\probehost\$(Configuration)\</ProbeHostArchitectureOutputRoot>
+    <NativeProbeHostProject>$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\ContextMenuMgr.ProbeHost.vcxproj</NativeProbeHostProject>
+    <NativeProbeHostOutputRoot>$(MSBuildThisFileDirectory)..\artifacts\probehost-native\$(Configuration)\</NativeProbeHostOutputRoot>
     <ProbeHostArchitectureVerifier>$(MSBuildThisFileDirectory)..\Scripts\Verify-ProbeHostArchitecture.ps1</ProbeHostArchitectureVerifier>
+    <NativeProbeHostBuildScript>$(MSBuildThisFileDirectory)..\Scripts\Build-NativeProbeHost.ps1</NativeProbeHostBuildScript>
+    <NlohmannJsonLicense>$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\third_party\nlohmann\nlohmann-json-LICENSE.MIT</NlohmannJsonLicense>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Beta'">
@@ -43,7 +45,6 @@
     <ProjectReference Include="..\ContextMenuMgr.Contracts\ContextMenuMgr.Contracts.csproj" />
     <ProjectReference Include="..\ContextMenuMgr.Backend\ContextMenuMgr.Backend.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\ContextMenuMgr.TrayHost\ContextMenuMgr.TrayHost.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\ContextMenuMgr.ProbeHost\ContextMenuMgr.ProbeHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -53,61 +54,63 @@
     <Resource Include="Assets\AppIcon.png" />
   </ItemGroup>
 
-  <Target Name="BuildFrameworkDependentProbeHostArtifacts" AfterTargets="Build" BeforeTargets="CopyBackendArtifacts" Condition="'$(SelfContained)' != 'true' and '$(SkipProbeHostArchitectureBuild)' != 'true'">
+  <Target Name="BuildNativeProbeHostArtifacts" AfterTargets="Build" BeforeTargets="CopyBackendArtifacts" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
     <ItemGroup>
-      <ProbeHostArchitectureBuild Include="x86">
-        <RuntimeIdentifier>win-x86</RuntimeIdentifier>
-      </ProbeHostArchitectureBuild>
-      <ProbeHostArchitectureBuild Include="x64">
-        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-      </ProbeHostArchitectureBuild>
-      <ProbeHostArchitectureBuild Include="arm64">
-        <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
-      </ProbeHostArchitectureBuild>
+      <NativeProbeHostArchitectureBuild Include="x86">
+        <Platform>Win32</Platform>
+      </NativeProbeHostArchitectureBuild>
+      <NativeProbeHostArchitectureBuild Include="x64">
+        <Platform>x64</Platform>
+      </NativeProbeHostArchitectureBuild>
+      <NativeProbeHostArchitectureBuild Include="arm64">
+        <Platform>ARM64</Platform>
+      </NativeProbeHostArchitectureBuild>
     </ItemGroup>
 
-    <Message Importance="high" Text="Building framework-dependent ProbeHost artifacts: @(ProbeHostArchitectureBuild, ', ')" />
-    <RemoveDir Directories="$(ProbeHostArchitectureOutputRoot)x86;$(ProbeHostArchitectureOutputRoot)x64;$(ProbeHostArchitectureOutputRoot)arm64;$(ProbeHostArchitectureOutputRoot)build\x86;$(ProbeHostArchitectureOutputRoot)build\x64;$(ProbeHostArchitectureOutputRoot)build\arm64" />
-    <MSBuild
-      Projects="$(ProbeHostProject)"
-      Targets="Publish"
-      BuildInParallel="false"
-      Properties="Configuration=$(Configuration);TargetFramework=net10.0-windows;RuntimeIdentifier=%(ProbeHostArchitectureBuild.RuntimeIdentifier);SelfContained=false;PublishSingleFile=false;PublishTrimmed=false;UseAppHost=true;PlatformTarget=AnyCPU;Prefer32Bit=false;BuildProjectReferences=true;PublishDir=$(ProbeHostArchitectureOutputRoot)%(ProbeHostArchitectureBuild.Identity)\;NoWarn=CS8012" />
+    <Message Importance="high" Text="Building native ProbeHost artifacts: @(NativeProbeHostArchitectureBuild, ', ')" />
+    <RemoveDir Directories="$(NativeProbeHostOutputRoot)x86;$(NativeProbeHostOutputRoot)x64;$(NativeProbeHostOutputRoot)arm64;$(NativeProbeHostOutputRoot)obj\x86;$(NativeProbeHostOutputRoot)obj\x64;$(NativeProbeHostOutputRoot)obj\arm64" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;%(NativeProbeHostArchitectureBuild.Platform)&quot; -OutputDirectory &quot;$(NativeProbeHostOutputRoot)%(NativeProbeHostArchitectureBuild.Identity)&quot; -IntermediateDirectory &quot;$(NativeProbeHostOutputRoot)obj\%(NativeProbeHostArchitectureBuild.Identity)&quot;" />
   </Target>
 
   <Target Name="CopyBackendArtifacts" AfterTargets="Build">
-    <RemoveDir Directories="$(OutDir)ProbeHost\x86;$(OutDir)ProbeHost\x64;$(OutDir)ProbeHost\arm64" Condition="'$(SelfContained)' != 'true'" />
-    <MakeDir Directories="$(OutDir)ProbeHost\x86;$(OutDir)ProbeHost\x64;$(OutDir)ProbeHost\arm64" Condition="'$(SelfContained)' != 'true'" />
+    <RemoveDir Directories="$(OutDir)ProbeHost\x86;$(OutDir)ProbeHost\x64;$(OutDir)ProbeHost\arm64" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+    <MakeDir Directories="$(OutDir)ProbeHost\x86;$(OutDir)ProbeHost\x64;$(OutDir)ProbeHost\arm64;$(OutDir)ThirdPartyNotices" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
 
     <ItemGroup>
       <BackendArtifacts Include="$(BackendOutputDir)**\*.*" />
       <TrayHostArtifacts Include="$(MSBuildThisFileDirectory)..\artifacts\trayhost\$(Configuration)\net10.0-windows10.0.17763.0\**\*.*" />
-      <ProbeHostX86Artifacts Include="$(ProbeHostArchitectureOutputRoot)x86\**\*.*" Condition="'$(SelfContained)' != 'true'" />
-      <ProbeHostX64Artifacts Include="$(ProbeHostArchitectureOutputRoot)x64\**\*.*" Condition="'$(SelfContained)' != 'true'" />
-      <ProbeHostArm64Artifacts Include="$(ProbeHostArchitectureOutputRoot)arm64\**\*.*" Condition="'$(SelfContained)' != 'true'" />
+      <NativeProbeHostX86Artifact Include="$(NativeProbeHostOutputRoot)x86\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+      <NativeProbeHostX64Artifact Include="$(NativeProbeHostOutputRoot)x64\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+      <NativeProbeHostArm64Artifact Include="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
     </ItemGroup>
 
     <Copy SourceFiles="@(BackendArtifacts)" DestinationFiles="@(BackendArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(TrayHostArtifacts)" DestinationFiles="@(TrayHostArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(ProbeHostX86Artifacts)" DestinationFiles="@(ProbeHostX86Artifacts->'$(OutDir)ProbeHost\x86\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(SelfContained)' != 'true'" />
-    <Copy SourceFiles="@(ProbeHostX64Artifacts)" DestinationFiles="@(ProbeHostX64Artifacts->'$(OutDir)ProbeHost\x64\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(SelfContained)' != 'true'" />
-    <Copy SourceFiles="@(ProbeHostArm64Artifacts)" DestinationFiles="@(ProbeHostArm64Artifacts->'$(OutDir)ProbeHost\arm64\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(SelfContained)' != 'true'" />
+    <Copy SourceFiles="@(NativeProbeHostX86Artifact)" DestinationFolder="$(OutDir)ProbeHost\x86" SkipUnchangedFiles="true" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+    <Copy SourceFiles="@(NativeProbeHostX64Artifact)" DestinationFolder="$(OutDir)ProbeHost\x64" SkipUnchangedFiles="true" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+    <Copy SourceFiles="@(NativeProbeHostArm64Artifact)" DestinationFolder="$(OutDir)ProbeHost\arm64" SkipUnchangedFiles="true" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+    <Copy SourceFiles="$(NlohmannJsonLicense)" DestinationFolder="$(OutDir)ThirdPartyNotices" SkipUnchangedFiles="true" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
   </Target>
 
-  <Target Name="VerifyFrameworkDependentProbeHostArtifacts" AfterTargets="CopyBackendArtifacts" Condition="'$(SelfContained)' != 'true'">
-    <Error Condition="Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.dll')" Text="x86 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.dll." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.deps.json')" Text="x86 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.deps.json." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.runtimeconfig.json')" Text="x86 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.runtimeconfig.json." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.Contracts.dll')" Text="x86 ProbeHost framework-dependent output is missing ContextMenuMgr.Contracts.dll." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.dll')" Text="x64 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.dll." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.deps.json')" Text="x64 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.deps.json." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.runtimeconfig.json')" Text="x64 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.runtimeconfig.json." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.Contracts.dll')" Text="x64 ProbeHost framework-dependent output is missing ContextMenuMgr.Contracts.dll." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.dll')" Text="arm64 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.dll." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.deps.json')" Text="arm64 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.deps.json." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.runtimeconfig.json')" Text="arm64 ProbeHost framework-dependent output is missing ContextMenuMgr.ProbeHost.runtimeconfig.json." />
-    <Error Condition="Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe') and !Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.Contracts.dll')" Text="arm64 ProbeHost framework-dependent output is missing ContextMenuMgr.Contracts.dll." />
+  <Target Name="VerifyNativeProbeHostArtifacts" AfterTargets="CopyBackendArtifacts" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
+    <Error Condition="!Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe')" Text="x86 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="!Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe')" Text="x64 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="!Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe')" Text="arm64 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="!Exists('$(OutDir)ThirdPartyNotices\nlohmann-json-LICENSE.MIT')" Text="nlohmann/json license notice is missing from ThirdPartyNotices." />
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProbeHostArchitectureVerifier)&quot; -Root &quot;$(OutDir)ProbeHost&quot;" />
+  </Target>
+
+  <Target Name="CopyNativeProbeHostPublishArtifacts" AfterTargets="Publish" Condition="'$(PublishDir)' != '' and '$(SkipProbeHostArchitectureBuild)' != 'true'">
+    <MakeDir Directories="$(PublishDir)ProbeHost\x86;$(PublishDir)ProbeHost\x64;$(PublishDir)ProbeHost\arm64;$(PublishDir)ThirdPartyNotices" />
+    <Copy SourceFiles="$(NativeProbeHostOutputRoot)x86\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\x86" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeProbeHostOutputRoot)x64\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\x64" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\arm64" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NlohmannJsonLicense)" DestinationFolder="$(PublishDir)ThirdPartyNotices" SkipUnchangedFiles="true" />
+    <Error Condition="!Exists('$(PublishDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe')" Text="x86 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="!Exists('$(PublishDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe')" Text="x64 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="!Exists('$(PublishDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe')" Text="arm64 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="!Exists('$(PublishDir)ThirdPartyNotices\nlohmann-json-LICENSE.MIT')" Text="nlohmann/json license notice is missing from publish ThirdPartyNotices." />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProbeHostArchitectureVerifier)&quot; -Root &quot;$(PublishDir)ProbeHost&quot;" />
   </Target>
 
 </Project>

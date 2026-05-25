@@ -172,7 +172,7 @@ Before full build/release work, read:
 When changing ProbeHost, architecture folders, or build scripts, verify:
 
 - x86 / x64 / arm64 ProbeHost artifacts are placed in the correct directories;
-- framework-dependent and self-contained outputs match the current scripts;
+- native ProbeHost build outputs match the current scripts;
 - architecture verification scripts are used when applicable;
 - x86 binaries are not accidentally copied into arm64 directories.
 

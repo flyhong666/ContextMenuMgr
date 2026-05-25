@@ -46,7 +46,7 @@ git submodule update --init --recursive
 | Backend Service | `ContextMenuManagerPlus.Service.exe`、`ContextMenuManagerPlus.Service.dll` | Windows Service / bootstrapper 相关后端程序。 |
 | TrayHost | `ContextMenuManagerPlus.TrayHost.exe` | 每用户托盘进程。 |
 | ProbeHost | `ProbeHost\<arch>\ContextMenuMgr.ProbeHost.exe` | Deep Analysis 多架构隔离进程。 |
-| Contracts | `ContextMenuMgr.Contracts.dll` | pipe 契约、模型、共享路径常量，ProbeHost framework-dependent 输出也需要它。 |
+| Contracts | `ContextMenuMgr.Contracts.dll` | pipe 契约、模型、共享路径常量。ProbeHost 已改为 native C++，不再运行时依赖 Contracts DLL。 |
 
 ## 4. Debug 本地构建
 
@@ -54,15 +54,15 @@ git submodule update --init --recursive
 
 ```text
 Frontend build
--> 构建 framework-dependent ProbeHost x86 / x64 / arm64
+-> 使用 MSBuild 构建 native C++ ProbeHost Win32 / x64 / ARM64
 -> 复制 Backend artifacts
 -> 复制 TrayHost artifacts
--> 复制 ProbeHost\x86 / x64 / arm64
--> 验证 ProbeHost framework-dependent 依赖文件
+-> 复制 ProbeHost\x86 / x64 / arm64 下的 ContextMenuMgr.ProbeHost.exe
+-> 复制 ThirdPartyNotices\nlohmann-json-LICENSE.MIT
 -> 执行 Verify-ProbeHostArchitecture.ps1
 ```
 
-前端项目会检查各架构 ProbeHost 目录中的 `dll`、`deps.json`、`runtimeconfig.json` 和 `ContextMenuMgr.Contracts.dll`。如果只复制 exe，Deep Analysis 会在运行时出现 `ProbeHostDependencyMissing` 或无效输出。
+ProbeHost 是单文件 native exe。前端项目不再检查 `ContextMenuMgr.ProbeHost.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录中的 `ContextMenuMgr.Contracts.dll`。本地构建要求安装 Visual Studio Build Tools C++ workload、Windows SDK；如果要构建 arm64 ProbeHost，还需要 ARM64 工具链。
 
 ## 5. Release 发布
 
@@ -70,7 +70,7 @@ Frontend build
 
 | 步骤 | 说明 |
 | --- | --- |
-| restore | 对 Frontend、Backend、TrayHost、ProbeHost 分别运行 `dotnet restore`，使用 `NuGet.Config`。 |
+| restore | 对 Frontend、Backend、TrayHost 运行 `dotnet restore`，使用 `NuGet.Config`。ProbeHost 是 native C++ 项目，不走 dotnet restore。 |
 | publish | 对项目运行 `dotnet publish`，按平台和分发模式输出到 publish workspace。 |
 | self-contained | 发布时携带 .NET runtime，安装包不依赖本机已安装 runtime。 |
 | framework-dependent | 依赖本机 .NET runtime，安装包可启用 .NET dependency installer。 |
@@ -92,9 +92,17 @@ Frontend build
 
 这样做是因为目标 Shell Extension DLL 的架构可能与主程序平台不同。例如 x64 系统仍可能安装 x86 handler，arm64 系统也可能需要 x64 或 x86 ProbeHost。
 
-常见错误包括：目录标签和 PE 架构不一致、只发布主架构缺少 x86 fallback、framework-dependent 目录缺少 `ContextMenuMgr.Contracts.dll`、遗漏 `deps.json` 或 `runtimeconfig.json`。
+常见错误包括：目录标签和 PE 架构不一致、只发布主架构缺少 x86 fallback、机器缺少 C++ build tools 或 ARM64 工具链。
 
-当前 Release 脚本发布 ProbeHost 时传入 `--self-contained true` 和 `-p:PublishSingleFile=false`，所以 ProbeHost 是 self-contained 多文件输出。不要把 Release ProbeHost 文档或校验逻辑写成 single-file。
+当前 Release 脚本使用 MSBuild 构建 `ContextMenuMgr.ProbeHost.vcxproj`，按 `Win32`、`x64`、`ARM64` 平台生成单个 `ContextMenuMgr.ProbeHost.exe`，再复制到 `ProbeHost\<arch>`。不再对 ProbeHost 运行 `dotnet publish`，也不会发布 `.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录内的 `ContextMenuMgr.Contracts.dll`。
+
+ProbeHost 使用 vendored `nlohmann/json` 单头文件解析 request/result JSON：
+
+- 头文件位于 `ContextMenuMgr.ProbeHost\third_party\nlohmann\json.hpp`；
+- 不使用 vcpkg、Conan、NuGet 或 Git submodule 获取 JSON；
+- `json.hpp` 是编译期依赖，不复制到 runtime output；
+- 发行产物必须包含 `ThirdPartyNotices\nlohmann-json-LICENSE.MIT`；
+- ProbeHost exe 包含该 header-only 依赖编译后的代码。
 
 ## 7. Inno Setup
 
@@ -126,7 +134,7 @@ resolve-metadata
 | --- | --- |
 | 缺 .NET SDK | `dotnet --info`，workflow 使用 `10.0.x`。 |
 | Inno Setup 找不到 | `Scripts/Build.Common.psm1` 的 `Get-InnoSetupCompilerPath` 搜索路径。 |
-| ProbeHost 缺依赖 | `ContextMenuMgr.Frontend.csproj` 的 framework-dependent 检查和发布目录内容。 |
+| ProbeHost 缺失 | `ContextMenuMgr.Frontend.csproj` 的 native MSBuild 目标和发布目录内容。 |
 | ProbeHost 架构错 | `Scripts/Verify-ProbeHostArchitecture.ps1` 输出和 `ProbeHost\<arch>` 目录。 |
 | artifacts 目录污染 | 清理 `build\publish-runs`、`build\publish`、`build\dist` 后重试。 |
 | framework-dependent 包运行时缺失 | 检查目标机器 .NET runtime 或安装包 dependency installer 设置。 |

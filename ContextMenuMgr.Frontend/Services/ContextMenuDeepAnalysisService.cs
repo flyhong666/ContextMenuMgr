@@ -12,8 +12,6 @@ public sealed class ContextMenuDeepAnalysisService
 {
     private const int NativeAccessViolationExitCode = -1073741819;
     private const int StackBufferOverrunExitCode = -1073740791;
-    private const int ManagedUnhandledExceptionExitCode = -532462766;
-    private const string ProbeHostDependencyMissingMessage = "解析辅助进程缺少运行依赖，无法启动。请重新构建或安装完整程序包。";
     private const string ProbeHostArchitectureMismatchMessage = "解析辅助进程架构与目录标识不一致，无法启动。请重新构建或安装完整程序包。";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
@@ -72,15 +70,6 @@ public sealed class ContextMenuDeepAnalysisService
                 "FrontendOperation",
                 $"DeepAnalysisEnd: OperationId={request.OperationId}, ItemId={request.ItemId}, ProbeMode={request.ProbeMode}, Success=false, ErrorCode={architectureFailure.ErrorCode}, ItemCount=0, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
             return architectureFailure;
-        }
-
-        var dependencyFailure = ValidateSelectedProbeHostDependencies(selection, request);
-        if (dependencyFailure is not null)
-        {
-            FrontendDebugLog.Operation(
-                "FrontendOperation",
-                $"DeepAnalysisEnd: OperationId={request.OperationId}, ItemId={request.ItemId}, ProbeMode={request.ProbeMode}, Success=false, ErrorCode={dependencyFailure.ErrorCode}, ItemCount=0, ElapsedMs={(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds:F0}.");
-            return dependencyFailure;
         }
 
         using var timeoutCts = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(5));
@@ -372,34 +361,6 @@ public sealed class ContextMenuDeepAnalysisService
         };
     }
 
-    private ContextMenuDeepAnalysisResult? ValidateSelectedProbeHostDependencies(
-        ProbeHostSelection selection,
-        ContextMenuDeepAnalysisRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(selection.SelectedProbeHostPath))
-        {
-            return null;
-        }
-
-        var probeHostDirectory = Path.GetDirectoryName(selection.SelectedProbeHostPath);
-        if (string.IsNullOrWhiteSpace(probeHostDirectory))
-        {
-            return null;
-        }
-
-        var runtimeConfigPath = Path.Combine(probeHostDirectory, "ContextMenuMgr.ProbeHost.runtimeconfig.json");
-        var depsPath = Path.Combine(probeHostDirectory, "ContextMenuMgr.ProbeHost.deps.json");
-        if (!File.Exists(runtimeConfigPath) || !File.Exists(depsPath))
-        {
-            return null;
-        }
-
-        var contractsPath = Path.Combine(probeHostDirectory, "ContextMenuMgr.Contracts.dll");
-        return File.Exists(contractsPath)
-            ? null
-            : BuildProbeHostDependencyMissingFailure(request, selection, contractsPath);
-    }
-
     private static string? ResolveHandlerPathFromClsid(string? handlerClsid)
     {
         if (!Guid.TryParse(handlerClsid, out var clsid))
@@ -556,26 +517,10 @@ public sealed class ContextMenuDeepAnalysisService
         string resultPath,
         ProbeHostSelection selection)
     {
-        if (IsContractsFileNotFound(stderr))
-        {
-            return BuildProbeHostDependencyMissingFailure(
-                request,
-                selection,
-                Path.Combine(
-                    Path.GetDirectoryName(selection.SelectedProbeHostPath ?? string.Empty) ?? string.Empty,
-                    "ContextMenuMgr.Contracts.dll"),
-                exitCode,
-                stdout,
-                stderr,
-                requestPath,
-                resultPath);
-        }
-
         var errorCode = exitCode switch
         {
             NativeAccessViolationExitCode => "ProbeHostNativeAccessViolation",
             StackBufferOverrunExitCode => "ProbeHostStackBufferOverrun",
-            ManagedUnhandledExceptionExitCode => "ProbeHostManagedUnhandledException",
             < 0 => "ProbeHostNativeCrash",
             _ => null
         };
@@ -589,7 +534,6 @@ public sealed class ContextMenuDeepAnalysisService
         {
             "ProbeHostNativeAccessViolation" => _localization.Translate("DeepAnalyzeNativeAccessViolationText"),
             "ProbeHostStackBufferOverrun" => _localization.Translate("DeepAnalyzeStackBufferOverrunText"),
-            "ProbeHostManagedUnhandledException" => _localization.Translate("DeepAnalyzeManagedUnhandledExceptionText"),
             _ => _localization.Translate("DeepAnalyzeNativeCrashText")
         };
 
@@ -607,85 +551,6 @@ public sealed class ContextMenuDeepAnalysisService
             Is64BitProcess = Environment.Is64BitProcess,
             DiagnosticDetails = BuildProbeHostDiagnostics(exitCode, stdout, stderr, requestPath, resultPath)
         };
-    }
-
-    private ContextMenuDeepAnalysisResult BuildProbeHostDependencyMissingFailure(
-        ContextMenuDeepAnalysisRequest request,
-        ProbeHostSelection selection,
-        string missingFile,
-        int? exitCode = null,
-        string? stdout = null,
-        string? stderr = null,
-        string? requestPath = null,
-        string? resultPath = null)
-    {
-        var diagnosticDetails = new List<string>
-        {
-            $"MissingFile={missingFile}",
-            $"SelectedProbeHostPath={selection.SelectedProbeHostPath}",
-            $"SelectedProbeHostArchitecture={selection.SelectedProbeHostArchitecture}",
-            $"ActualProbeHostMachineType={PeMachineTypeDetector.Detect(selection.SelectedProbeHostPath).MachineType}",
-            $"HandlerFilePath={selection.HandlerFilePath ?? request.HandlerFilePath}",
-            $"HandlerMachineType={selection.HandlerMachineType}"
-        };
-
-        if (exitCode is not null)
-        {
-            diagnosticDetails.Add($"ExitCode={exitCode.Value} ({FormatExitCodeHex(exitCode.Value)})");
-        }
-
-        if (!string.IsNullOrWhiteSpace(requestPath))
-        {
-            diagnosticDetails.Add($"RequestPath={requestPath}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(resultPath))
-        {
-            diagnosticDetails.Add($"ResultPath={resultPath}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(stdout))
-        {
-            diagnosticDetails.Add($"Stdout={Excerpt(stdout, 300)}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(stderr))
-        {
-            diagnosticDetails.Add($"Stderr={Excerpt(stderr, 1000)}");
-        }
-
-        return Failure(
-            "ProbeHostDependencyMissing",
-            TranslateOrDefault("DeepAnalyzeProbeHostDependencyMissingText", ProbeHostDependencyMissingMessage),
-            request) with
-        {
-            HandlerFilePath = selection.HandlerFilePath ?? request.HandlerFilePath,
-            HandlerFileExists = selection.HandlerFileExists,
-            HandlerMachineType = selection.HandlerMachineType,
-            HandlerFileMachineType = selection.HandlerMachineType,
-            HandlerMachineRawValue = selection.HandlerMachineRawValue,
-            SelectedProbeHostArchitecture = selection.SelectedProbeHostArchitecture.ToString(),
-            SelectedProbeHostPath = selection.SelectedProbeHostPath,
-            ActualProbeHostMachineType = PeMachineTypeDetector.Detect(selection.SelectedProbeHostPath).MachineType,
-            ArchitectureSelectionReason = selection.Reason,
-            OSArchitecture = RuntimeInformation.OSArchitecture.ToString(),
-            FrontendProcessArchitecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            DiagnosticDetails = string.Join(Environment.NewLine, diagnosticDetails)
-        };
-    }
-
-    private static bool IsContractsFileNotFound(string stderr)
-    {
-        return stderr.Contains("System.IO.FileNotFoundException", StringComparison.OrdinalIgnoreCase)
-            && stderr.Contains("ContextMenuMgr.Contracts", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private string TranslateOrDefault(string key, string fallback)
-    {
-        var translated = _localization.Translate(key);
-        return string.Equals(translated, key, StringComparison.Ordinal)
-            ? fallback
-            : translated;
     }
 
     private static ContextMenuDeepAnalysisResult BuildInvalidOutputFailure(

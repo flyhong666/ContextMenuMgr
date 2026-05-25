@@ -130,15 +130,15 @@
 | 优先查看的日志 | `frontend-debug.log`、`backend.log`。 |
 | 常见修复方向 | 确认请求携带正确前端 SessionId；不要杀所有 `explorer.exe`；这不是注册表写入链路。 |
 
-## 12. ProbeHost 缺依赖
+## 12. ProbeHost 缺失或未构建
 
 | 项目 | 内容 |
 | --- | --- |
-| 现象 | Deep Analysis 返回 `ProbeHostDependencyMissing` 或 stderr 有 `ContextMenuMgr.Contracts` 加载失败。 |
-| 可能原因 | framework-dependent ProbeHost 目录只复制了 exe，缺少 dll/deps/runtimeconfig/contracts。 |
+| 现象 | Deep Analysis 返回 `MissingX86ProbeHost`、`MissingX64ProbeHost`、`MissingArm64ProbeHost` 或 `ProbeHostNotFound`。 |
+| 可能原因 | native ProbeHost 未构建或未复制到 `ProbeHost\<arch>`；本机缺少 Visual Studio Build Tools C++ workload、Windows SDK 或 ARM64 工具链。 |
 | 优先查看的代码 | `ContextMenuDeepAnalysisService.cs`、`ContextMenuMgr.Frontend.csproj`。 |
 | 优先查看的日志 | `frontend-debug.log`、Deep Analysis 诊断详情。 |
-| 常见修复方向 | 重新构建前端；检查 `ProbeHost\<arch>` 目录完整性；不要手工只复制 exe。 |
+| 常见修复方向 | 重新构建前端；检查 `ProbeHost\<arch>\ContextMenuMgr.ProbeHost.exe`；检查 `ThirdPartyNotices\nlohmann-json-LICENSE.MIT`；确认 C++ toolchain 可用。 |
 
 ## 13. ProbeHost 架构不匹配
 
@@ -156,7 +156,7 @@
 | --- | --- |
 | 现象 | 返回 `CoCreateHandlerFailed`、`ShellExtInitNotSupported`、`IContextMenuNotSupported`、`QueryContextMenuFailed`、`Timeout` 或 native crash。 |
 | 可能原因 | 第三方 handler 不支持探测场景、依赖 Explorer 环境、崩溃、卡死或架构不匹配。 |
-| 优先查看的代码 | `ContextMenuDeepAnalysisService.cs`、`ContextMenuMgr.ProbeHost/Program.cs`、`ContextMenuDeepAnalysisWindowViewModel.cs`。 |
+| 优先查看的代码 | `ContextMenuDeepAnalysisService.cs`、`ContextMenuMgr.ProbeHost/src`、`ContextMenuDeepAnalysisWindowViewModel.cs`。 |
 | 优先查看的日志 | `frontend-debug.log`、ProbeHost stderr / result diagnostics。 |
 | 常见修复方向 | 把失败视为 Deep Analysis 限制；不要影响普通菜单开关；必要时尝试 `WholeContextMenu` 但不要混淆结果语义。 |
 

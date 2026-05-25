@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string] $Root
+    [string] $Root,
+
+    [string[]] $Labels = @("x86", "x64", "arm64")
 )
 
 Set-StrictMode -Version Latest
@@ -48,7 +50,7 @@ $expectedMachines = @{
     arm64 = 0xAA64
 }
 
-foreach ($label in @("x86", "x64", "arm64")) {
+foreach ($label in $Labels) {
     $path = Join-Path $Root (Join-Path $label "ContextMenuMgr.ProbeHost.exe")
     $machine = Get-PeMachine -Path $path
     $expected = [uint16] $expectedMachines[$label]
