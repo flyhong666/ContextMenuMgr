@@ -1,9 +1,11 @@
+using System.Windows.Controls;
+
 namespace ContextMenuMgr.Frontend.Views;
 
 /// <summary>
 /// Represents the special menu page view.
 /// </summary>
-public partial class SpecialMenuPageView : System.Windows.Controls.UserControl
+public partial class SpecialMenuPageView : Page
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="SpecialMenuPageView"/> class.
