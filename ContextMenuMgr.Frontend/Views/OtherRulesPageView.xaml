@@ -497,7 +497,7 @@
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
-                    <views:SpecialMenuPageView DataContext="{Binding DragDropTab}" />
+                    <views:SpecialMenuContentView DataContext="{Binding DragDropTab}" />
                 </Border>
             </TabItem>
 
@@ -509,7 +509,7 @@
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
-                    <views:SpecialMenuPageView DataContext="{Binding CommandStoreTab}" />
+                    <views:SpecialMenuContentView DataContext="{Binding CommandStoreTab}" />
                 </Border>
             </TabItem>
 
@@ -521,7 +521,7 @@
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
-                    <views:SpecialMenuPageView DataContext="{Binding GuidBlockTab}" />
+                    <views:SpecialMenuContentView DataContext="{Binding GuidBlockTab}" />
                 </Border>
             </TabItem>
 
@@ -533,7 +533,7 @@
                     </StackPanel>
                 </TabItem.Header>
                 <Border Style="{StaticResource OtherRulesTabContentSurfaceStyle}">
-                    <views:SpecialMenuPageView DataContext="{Binding IeMenuTab}" />
+                    <views:SpecialMenuContentView DataContext="{Binding IeMenuTab}" />
                 </Border>
             </TabItem>
         </TabControl>
