@@ -28,6 +28,7 @@ For module-specific work, also read the matching topic document:
 | ShellNew / SendTo / WinX / SpecialMenu | `docs/special-menus.md` |
 | Windows 11 modern context menu | `docs/windows11-context-menu.md` |
 | Deep Analysis / ProbeHost / Shell Extension probing | `docs/deep-analysis-probehost.md` |
+| Frontend UI / WPF-UI / theme / NavigationView / AutoSuggestBox | `docs/frontend-wpf-ui.md` |
 | Build, release, installer, multi-architecture ProbeHost | `docs/build-and-release.md` |
 | Unclear bugs, user reports, runtime failures | `docs/troubleshooting.md` |
 | New agent handoff, fault attribution, pre-change checklist | `docs/ai-maintainer-playbook.md` |
@@ -78,6 +79,12 @@ If you cannot answer these questions, stop and read the relevant docs or inspect
 - A Windows Service must not directly show UI. Launch TrayHost or Frontend through the interactive user session.
 - Restart Explorer must target the frontend user session. Do not blindly kill all `explorer.exe` processes.
 
+### Frontend UI and WPF-UI
+
+- Frontend UI bugs are not automatically backend, registry, or service bugs.
+- For WPF-UI, theme, NavigationView, AutoSuggestBox, Popup, XAML style, or Page/UserControl issues, read `docs/frontend-wpf-ui.md` before changing code.
+- Do not fix UI state, template, or binding bugs by changing Backend Service, registry scanning, or privilege flows unless there is evidence the backend is involved.
+
 ### SpecialMenu
 
 - ShellNew, SendTo, and WinX are not ordinary `shell` / `shellex` entries.
@@ -124,8 +131,8 @@ If you cannot answer these questions, stop and read the relevant docs or inspect
 | TrayHost not appearing | `FrontendAutostartLauncher`, `BackendWindowsService`, WTS flow | frontend window logic |
 | Restart Explorer not working | user session context / `ExplorerRestartService` | registry menu logic |
 | Deep Analysis failure | `ContextMenuDeepAnalysisService`, ProbeHost, `docs/deep-analysis-probehost.md` | normal toggle logic |
-| Global search bug | `ContextMenuGlobalSearchService`, `GlobalSearchNavigationFilterService`, `ShellViewModel` | backend scanner |
-| Theme startup issue | `FrontendThemeService`, `FrontendSettingsService` | menu backend logic |
+| Global search bug | `ContextMenuGlobalSearchService`, `GlobalSearchNavigationFilterService`, `ShellViewModel`, `docs/frontend-wpf-ui.md` | backend scanner |
+| Theme / WPF-UI / NavigationView / AutoSuggestBox issue | `FrontendThemeService`, `MainWindow.xaml`, `MainWindow.xaml.cs`, `docs/frontend-wpf-ui.md` | backend service or registry logic |
 | Build / release / architecture issue | `Scripts/Build.Common.psm1`, frontend csproj, `docs/build-and-release.md` | runtime business logic |
 
 ---
@@ -143,6 +150,7 @@ Before editing code, verify:
 - [ ] I am not trying to show UI directly from the service session.
 - [ ] I am not mixing Registry Write Protection with ShellNew ACL Lock.
 - [ ] I am not loading third-party Shell Extension DLLs inside the Frontend or Backend Service.
+- [ ] If this is a frontend UI/WPF-UI issue, I have read `docs/frontend-wpf-ui.md`.
 - [ ] I have checked relevant logs, or I can explain why logs are unavailable.
 - [ ] I can explain which files need changes and why.
 - [ ] I can provide manual verification steps.
@@ -184,9 +192,10 @@ If you change any of the following, update `docs/` in the same change:
 | Change Registry Write Protection | `docs/registry-model.md`, `docs/troubleshooting.md` |
 | Change ShellNew ACL Lock | `docs/special-menus.md` |
 | Change ProbeHost selection or Deep Analysis behavior | `docs/deep-analysis-probehost.md` |
+| Change Frontend theme, WPF-UI styles, NavigationView, AutoSuggestBox, or Page/UserControl composition | `docs/frontend-wpf-ui.md` |
 | Change `build.ps1`, release scripts, or csproj copy targets | `docs/build-and-release.md` |
 | Change `RuntimePaths` or log paths | `docs/troubleshooting.md`, `docs/developer-guide.md` |
-| Change global search coverage | `docs/developer-guide.md`, `docs/troubleshooting.md` |
+| Change global search coverage | `docs/developer-guide.md`, `docs/troubleshooting.md`, `docs/frontend-wpf-ui.md` |
 
 Documentation must describe the current code, not old README assumptions.
 
