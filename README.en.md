@@ -619,6 +619,7 @@ Different release packages include different ProbeHost architectures as needed.
 * Windows 10 / 11
 * .NET SDK 10
 * PowerShell 5.1 or later
+* Visual Studio / Visual Studio Build Tools with C++ workload and Windows SDK
 * Inno Setup 6
 
   * the repo prefers the bundled compiler:
@@ -630,17 +631,11 @@ Different release packages include different ProbeHost architectures as needed.
 ## Local Development Build
 
 ```powershell
-dotnet restore .\ContextMenuMgr.slnx --configfile .\NuGet.Config
-dotnet build .\ContextMenuMgr.slnx --no-restore
+dotnet restore .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj --configfile .\NuGet.Config
+dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj --no-restore
 ```
 
-If you only work on the frontend, you can also build the frontend project:
-
-```powershell
-dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj
-```
-
-The frontend build attempts to copy the backend, TrayHost, ProbeHost, and other required runtime artifacts for local debugging.
+The main development entry is `ContextMenuMgr.slnx`, which includes the native C++ ProbeHost project. For command-line local debugging, build the Frontend csproj directly; the frontend build automatically builds and copies the backend, TrayHost, ProbeHost, and other required runtime artifacts. The mixed slnx contains a native vcxproj, so it requires the Visual Studio/MSBuild C++ toolchain and is not a pure `dotnet build .\ContextMenuMgr.slnx` entry.
 
 ---
 
@@ -656,23 +651,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Configuration R
 
 The build script:
 
-1. restores the solution
+1. restores the .NET projects
 2. publishes:
 
    * Frontend
    * Backend
    * TrayHost
-   * ProbeHost
-3. builds artifacts for multiple architectures:
+3. builds the native ProbeHost with MSBuild and copies the architectures required by the target package
+4. builds artifacts for multiple architectures:
 
    * `win-x64`
    * `win-x86`
    * `win-arm64`
-4. builds multiple distribution modes:
+5. builds multiple distribution modes:
 
    * `self-contained`
    * `framework-dependent`
-5. invokes Inno Setup to generate installers
+6. invokes Inno Setup to generate installers
 
 ProbeHost is included by target package:
 
@@ -689,7 +684,7 @@ ProbeHost is included by target package:
   * `x64`
   * `x86`
 
-For release packages, ProbeHost is generally published as self-contained single-file helpers to avoid failures caused by missing .NET runtimes for a specific architecture.
+ProbeHost is now a native C++ Win32 helper. Each architecture directory only needs `ContextMenuMgr.ProbeHost.exe`; it is no longer published with `dotnet publish` and does not depend on `.NET Runtime`, `.deps.json`, or `.runtimeconfig.json`. Release artifacts include `ThirdPartyNotices\nlohmann-json-LICENSE.MIT`.
 
 Default output directories:
 

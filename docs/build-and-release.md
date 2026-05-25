@@ -15,6 +15,8 @@
 
 当前代码库没有发现名为 `build.bat` 的入口；不要在文档或自动化中假设它存在。
 
+主开发入口是根目录 `ContextMenuMgr.slnx`。该 slnx 同时包含 Frontend、Backend、TrayHost、Contracts 和 native C++ `ContextMenuMgr.ProbeHost.vcxproj`；不需要打开单独的 ProbeHost-only solution 才能看到 ProbeHost 项目。前端项目和发布脚本仍会自动构建、复制 native ProbeHost 多架构产物。
+
 ## 2. 获取源码与 Submodule 要求
 
 本仓库包含 Git submodule。首次获取源码时建议使用 recursive clone：

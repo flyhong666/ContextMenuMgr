@@ -620,6 +620,7 @@ ProbeHost/
 
 - Windows 10 / 11
 - .NET SDK 10
+- Visual Studio / Visual Studio Build Tools with C++ workload and Windows SDK
 - PowerShell 5.1 或更高
 - Inno Setup 6
   - 默认优先使用仓库内置：
@@ -630,17 +631,11 @@ ProbeHost/
 ## 本地开发构建
 
 ```powershell
-dotnet restore .\ContextMenuMgr.slnx --configfile .\NuGet.Config
-dotnet build .\ContextMenuMgr.slnx --no-restore
+dotnet restore .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj --configfile .\NuGet.Config
+dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj --no-restore
 ```
 
-如只开发前端，也可以构建前端项目：
-
-```powershell
-dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj
-```
-
-前端构建会尽量复制后端、TrayHost、ProbeHost 等运行所需产物，便于本地调试。
+主开发入口是 `ContextMenuMgr.slnx`，其中包含 native C++ ProbeHost 项目。命令行本地调试建议直接构建 Frontend csproj；前端构建会自动构建并复制后端、TrayHost、ProbeHost 等运行所需产物。混合 slnx 中的 native vcxproj 需要 Visual Studio/MSBuild C++ 工具链，不适合作为纯 `dotnet build .\ContextMenuMgr.slnx` 入口。
 
 ---
 
@@ -656,20 +651,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Configuration R
 
 构建脚本会：
 
-1. `restore` 解决方案
+1. `restore` .NET 项目
 2. 分别 `publish`：
    - Frontend
    - Backend
    - TrayHost
-   - ProbeHost
-3. 针对不同架构生成产物：
+3. 使用 MSBuild 构建 native ProbeHost，并按目标发布包复制对应架构
+4. 针对不同架构生成产物：
    - `win-x64`
    - `win-x86`
    - `win-arm64`
-4. 针对不同分发模式生成产物：
+5. 针对不同分发模式生成产物：
    - `self-contained`
    - `framework-dependent`
-5. 调用 Inno Setup 生成安装包
+6. 调用 Inno Setup 生成安装包
 
 ProbeHost 会按目标发布包携带对应架构：
 
@@ -683,7 +678,7 @@ ProbeHost 会按目标发布包携带对应架构：
   - `x64`
   - `x86`
 
-其中 Release 包中的 ProbeHost 倾向使用 self-contained single-file 发布，以避免用户缺少对应架构 .NET Runtime 导致深入分析无法启动。
+ProbeHost 现在是 native C++ Win32 helper，每个架构目录只需要 `ContextMenuMgr.ProbeHost.exe`。它不再通过 `dotnet publish` 发布，也不依赖 `.NET Runtime`、`.deps.json` 或 `.runtimeconfig.json`。发布产物会包含 `ThirdPartyNotices\nlohmann-json-LICENSE.MIT`。
 
 默认输出目录：
 

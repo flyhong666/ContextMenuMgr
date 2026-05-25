@@ -4,9 +4,13 @@
     <BuildType Name="Debug" />
     <BuildType Name="Release" />
     <Platform Name="Any CPU" />
+    <Platform Name="ARM64" />
+    <Platform Name="Win32" />
+    <Platform Name="x64" />
   </Configurations>
   <Project Path="ContextMenuMgr.Backend/ContextMenuMgr.Backend.csproj" />
   <Project Path="ContextMenuMgr.Contracts/ContextMenuMgr.Contracts.csproj" />
   <Project Path="ContextMenuMgr.Frontend/ContextMenuMgr.Frontend.csproj" />
+  <Project Path="ContextMenuMgr.ProbeHost/ContextMenuMgr.ProbeHost.vcxproj" Id="913b26a9-d5f4-4a96-a45d-f2bde873f4f4" />
   <Project Path="ContextMenuMgr.TrayHost/ContextMenuMgr.TrayHost.csproj" />
 </Solution>
