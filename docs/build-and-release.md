@@ -66,7 +66,9 @@ Frontend build
 
 ProbeHost 是单文件 native exe。前端项目不再检查 `ContextMenuMgr.ProbeHost.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录中的 `ContextMenuMgr.Contracts.dll`。本地构建要求安装 Visual Studio Build Tools C++ workload、Windows SDK；如果要构建 arm64 ProbeHost，还需要 ARM64 工具链。
 
-普通 `dotnet build` / `dotnet run` 不会无条件清理 native ProbeHost 输出。`Scripts\Build-NativeProbeHost.ps1` 会检查目标 `ContextMenuMgr.ProbeHost.exe` 是否晚于 `ContextMenuMgr.ProbeHost.vcxproj`、`src\**\*.cpp`、`src\**\*.h` 和 `third_party\nlohmann\json.hpp`；如果已是最新，会输出 `Native ProbeHost <arch> is up to date; skipping build.` 并跳过该架构的 MSBuild。需要强制重建时可传入：
+普通 `dotnet build` / `dotnet run` 不会无条件清理 native ProbeHost 输出。`ContextMenuMgr.Frontend.csproj` 会先用 MSBuild incremental build 检查 `ContextMenuMgr.ProbeHost.vcxproj`、`src\**\*.cpp`、`src\**\*.h` 和 `third_party\nlohmann\json.hpp` 是否晚于三个架构的目标 exe；全部最新时，`BuildNativeProbeHostArtifacts` target 会直接跳过，不启动 PowerShell。
+
+如果 target 需要运行，`Scripts\Build-NativeProbeHostArtifacts.ps1` 会在一次 PowerShell 进程中处理 Win32 / x64 / ARM64，并且只解析一次 `MSBuild.exe` 路径。脚本仍会对每个架构单独检查目标 `ContextMenuMgr.ProbeHost.exe` 是否最新；如果某个架构已是最新，会输出该 label 的 `Skipped=True` 并跳过该架构的 MSBuild。需要强制重建时可传入：
 
 ```powershell
 dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj -p:ForceRebuildNativeProbeHost=true
@@ -85,7 +87,7 @@ artifacts\probehost-native\<Configuration>\obj\x64\
 artifacts\probehost-native\<Configuration>\obj\arm64\
 ```
 
-`Build-NativeProbeHost.ps1` 会把 label 映射到 MSBuild Platform：`x86 -> Win32`、`x64 -> x64`、`arm64 -> ARM64`。每个 label 构建或增量跳过后都会立即读取目标 exe 的 PE Machine 并验证：`x86 -> 0x014C`、`x64 -> 0x8664`、`arm64 -> 0xAA64`。
+`Build-NativeProbeHostArtifacts.ps1` 会把 MSBuild Platform 映射到 label：`Win32 -> x86`、`x64 -> x64`、`ARM64 -> arm64`。每个 label 构建或增量跳过后都会立即读取目标 exe 的 PE Machine 并验证：`x86 -> 0x014C`、`x64 -> 0x8664`、`arm64 -> 0xAA64`。`Build-NativeProbeHost.ps1` 保留为单架构 helper。
 
 ## 5. Release 发布
 

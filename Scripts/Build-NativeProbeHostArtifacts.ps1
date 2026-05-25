@@ -5,15 +5,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $Configuration,
 
-    [Parameter(Mandatory = $true)]
-    [ValidateSet("Win32", "x64", "ARM64")]
-    [string] $Platform,
+    [string] $Platforms = "Win32,x64,ARM64",
 
     [Parameter(Mandatory = $true)]
-    [string] $OutputDirectory,
+    [string] $OutputRoot,
 
     [Parameter(Mandatory = $true)]
-    [string] $IntermediateDirectory,
+    [string] $IntermediateRoot,
 
     [string] $ForceRebuild = "false"
 )
@@ -56,7 +54,7 @@ function Get-ArchitectureLabel {
         "Win32" { return "x86" }
         "x64" { return "x64" }
         "ARM64" { return "arm64" }
-        default { return $Platform }
+        default { throw "Unsupported ProbeHost MSBuild platform '$Platform'." }
     }
 }
 
@@ -140,10 +138,6 @@ function Test-NativeProbeHostUpToDate {
         $inputs.Add((Get-Item -LiteralPath $jsonHeader)) | Out-Null
     }
 
-    if ($inputs.Count -eq 0) {
-        return $false
-    }
-
     $targetTimestamp = (Get-Item -LiteralPath $TargetExe).LastWriteTimeUtc
     $latestInputTimestamp = ($inputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
     return $targetTimestamp -gt $latestInputTimestamp
@@ -179,77 +173,95 @@ function Write-NativeProbeHostBuildSummary {
         [Parameter(Mandatory = $true)] [string] $OutputDirectory,
         [Parameter(Mandatory = $true)] [string] $IntermediateDirectory,
         [Parameter(Mandatory = $true)] [string] $TargetExe,
+        [Parameter(Mandatory = $true)] [bool] $Skipped,
         [Parameter(Mandatory = $true)] [uint16] $DetectedMachine
     )
 
-    Write-Host "Native ProbeHost build output:"
+    Write-Host "Native ProbeHost artifact:"
     Write-Host "  Label=$ArchitectureLabel"
-    Write-Host "  MSBuildPlatform=$MSBuildPlatform"
+    Write-Host "  Platform=$MSBuildPlatform"
+    Write-Host "  OutputPath=$TargetExe"
     Write-Host "  OutputDirectory=$OutputDirectory"
     Write-Host "  IntermediateDirectory=$IntermediateDirectory"
-    Write-Host "  TargetExe=$TargetExe"
+    Write-Host "  Skipped=$Skipped"
     Write-Host "  DetectedPEMachine=0x$($DetectedMachine.ToString('X4'))"
 }
 
 $resolvedProject = (Resolve-Path -LiteralPath $Project).Path
-$resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-$resolvedIntermediateDirectory = [System.IO.Path]::GetFullPath($IntermediateDirectory)
-$msbuildOutputDirectory = Add-TrailingDirectorySeparator -Path $resolvedOutputDirectory
-$msbuildIntermediateDirectory = Add-TrailingDirectorySeparator -Path $resolvedIntermediateDirectory
-$architectureLabel = Get-ArchitectureLabel -Platform $Platform
-$targetExe = Join-Path $resolvedOutputDirectory "ContextMenuMgr.ProbeHost.exe"
+$resolvedOutputRoot = [System.IO.Path]::GetFullPath($OutputRoot)
+$resolvedIntermediateRoot = [System.IO.Path]::GetFullPath($IntermediateRoot)
 $forceRebuildEnabled = [System.Convert]::ToBoolean($ForceRebuild)
+$platformList = @($Platforms.Split(",", [System.StringSplitOptions]::RemoveEmptyEntries) |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
-if ($forceRebuildEnabled) {
-    if (Test-Path -LiteralPath $resolvedOutputDirectory) {
-        Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
-    }
-
-    if (Test-Path -LiteralPath $resolvedIntermediateDirectory) {
-        Remove-Item -LiteralPath $resolvedIntermediateDirectory -Recurse -Force
-    }
+if ($platformList.Count -eq 0) {
+    throw "At least one ProbeHost platform must be specified."
 }
 
-if (-not $forceRebuildEnabled -and (Test-NativeProbeHostUpToDate -ProjectPath $resolvedProject -TargetExe $targetExe)) {
-    Write-Host "Native ProbeHost $architectureLabel is up to date; skipping build."
-    $detectedMachine = Test-NativeProbeHostArchitecture -ArchitectureLabel $architectureLabel -MSBuildPlatform $Platform -TargetExe $targetExe
+$msbuild = $null
+
+foreach ($platform in $platformList) {
+    $architectureLabel = Get-ArchitectureLabel -Platform $platform
+    $resolvedOutputDirectory = Join-Path $resolvedOutputRoot $architectureLabel
+    $resolvedIntermediateDirectory = Join-Path $resolvedIntermediateRoot $architectureLabel
+    $targetExe = Join-Path $resolvedOutputDirectory "ContextMenuMgr.ProbeHost.exe"
+
+    if ($forceRebuildEnabled) {
+        if (Test-Path -LiteralPath $resolvedOutputDirectory) {
+            Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
+        }
+
+        if (Test-Path -LiteralPath $resolvedIntermediateDirectory) {
+            Remove-Item -LiteralPath $resolvedIntermediateDirectory -Recurse -Force
+        }
+    }
+
+    if (-not $forceRebuildEnabled -and (Test-NativeProbeHostUpToDate -ProjectPath $resolvedProject -TargetExe $targetExe)) {
+        $detectedMachine = Test-NativeProbeHostArchitecture -ArchitectureLabel $architectureLabel -MSBuildPlatform $platform -TargetExe $targetExe
+        Write-NativeProbeHostBuildSummary `
+            -ArchitectureLabel $architectureLabel `
+            -MSBuildPlatform $platform `
+            -OutputDirectory $resolvedOutputDirectory `
+            -IntermediateDirectory $resolvedIntermediateDirectory `
+            -TargetExe $targetExe `
+            -Skipped $true `
+            -DetectedMachine $detectedMachine
+        continue
+    }
+
+    if ($null -eq $msbuild) {
+        $msbuild = Resolve-MSBuildPath
+    }
+
+    New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $resolvedIntermediateDirectory -Force | Out-Null
+
+    $arguments = @(
+        $resolvedProject,
+        "/nologo",
+        "/m",
+        "/t:Build",
+        "/p:Configuration=$Configuration",
+        "/p:Platform=$platform",
+        "/p:OutDir=$(Add-TrailingDirectorySeparator -Path $resolvedOutputDirectory)",
+        "/p:IntDir=$(Add-TrailingDirectorySeparator -Path $resolvedIntermediateDirectory)"
+    )
+
+    & $msbuild @arguments
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "MSBuild failed for native ProbeHost platform $platform. ExitCode=$LASTEXITCODE"
+    }
+
+    $detectedMachine = Test-NativeProbeHostArchitecture -ArchitectureLabel $architectureLabel -MSBuildPlatform $platform -TargetExe $targetExe
+    [System.IO.File]::SetLastWriteTimeUtc($targetExe, [System.DateTime]::UtcNow)
     Write-NativeProbeHostBuildSummary `
         -ArchitectureLabel $architectureLabel `
-        -MSBuildPlatform $Platform `
+        -MSBuildPlatform $platform `
         -OutputDirectory $resolvedOutputDirectory `
         -IntermediateDirectory $resolvedIntermediateDirectory `
         -TargetExe $targetExe `
+        -Skipped $false `
         -DetectedMachine $detectedMachine
-    exit 0
 }
-
-New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
-New-Item -ItemType Directory -Path $resolvedIntermediateDirectory -Force | Out-Null
-
-$msbuild = Resolve-MSBuildPath
-$arguments = @(
-    $resolvedProject,
-    "/nologo",
-    "/m",
-    "/t:Build",
-    "/p:Configuration=$Configuration",
-    "/p:Platform=$Platform",
-    "/p:OutDir=$msbuildOutputDirectory",
-    "/p:IntDir=$msbuildIntermediateDirectory"
-)
-
-& $msbuild @arguments
-
-if ($LASTEXITCODE -ne 0) {
-    throw "MSBuild failed for native ProbeHost platform $Platform. ExitCode=$LASTEXITCODE"
-}
-
-$detectedMachine = Test-NativeProbeHostArchitecture -ArchitectureLabel $architectureLabel -MSBuildPlatform $Platform -TargetExe $targetExe
-[System.IO.File]::SetLastWriteTimeUtc($targetExe, [System.DateTime]::UtcNow)
-Write-NativeProbeHostBuildSummary `
-    -ArchitectureLabel $architectureLabel `
-    -MSBuildPlatform $Platform `
-    -OutputDirectory $resolvedOutputDirectory `
-    -IntermediateDirectory $resolvedIntermediateDirectory `
-    -TargetExe $targetExe `
-    -DetectedMachine $detectedMachine

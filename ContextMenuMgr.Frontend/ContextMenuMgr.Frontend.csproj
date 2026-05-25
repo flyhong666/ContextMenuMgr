@@ -24,7 +24,7 @@
     <NativeProbeHostOutputRoot>$(MSBuildThisFileDirectory)..\artifacts\probehost-native\$(Configuration)\</NativeProbeHostOutputRoot>
     <NativeProbeHostIntermediateRoot>$(NativeProbeHostOutputRoot)obj\</NativeProbeHostIntermediateRoot>
     <ProbeHostArchitectureVerifier>$(MSBuildThisFileDirectory)..\Scripts\Verify-ProbeHostArchitecture.ps1</ProbeHostArchitectureVerifier>
-    <NativeProbeHostBuildScript>$(MSBuildThisFileDirectory)..\Scripts\Build-NativeProbeHost.ps1</NativeProbeHostBuildScript>
+    <NativeProbeHostBuildScript>$(MSBuildThisFileDirectory)..\Scripts\Build-NativeProbeHostArtifacts.ps1</NativeProbeHostBuildScript>
     <NlohmannJsonLicense>$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\third_party\nlohmann\nlohmann-json-LICENSE.MIT</NlohmannJsonLicense>
     <ForceRebuildNativeProbeHost Condition="'$(ForceRebuildNativeProbeHost)' == ''">false</ForceRebuildNativeProbeHost>
   </PropertyGroup>
@@ -56,21 +56,35 @@
     <Resource Include="Assets\AppIcon.png" />
   </ItemGroup>
 
-  <Target Name="BuildNativeProbeHostArtifacts" AfterTargets="Build" BeforeTargets="CopyBackendArtifacts" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
-    <ItemGroup>
-      <NativeProbeHostArchitectureBuild Include="x86">
-        <Platform>Win32</Platform>
-      </NativeProbeHostArchitectureBuild>
-      <NativeProbeHostArchitectureBuild Include="x64">
-        <Platform>x64</Platform>
-      </NativeProbeHostArchitectureBuild>
-      <NativeProbeHostArchitectureBuild Include="arm64">
-        <Platform>ARM64</Platform>
-      </NativeProbeHostArchitectureBuild>
-    </ItemGroup>
+  <ItemGroup Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
+    <NativeProbeHostIncrementalInput Include="$(NativeProbeHostProject)" />
+    <NativeProbeHostIncrementalInput Include="$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\src\**\*.cpp" />
+    <NativeProbeHostIncrementalInput Include="$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\src\**\*.h" />
+    <NativeProbeHostIncrementalInput Include="$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\third_party\nlohmann\json.hpp" />
+    <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)x86\ContextMenuMgr.ProbeHost.exe" />
+    <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)x64\ContextMenuMgr.ProbeHost.exe" />
+    <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" />
+  </ItemGroup>
 
-    <Message Importance="high" Text="Preparing native ProbeHost artifacts: @(NativeProbeHostArchitectureBuild, ', ')" />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;%(NativeProbeHostArchitectureBuild.Platform)&quot; -OutputDirectory &quot;$(NativeProbeHostOutputRoot)%(NativeProbeHostArchitectureBuild.Identity)&quot; -IntermediateDirectory &quot;$(NativeProbeHostIntermediateRoot)%(NativeProbeHostArchitectureBuild.Identity)&quot; -ForceRebuild &quot;$(ForceRebuildNativeProbeHost)&quot;" />
+  <Target Name="_RunNativeProbeHostArtifactBuild" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
+    <Message Importance="high" Text="Preparing native ProbeHost artifacts: x86, x64, arm64" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platforms &quot;Win32,x64,ARM64&quot; -OutputRoot &quot;$(NativeProbeHostOutputRoot).&quot; -IntermediateRoot &quot;$(NativeProbeHostIntermediateRoot).&quot; -ForceRebuild &quot;$(ForceRebuildNativeProbeHost)&quot;" />
+  </Target>
+
+  <Target Name="BuildNativeProbeHostArtifacts"
+          AfterTargets="Build"
+          BeforeTargets="CopyBackendArtifacts"
+          Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and '$(ForceRebuildNativeProbeHost)' != 'true'"
+          Inputs="@(NativeProbeHostIncrementalInput)"
+          Outputs="@(NativeProbeHostIncrementalOutput)">
+    <CallTarget Targets="_RunNativeProbeHostArtifactBuild" />
+  </Target>
+
+  <Target Name="ForceBuildNativeProbeHostArtifacts"
+          AfterTargets="Build"
+          BeforeTargets="CopyBackendArtifacts"
+          Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and '$(ForceRebuildNativeProbeHost)' == 'true'">
+    <CallTarget Targets="_RunNativeProbeHostArtifactBuild" />
   </Target>
 
   <Target Name="CleanNativeProbeHostArtifacts" BeforeTargets="Clean" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
