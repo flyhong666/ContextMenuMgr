@@ -729,7 +729,7 @@ Continue anyway? (Not recommended)</value>
     <value>The analysis process returned output in an unexpected format, so the result could not be read.</value>
   </data>
   <data name="DeepAnalyzeDisclaimer" xml:space="preserve">
-    <value>This is a runtime diagnostic result. It may differ from Explorer depending on selected files, user session, and shell extension behavior. Some shell extensions may not expose text, owner-draw items may appear without text, and probing may fail depending on the sample target.</value>
+    <value>Menu text and icons are runtime probe results. Some Shell Extensions use owner-drawn menus or callback icons, so text or icons may be unavailable. This is normal.</value>
   </data>
   <data name="DeepAnalyzeTimeoutText" xml:space="preserve">
     <value>The analysis timed out. The shell extension may be slow or unresponsive.</value>

@@ -1,11 +1,92 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
+
+public sealed class DeepAnalysisMenuItemViewModel
+{
+    private DeepAnalysisMenuItemViewModel(ContextMenuDeepAnalysisMenuItem item, LocalizationService localization)
+    {
+        RawText = item.RawText;
+        Text = ResolveDisplayText(item, localization);
+        CanonicalVerb = item.CanonicalVerb;
+        HelpText = item.HelpText;
+        CommandOffset = item.CommandOffset;
+        IsSeparator = item.IsSeparator;
+        IsSubmenu = item.IsSubmenu;
+        IconImage = DecodeIcon(item.IconPngBase64);
+
+        foreach (var child in item.Children)
+        {
+            Children.Add(new DeepAnalysisMenuItemViewModel(child, localization));
+        }
+    }
+
+    public string? RawText { get; }
+
+    public string Text { get; }
+
+    public string? CanonicalVerb { get; }
+
+    public string? HelpText { get; }
+
+    public int CommandOffset { get; }
+
+    public bool IsSeparator { get; }
+
+    public bool IsSubmenu { get; }
+
+    public ImageSource? IconImage { get; }
+
+    public ObservableCollection<DeepAnalysisMenuItemViewModel> Children { get; } = [];
+
+    public static DeepAnalysisMenuItemViewModel FromContract(ContextMenuDeepAnalysisMenuItem item, LocalizationService localization)
+    {
+        return new DeepAnalysisMenuItemViewModel(item, localization);
+    }
+
+    private static string ResolveDisplayText(ContextMenuDeepAnalysisMenuItem item, LocalizationService localization)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Text))
+        {
+            return item.Text;
+        }
+
+        return localization.Translate(item.IsSeparator ? "DeepAnalyzeSeparatorText" : "DeepAnalyzeNoTextItem");
+    }
+
+    private static ImageSource? DecodeIcon(string? iconPngBase64)
+    {
+        if (string.IsNullOrWhiteSpace(iconPngBase64))
+        {
+            return null;
+        }
+
+        try
+        {
+            var bytes = Convert.FromBase64String(iconPngBase64);
+            using var stream = new MemoryStream(bytes);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}
 
 public sealed partial class ContextMenuDeepAnalysisWindowViewModel : ObservableObject
 {
@@ -86,7 +167,7 @@ public sealed partial class ContextMenuDeepAnalysisWindowViewModel : ObservableO
     [ObservableProperty]
     public partial bool CanRunWholeContextMenu { get; private set; }
 
-    public ObservableCollection<ContextMenuDeepAnalysisMenuItem> Items { get; } = [];
+    public ObservableCollection<DeepAnalysisMenuItemViewModel> Items { get; } = [];
 
     public bool HasItems => Items.Count > 0;
 
@@ -129,6 +210,8 @@ public sealed partial class ContextMenuDeepAnalysisWindowViewModel : ObservableO
     public string ExpectedFailureBadgeText => _localization.Translate("DeepAnalysisExpectedFailureBadge");
 
     public string MetadataTitle => _localization.Translate("DeepAnalysisMetadataTitle");
+
+    public string DisclaimerText => _localization.Translate("DeepAnalyzeDisclaimer");
 
     public string HandlerFilePathLabel => _localization.Translate("DeepAnalyzeHandlerFilePathLabel");
 
@@ -241,7 +324,7 @@ public sealed partial class ContextMenuDeepAnalysisWindowViewModel : ObservableO
         Items.Clear();
         foreach (var item in result.Items)
         {
-            Items.Add(item);
+            Items.Add(DeepAnalysisMenuItemViewModel.FromContract(item, _localization));
         }
 
         OnPropertyChanged(nameof(HasItems));

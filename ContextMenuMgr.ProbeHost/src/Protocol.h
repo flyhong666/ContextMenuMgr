@@ -59,6 +59,7 @@ struct ProbeMenuItem
     std::optional<std::string> text;
     std::optional<std::string> canonicalVerb;
     std::optional<std::string> helpText;
+    std::optional<std::string> iconPngBase64;
     int commandOffset = 0;
     bool isSeparator = false;
     bool isSubmenu = false;
@@ -106,4 +107,3 @@ int ProbeModeValue(ProbeMode mode);
 std::string ProbeModeName(ProbeMode mode);
 std::string CategoryName(ContextMenuCategory category);
 std::string EntryKindName(ContextMenuEntryKind entryKind);
-

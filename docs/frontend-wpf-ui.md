@@ -260,6 +260,7 @@ Color="{DynamicResource TextOnAccentFillColorPrimary}"
 | --- | --- | --- |
 | 导航 / 分类图标 | WPF-UI `SymbolIcon` | NavigationView、按钮、fallback 图标 |
 | 菜单项真实图标 | `IconPreviewService` | 菜单项卡片、全局搜索结果 |
+| Deep Analysis 运行时图标 | ProbeHost `iconPngBase64` | Deep Analysis 结果窗口 |
 
 全局搜索结果应优先显示菜单项真实图标，而不是分类图标。
 
@@ -271,6 +272,8 @@ Color="{DynamicResource TextOnAccentFillColorPrimary}"
 - `IconPreviewService.GetIcon(...)`
 
 `SymbolIcon` 只能作为 fallback 或导航分类图标。
+
+Deep Analysis 结果窗口显示的是 ProbeHost 运行时探测得到的菜单项图标。前端只解码 `ContextMenuDeepAnalysisMenuItem.IconPngBase64` 中的 PNG base64；为空或解码失败时不显示图标，也不提示错误。缺少图标通常表示 Shell Extension 使用自绘、回调图标或没有通过标准菜单位图暴露图标。
 
 ## 12. 页面筛选、占位状态与加载状态
 

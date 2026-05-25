@@ -104,6 +104,8 @@ ProbeHost 使用 vendored `nlohmann/json` 单头文件解析 request/result JSON
 - 发行产物必须包含 `ThirdPartyNotices\nlohmann-json-LICENSE.MIT`；
 - ProbeHost exe 包含该 header-only 依赖编译后的代码。
 
+Deep Analysis 菜单项图标编码使用 Windows 内置 WIC，native ProbeHost 链接 `windowscodecs.lib`。这不需要复制新的运行时文件，也不改变 ProbeHost 多架构输出布局。
+
 ## 7. Inno Setup
 
 安装包脚本位于 `Installer/build_Installer.iss`。构建脚本会定位 `ISCC.exe`，优先检查仓库内 `Installer\Inno Setup 6\ISCC.exe`，然后检查 Program Files 和 PATH。

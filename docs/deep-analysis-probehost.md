@@ -2,7 +2,7 @@
 
 ## 1. Deep Analysis 的目的
 
-Deep Analysis 用于尝试解析 Shell Extension 实际插入到右键菜单中的菜单文字、canonical verb 和帮助文本。它不是普通菜单开关功能，也不是审核流程的必要条件。
+Deep Analysis 用于尝试解析 Shell Extension 实际插入到右键菜单中的菜单文字、图标、canonical verb 和帮助文本。它不是普通菜单开关功能，也不是审核流程的必要条件。
 
 普通 snapshot 只能看到注册表中的 handler、CLSID、命令和路径；第三方 Shell Extension 真正添加哪些菜单项，需要在进程中创建 COM handler 并调用 `IContextMenu.QueryContextMenu`。这一步风险高，所以放到 ProbeHost。
 
@@ -75,7 +75,22 @@ Frontend
 
 `ContextMenuDeepAnalysisRequest` 和 `ContextMenuDeepAnalysisResult` 定义在 `ContextMenuMgr.Contracts/ContextMenuDeepAnalysisContracts.cs`。前端会设置 `WorkingDirectory` 为 ProbeHost 所在目录，并捕获 stdout、stderr、exit code 和 result file。
 
-## 7. 失败分类
+结果中的菜单项可选包含 `iconPngBase64`。该字段只表示 ProbeHost 已成功把菜单项的运行时图标编码为 PNG base64；缺失或为空表示没有可用图标或图标提取失败。旧结果 JSON 不包含该字段时仍应正常反序列化。
+
+## 7. 菜单项图标
+
+ProbeHost 在枚举 `HMENU` 时通过 `MENUITEMINFO.hbmpItem` best-effort 读取标准菜单位图图标，并在能安全转换时把 PNG base64 写入 `iconPngBase64`。图标提取失败只影响单个菜单项图标，不应导致 `QueryContextMenu` 结果失败，也不应让 ProbeHost 进程失败。
+
+当前只支持 Shell Extension 通过 `MENUITEMINFO.hbmpItem` 暴露的标准 `HBITMAP`。以下情况会被有意跳过：
+
+- `HBMMENU_*` 预定义值和 `HBMMENU_CALLBACK`；
+- owner-draw 菜单项；
+- 回调图标或扩展自绘图标；
+- 无法安全转换或编码后过大的位图。
+
+缺少图标是正常现象，不能单独视为 Deep Analysis 或普通菜单管理 Bug。
+
+## 8. 失败分类
 
 很多失败是正常限制，不应直接提示用户报告 Bug。
 
@@ -93,7 +108,7 @@ Frontend
 | `Timeout` | 超过默认或传入超时时间，前端会尝试结束进程。 |
 | `InvalidProbeHostJson` / `InvalidProbeHostOutput` | ProbeHost 未返回合法 JSON。 |
 
-## 8. 构建与部署注意事项
+## 9. 构建与部署注意事项
 
 ProbeHost 必须随前端部署多架构目录。当前 `ContextMenuMgr.Frontend.csproj` 会用 MSBuild 构建 native C++ ProbeHost，并复制：
 
@@ -109,9 +124,11 @@ ProbeHost 的 JSON 解析使用 vendored `nlohmann/json` 单头文件依赖：
 - MIT license 复制到 `ThirdPartyNotices\nlohmann-json-LICENSE.MIT`；
 - header-only 代码会编译进 `ContextMenuMgr.ProbeHost.exe`。
 
+ProbeHost 的菜单图标 PNG 编码使用 Windows 内置 WIC，并链接 `windowscodecs.lib`；不引入第三方图片库或新的运行时文件。
+
 Release 发布由 `Scripts/Build.Common.psm1` 的 `Get-ProbeHostArchitectureMap` 决定携带哪些架构。`win-x86` 只带 x86，`win-x64` 带 x64 和 x86，`win-arm64` 带 arm64、x64 和 x86。脚本使用 MSBuild 构建 `ContextMenuMgr.ProbeHost.vcxproj`，不再对 ProbeHost 运行 `dotnet restore` 或 `dotnet publish`。
 
-## 9. 常见坑
+## 10. 常见坑
 
 | 坑 | 正确处理 |
 | --- | --- |
@@ -119,6 +136,7 @@ Release 发布由 `Scripts/Build.Common.psm1` 的 `Get-ProbeHostArchitectureMap`
 | 把 ProbeHost 当提权进程 | 它不是提权链路。 |
 | SpecificHandler 失败后把 WholeContextMenu 成功当作当前 handler 成功 | 两者结果语义不同。 |
 | 把 menu accelerator `&` 当乱码 | `&` 是 Windows 菜单助记符语义。 |
+| 把缺失图标当作错误 | 图标提取是 best-effort；自绘、回调或无法转换的图标可能为空。 |
 | 把 ProbeHost crash 当作普通菜单开关失败 | Deep Analysis 失败不应影响开关、删除、审核。 |
 | 忘记设置 `WorkingDirectory` | framework-dependent 依赖解析可能失败。 |
 | 把 x86 binary 放进 arm64 目录 | 架构验证会失败，运行时也会误判。 |

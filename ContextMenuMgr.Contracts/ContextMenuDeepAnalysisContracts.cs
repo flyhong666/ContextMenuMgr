@@ -106,6 +106,8 @@ public sealed record ContextMenuDeepAnalysisMenuItem
 
     public string? HelpText { get; init; }
 
+    public string? IconPngBase64 { get; init; }
+
     public int CommandOffset { get; init; }
 
     public bool IsSeparator { get; init; }

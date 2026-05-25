@@ -1,5 +1,6 @@
 #include "MenuEnumerator.h"
 
+#include "IconEncoder.h"
 #include "WideString.h"
 
 #include <string>
@@ -62,6 +63,12 @@ std::optional<std::string> GetCommandString(IContextMenu* contextMenu, UINT comm
 
     return WideToUtf8(buffer);
 }
+
+bool IsPredefinedMenuBitmap(HBITMAP bitmap)
+{
+    const auto value = reinterpret_cast<INT_PTR>(bitmap);
+    return value == -1 || (value >= 1 && value <= 11);
+}
 }
 
 std::string CleanMenuText(const std::wstring& rawText)
@@ -107,13 +114,14 @@ std::vector<ProbeMenuItem> EnumerateMenu(HMENU menu, IContextMenu* contextMenu)
     {
         MENUITEMINFOW info{};
         info.cbSize = sizeof(info);
-        info.fMask = MIIM_FTYPE | MIIM_ID | MIIM_SUBMENU;
+        info.fMask = MIIM_FTYPE | MIIM_ID | MIIM_SUBMENU | MIIM_BITMAP;
         if (!GetMenuItemInfoW(menu, static_cast<UINT>(index), TRUE, &info))
         {
             continue;
         }
 
         const bool separator = (info.fType & MFT_SEPARATOR) == MFT_SEPARATOR;
+        const bool ownerDraw = (info.fType & MFT_OWNERDRAW) == MFT_OWNERDRAW;
         const auto rawText = GetMenuText(menu, index);
         const int commandOffset = info.wID >= IdCmdFirst ? static_cast<int>(info.wID - IdCmdFirst) : 0;
 
@@ -127,6 +135,11 @@ std::vector<ProbeMenuItem> EnumerateMenu(HMENU menu, IContextMenu* contextMenu)
         item.commandOffset = commandOffset;
         item.isSeparator = separator;
         item.isSubmenu = info.hSubMenu != nullptr;
+        if (!separator && !ownerDraw && info.hbmpItem != nullptr && !IsPredefinedMenuBitmap(info.hbmpItem))
+        {
+            item.iconPngBase64 = TryEncodeHBitmapAsPngBase64(info.hbmpItem);
+        }
+
         if (!separator)
         {
             item.canonicalVerb = GetCommandString(contextMenu, static_cast<UINT>(commandOffset), GcsVerbW);
@@ -143,4 +156,3 @@ std::vector<ProbeMenuItem> EnumerateMenu(HMENU menu, IContextMenu* contextMenu)
 
     return result;
 }
-

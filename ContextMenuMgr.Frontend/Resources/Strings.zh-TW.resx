@@ -729,7 +729,7 @@
     <value>分析行程輸出格式異常，無法讀取解析結果。</value>
   </data>
   <data name="DeepAnalyzeDisclaimer" xml:space="preserve">
-    <value>這是執行階段診斷結果，可能會因選取檔案、使用者工作階段和擴充本身行為而與 Explorer 實際選單略有差異。部分 Shell Extension 可能不會公開文字，擁有者繪製項目可能沒有文字，探測也可能因範例目標而失敗。</value>
+    <value>選單文字和圖示均為執行階段探測結果。部分 Shell Extension 使用自繪選單或回呼圖示，可能無法顯示文字或圖示，這是正常情況。</value>
   </data>
   <data name="DeepAnalyzeTimeoutText" xml:space="preserve">
     <value>分析逾時。此 Shell Extension 可能回應較慢或無回應。</value>

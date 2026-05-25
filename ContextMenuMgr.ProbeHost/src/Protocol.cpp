@@ -174,6 +174,7 @@ json MenuItemToJson(const ProbeMenuItem& item)
     PutOptional(document, "text", item.text);
     PutOptional(document, "canonicalVerb", item.canonicalVerb);
     PutOptional(document, "helpText", item.helpText);
+    PutOptional(document, "iconPngBase64", item.iconPngBase64);
     document["commandOffset"] = item.commandOffset;
     document["isSeparator"] = item.isSeparator;
     document["isSubmenu"] = item.isSubmenu;

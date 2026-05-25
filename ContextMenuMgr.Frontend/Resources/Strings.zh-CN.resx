@@ -729,7 +729,7 @@
     <value>分析进程输出格式异常，无法读取解析结果。</value>
   </data>
   <data name="DeepAnalyzeDisclaimer" xml:space="preserve">
-    <value>这是运行时诊断结果，可能会因选中文件、用户会话和扩展自身行为而与 Explorer 实际菜单略有差异。部分 Shell Extension 可能不会暴露文字，所有者绘制项目可能没有文字，探测也可能因示例目标而失败。</value>
+    <value>菜单文字和图标均为运行时探测结果。部分 Shell Extension 使用自绘菜单或回调图标，可能无法显示文字或图标，这是正常情况。</value>
   </data>
   <data name="DeepAnalyzeTimeoutText" xml:space="preserve">
     <value>分析超时。该 Shell Extension 可能响应较慢或无响应。</value>
