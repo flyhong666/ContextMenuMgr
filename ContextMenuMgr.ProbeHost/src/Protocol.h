@@ -1,12 +1,8 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
-
 #include <optional>
 #include <string>
 #include <vector>
-
-using json = nlohmann::json;
 
 enum class ContextMenuCategory
 {
@@ -99,8 +95,8 @@ struct ProbeResult
     std::vector<ProbeMenuItem> items;
 };
 
-ProbeRequest ParseRequest(const json& document);
-json ToJson(const ProbeResult& result);
+ProbeRequest ParseRequestJson(const std::string& text);
+std::string SerializeResultJson(const ProbeResult& result);
 ProbeResult FailureResult(const ProbeRequest& request, const std::string& code, const std::string& message, const std::optional<std::string>& samplePath = std::nullopt, const std::optional<std::string>& diagnostics = std::nullopt);
 ProbeResult FailureResult(const std::string& code, const std::string& message);
 int ProbeModeValue(ProbeMode mode);

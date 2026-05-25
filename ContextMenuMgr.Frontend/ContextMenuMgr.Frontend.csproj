@@ -25,6 +25,7 @@
     <ProbeHostArchitectureVerifier>$(MSBuildThisFileDirectory)..\Scripts\Verify-ProbeHostArchitecture.ps1</ProbeHostArchitectureVerifier>
     <NativeProbeHostBuildScript>$(MSBuildThisFileDirectory)..\Scripts\Build-NativeProbeHost.ps1</NativeProbeHostBuildScript>
     <NlohmannJsonLicense>$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\third_party\nlohmann\nlohmann-json-LICENSE.MIT</NlohmannJsonLicense>
+    <ForceRebuildNativeProbeHost Condition="'$(ForceRebuildNativeProbeHost)' == ''">false</ForceRebuildNativeProbeHost>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Beta'">
@@ -67,13 +68,16 @@
       </NativeProbeHostArchitectureBuild>
     </ItemGroup>
 
-    <Message Importance="high" Text="Building native ProbeHost artifacts: @(NativeProbeHostArchitectureBuild, ', ')" />
+    <Message Importance="high" Text="Preparing native ProbeHost artifacts: @(NativeProbeHostArchitectureBuild, ', ')" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;%(NativeProbeHostArchitectureBuild.Platform)&quot; -OutputDirectory &quot;$(NativeProbeHostOutputRoot)%(NativeProbeHostArchitectureBuild.Identity)&quot; -IntermediateDirectory &quot;$(NativeProbeHostOutputRoot)obj\%(NativeProbeHostArchitectureBuild.Identity)&quot; -ForceRebuild &quot;$(ForceRebuildNativeProbeHost)&quot;" />
+  </Target>
+
+  <Target Name="CleanNativeProbeHostArtifacts" BeforeTargets="Clean" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
+    <Message Importance="high" Text="Cleaning native ProbeHost artifacts under $(NativeProbeHostOutputRoot)" />
     <RemoveDir Directories="$(NativeProbeHostOutputRoot)x86;$(NativeProbeHostOutputRoot)x64;$(NativeProbeHostOutputRoot)arm64;$(NativeProbeHostOutputRoot)obj\x86;$(NativeProbeHostOutputRoot)obj\x64;$(NativeProbeHostOutputRoot)obj\arm64" />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platform &quot;%(NativeProbeHostArchitectureBuild.Platform)&quot; -OutputDirectory &quot;$(NativeProbeHostOutputRoot)%(NativeProbeHostArchitectureBuild.Identity)&quot; -IntermediateDirectory &quot;$(NativeProbeHostOutputRoot)obj\%(NativeProbeHostArchitectureBuild.Identity)&quot;" />
   </Target>
 
   <Target Name="CopyBackendArtifacts" AfterTargets="Build">
-    <RemoveDir Directories="$(OutDir)ProbeHost\x86;$(OutDir)ProbeHost\x64;$(OutDir)ProbeHost\arm64" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
     <MakeDir Directories="$(OutDir)ProbeHost\x86;$(OutDir)ProbeHost\x64;$(OutDir)ProbeHost\arm64;$(OutDir)ThirdPartyNotices" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
 
     <ItemGroup>

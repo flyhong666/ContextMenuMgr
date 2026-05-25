@@ -64,6 +64,14 @@ Frontend build
 
 ProbeHost 是单文件 native exe。前端项目不再检查 `ContextMenuMgr.ProbeHost.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录中的 `ContextMenuMgr.Contracts.dll`。本地构建要求安装 Visual Studio Build Tools C++ workload、Windows SDK；如果要构建 arm64 ProbeHost，还需要 ARM64 工具链。
 
+普通 `dotnet build` / `dotnet run` 不会无条件清理 native ProbeHost 输出。`Scripts\Build-NativeProbeHost.ps1` 会检查目标 `ContextMenuMgr.ProbeHost.exe` 是否晚于 `ContextMenuMgr.ProbeHost.vcxproj`、`src\**\*.cpp`、`src\**\*.h` 和 `third_party\nlohmann\json.hpp`；如果已是最新，会输出 `Native ProbeHost <arch> is up to date; skipping build.` 并跳过该架构的 MSBuild。需要强制重建时可传入：
+
+```powershell
+dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj -p:ForceRebuildNativeProbeHost=true
+```
+
+`dotnet clean` / `dotnet rebuild` 会清理 native ProbeHost 输出和 obj 目录。
+
 ## 5. Release 发布
 
 `build.ps1` 负责组合多个平台和分发模式。`Scripts/Build.Common.psm1` 中的关键步骤包括：

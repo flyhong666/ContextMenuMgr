@@ -79,7 +79,7 @@ void EnrichProcessDiagnostics(ProbeResult& result)
 
 bool WriteResult(const ProbeResult& result, const std::optional<std::wstring>& resultPath)
 {
-    const auto text = ToJson(result).dump();
+    const auto text = SerializeResultJson(result);
     if (resultPath.has_value() && !resultPath->empty())
     {
         if (WriteUtf8File(*resultPath, text))
@@ -115,7 +115,7 @@ int wmain(int argc, wchar_t* argv[])
         }
 
         const auto requestJson = ReadUtf8File(*requestPath);
-        request = ParseRequest(json::parse(requestJson));
+        request = ParseRequestJson(requestJson);
         Diagnostic("ProbeHostRequestParsed: OperationId=" + request->operationId + ", ItemId=" + request->itemId + ", Category=" + CategoryName(request->category) + ", EntryKind=" + EntryKindName(request->entryKind) + ", ProbeMode=" + ProbeModeName(request->probeMode) + ".");
 
         const HRESULT comHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);

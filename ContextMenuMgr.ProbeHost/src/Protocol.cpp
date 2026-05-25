@@ -1,7 +1,11 @@
 #include "Protocol.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <stdexcept>
+
+using json = nlohmann::json;
 
 namespace
 {
@@ -188,8 +192,9 @@ json MenuItemToJson(const ProbeMenuItem& item)
 }
 }
 
-ProbeRequest ParseRequest(const json& document)
+ProbeRequest ParseRequestJson(const std::string& text)
 {
+    const auto document = json::parse(text);
     if (!document.is_object())
     {
         throw std::runtime_error("Request JSON root must be an object.");
@@ -212,7 +217,7 @@ ProbeRequest ParseRequest(const json& document)
     return request;
 }
 
-json ToJson(const ProbeResult& result)
+std::string SerializeResultJson(const ProbeResult& result)
 {
     json document;
     document["operationId"] = result.operationId;
@@ -249,7 +254,7 @@ json ToJson(const ProbeResult& result)
         document["items"].push_back(MenuItemToJson(item));
     }
 
-    return document;
+    return document.dump();
 }
 
 ProbeResult FailureResult(const ProbeRequest& request, const std::string& code, const std::string& message, const std::optional<std::string>& samplePath, const std::optional<std::string>& diagnostics)
