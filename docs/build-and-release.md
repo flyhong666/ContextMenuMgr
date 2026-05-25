@@ -15,7 +15,30 @@
 
 当前代码库没有发现名为 `build.bat` 的入口；不要在文档或自动化中假设它存在。
 
-## 2. 项目产物
+## 2. 获取源码与 Submodule 要求
+
+本仓库包含 Git submodule。首次获取源码时建议使用 recursive clone：
+
+```powershell
+git clone --recursive https://github.com/PLFJY/ContextMenuMgr.git
+```
+
+如果已经使用普通 `git clone` 获取仓库，请在仓库根目录执行：
+
+```powershell
+git submodule update --init --recursive
+```
+
+未初始化 submodule 时，可能出现以下问题：
+
+- 仓库内置的 Inno Setup 编译器缺失，例如 `Installer\Inno Setup 6\ISCC.exe` 不存在；
+- 安装包构建失败；
+- 未来 native ProbeHost 或其它第三方源码依赖缺失；
+- CI / 本地构建表现不一致。
+
+因此，任何涉及安装包、内置构建工具、native helper 或第三方源码依赖的任务，都应先确认 submodule 已初始化。Agent 不应假设普通 clone 已经包含完整构建依赖。
+
+## 3. 项目产物
 
 | 项目 | 输出 | 说明 |
 | --- | --- | --- |
@@ -25,7 +48,7 @@
 | ProbeHost | `ProbeHost\<arch>\ContextMenuMgr.ProbeHost.exe` | Deep Analysis 多架构隔离进程。 |
 | Contracts | `ContextMenuMgr.Contracts.dll` | pipe 契约、模型、共享路径常量，ProbeHost framework-dependent 输出也需要它。 |
 
-## 3. Debug 本地构建
+## 4. Debug 本地构建
 
 `ContextMenuMgr.Frontend.csproj` 在普通 framework-dependent build 中会负责准备运行所需辅助产物：
 
@@ -41,7 +64,7 @@ Frontend build
 
 前端项目会检查各架构 ProbeHost 目录中的 `dll`、`deps.json`、`runtimeconfig.json` 和 `ContextMenuMgr.Contracts.dll`。如果只复制 exe，Deep Analysis 会在运行时出现 `ProbeHostDependencyMissing` 或无效输出。
 
-## 4. Release 发布
+## 5. Release 发布
 
 `build.ps1` 负责组合多个平台和分发模式。`Scripts/Build.Common.psm1` 中的关键步骤包括：
 
@@ -57,7 +80,7 @@ Frontend build
 
 `Build-Target.ps1` 对 installer 目标要求平台是 `win-x64`、`win-x86` 或 `win-arm64`；portable 当前只支持 `framework-dependent anycpu`。
 
-## 5. ProbeHost 多架构
+## 6. ProbeHost 多架构
 
 `Get-ProbeHostArchitectureMap` 定义发布包应携带的 ProbeHost 架构：
 
@@ -73,13 +96,13 @@ Frontend build
 
 当前 Release 脚本发布 ProbeHost 时传入 `--self-contained true` 和 `-p:PublishSingleFile=false`，所以 ProbeHost 是 self-contained 多文件输出。不要把 Release ProbeHost 文档或校验逻辑写成 single-file。
 
-## 6. Inno Setup
+## 7. Inno Setup
 
 安装包脚本位于 `Installer/build_Installer.iss`。构建脚本会定位 `ISCC.exe`，优先检查仓库内 `Installer\Inno Setup 6\ISCC.exe`，然后检查 Program Files 和 PATH。
 
 `Invoke-InstallerBuildTarget` 会向 Inno Setup 传入应用版本、AppId、发布目录、输出目录、架构选项和是否启用 .NET dependency installer。framework-dependent 安装包会把 `MyUseDotNetDependencyInstaller` 设为 `1`。
 
-## 7. GitHub Actions
+## 8. GitHub Actions
 
 `.github/workflows/manual-release.yml` 是当前手动发布 workflow。它通过 `workflow_dispatch` 接收 `configuration` 和 `app_id`，主要流程是：
 
@@ -97,7 +120,7 @@ resolve-metadata
 
 构建矩阵覆盖 `win-x64`、`win-x86`、`win-arm64` 的 self-contained 和 framework-dependent installer，以及 framework-dependent portable。
 
-## 8. 构建排错
+## 9. 构建排错
 
 | 问题 | 优先检查 |
 | --- | --- |
