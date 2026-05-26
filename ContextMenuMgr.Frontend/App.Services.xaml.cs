@@ -19,6 +19,7 @@ public partial class App
         services.AddNavigationViewPageProvider();
         services.AddSingleton<INavigationService, NavigationService>();
 
+        services.AddSingleton<RuntimeDataAclRepairClient>();
         services.AddSingleton<FrontendSettingsService>();
         services.AddSingleton<FrontendStartupService>();
         services.AddSingleton<TrayHostProcessService>();

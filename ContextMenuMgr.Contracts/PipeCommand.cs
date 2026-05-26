@@ -46,5 +46,6 @@ public enum PipeCommand
     SetLogLevel,
     RequestShutdown,
     RestartExplorer,
+    RepairRuntimeDataAcl,
     RepairShellNewOrderAcl
 }

@@ -4,6 +4,7 @@ using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
 using System.Text.Json;
+using ContextMenuMgr.Backend.Services;
 using ContextMenuMgr.Contracts;
 using Microsoft.Win32;
 
@@ -86,6 +87,7 @@ internal static class BackendServiceBootstrapper
                 "uninstall" => UninstallService(AddDetail),
                 "stop" => StopService(AddDetail),
                 "set-startup-mode" => SetServiceStartupMode(TryParseEnabledArgument(args), userSidArgument.Sid, AddDetail),
+                "repair-runtime-data-acl" => RepairRuntimeDataAcl(AddDetail),
                 _ => (false, "UNKNOWN_BOOTSTRAP_COMMAND", command)
             };
             return (result.Item1, result.Item2, JoinDetails(details, result.Item3));
@@ -292,6 +294,14 @@ internal static class BackendServiceBootstrapper
         SetAutostartPolicyForUser(userSid, enabled, log);
 
         return (true, enabled ? "STARTUP_AUTO" : "STARTUP_MANUAL", enabled ? "Automatic" : "Manual");
+    }
+
+    private static (bool Success, string Code, string Detail) RepairRuntimeDataAcl(Action<string> log)
+    {
+        log($"RepairRuntimeDataAcl: Root={RuntimePaths.RootDirectory}, Result=Started.");
+        var result = RuntimeDataAclRepairService.RepairRuntimeDataDirectory(RuntimePaths.RootDirectory);
+        log($"RepairRuntimeDataAcl: Root={RuntimePaths.RootDirectory}, Success={result.Success}, Code={result.Code}, Detail={result.Detail}");
+        return (result.Success, result.Code, result.Detail);
     }
 
     private static void RemoveServiceRegistration(string serviceName, bool keepFrontendAlive, Action<string> log)

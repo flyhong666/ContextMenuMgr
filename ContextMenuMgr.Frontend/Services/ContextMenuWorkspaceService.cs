@@ -455,6 +455,11 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         return _backendServiceManager.SetServiceAutoStartEnabledAsync(enabled, CancellationToken.None);
     }
 
+    public Task RepairRuntimeDataAclAsync(CancellationToken cancellationToken)
+    {
+        return _backendClient.RepairRuntimeDataAclAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Executes is Service Installed.
     /// </summary>

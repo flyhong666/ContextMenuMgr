@@ -444,6 +444,8 @@ public sealed class NamedPipeBackendServer
                     cancellationToken),
             PipeCommand.RestartExplorer
                 => await HandleRestartExplorerRequestAsync(stream, cancellationToken),
+            PipeCommand.RepairRuntimeDataAcl
+                => await HandleRepairRuntimeDataAclAsync(cancellationToken),
             PipeCommand.SetWin11BlockedItem when request.ItemId is not null
                 => await HandleSetWin11BlockedItemAsync(request, stream, cancellationToken),
             PipeCommand.RemoveWin11BlockedItem when request.ItemId is not null
@@ -832,6 +834,31 @@ public sealed class NamedPipeBackendServer
         {
             Success = true,
             Message = $"Backend log level set to {logLevel}."
+        };
+    }
+
+    private async Task<PipeResponse> HandleRepairRuntimeDataAclAsync(CancellationToken cancellationToken)
+    {
+        await _logger.LogAsync(
+            $"RepairRuntimeDataAcl: Root={RuntimePaths.RootDirectory}, Result=Started.",
+            cancellationToken);
+
+        var result = RuntimeDataAclRepairService.RepairRuntimeDataDirectory(
+            RuntimePaths.RootDirectory,
+            cancellationToken);
+
+        await _logger.LogAsync(
+            result.Success ? RuntimeLogLevel.Information : RuntimeLogLevel.Warning,
+            $"RepairRuntimeDataAcl: Root={RuntimePaths.RootDirectory}, Success={result.Success}, Code={result.Code}, Detail={result.Detail}",
+            cancellationToken);
+
+        return new PipeResponse
+        {
+            Success = result.Success,
+            ErrorCode = result.Success ? null : result.Code,
+            Message = string.IsNullOrWhiteSpace(result.Detail)
+                ? (result.Success ? "Runtime data ACL repaired." : "Runtime data ACL repair failed.")
+                : result.Detail
         };
     }
 

@@ -49,9 +49,16 @@ public sealed class BackendRuntime : IDisposable
         TryMigrateLegacyRuntimeFiles();
         BackendEmergencyLogger.Log("CreateDefault: TryMigrateLegacyRuntimeFiles completed.");
 
+        BackendEmergencyLogger.Log("CreateDefault: RuntimeDataAclRepair started.");
+        var aclRepairResult = RuntimeDataAclRepairService.RepairRuntimeDataDirectory(RuntimePaths.RootDirectory);
+        BackendEmergencyLogger.Log($"CreateDefault: RuntimeDataAclRepair completed. Success={aclRepairResult.Success}, Code={aclRepairResult.Code}, Detail={aclRepairResult.Detail}");
+
         BackendEmergencyLogger.Log("CreateDefault: creating FileLogger.");
         var logger = new FileLogger(RuntimePaths.BackendLogPath);
         BackendEmergencyLogger.Log("CreateDefault: FileLogger created.");
+        logger.LogFireAndForget(
+            aclRepairResult.Success ? RuntimeLogLevel.Information : RuntimeLogLevel.Warning,
+            $"RuntimeDataAclRepairStartup: Success={aclRepairResult.Success}, Code={aclRepairResult.Code}, Detail={aclRepairResult.Detail}");
 
         BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuStateStore.");
         var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath, logger);

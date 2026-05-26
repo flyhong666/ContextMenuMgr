@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using System.Security;
 using System.Text.Json;
 using ContextMenuMgr.Contracts;
 
@@ -15,13 +16,15 @@ public sealed class FrontendSettingsService
     };
 
     private readonly string _settingsPath;
+    private readonly RuntimeDataAclRepairClient _aclRepairClient;
     private readonly Lock _syncRoot = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FrontendSettingsService"/> class.
     /// </summary>
-    public FrontendSettingsService()
+    public FrontendSettingsService(RuntimeDataAclRepairClient aclRepairClient)
     {
+        _aclRepairClient = aclRepairClient;
         _settingsPath = RuntimePaths.SettingsPath;
         TryMigrateLegacySettings();
         Current = Load();
@@ -35,6 +38,8 @@ public sealed class FrontendSettingsService
     public event EventHandler? SettingsChanged;
 
     public string SettingsPath => _settingsPath;
+
+    public string? LastSaveError { get; private set; }
 
     /// <summary>
     /// Updates language.
@@ -200,19 +205,100 @@ public sealed class FrontendSettingsService
 
     private void Save()
     {
-        lock (_syncRoot)
+        try
         {
-            var directory = Path.GetDirectoryName(_settingsPath);
-            if (!string.IsNullOrWhiteSpace(directory))
+            lock (_syncRoot)
             {
-                Directory.CreateDirectory(directory);
+                SaveCore();
             }
 
-            var json = JsonSerializer.Serialize(Current, JsonOptions);
-            File.WriteAllText(_settingsPath, json);
+            LastSaveError = null;
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        catch (Exception ex) when (IsRuntimeDataAccessException(ex))
+        {
+            FrontendDebugLog.Error("FrontendSettingsService", ex, $"Saving settings failed due to runtime data access. Path={_settingsPath}");
+        }
+
+        var repairResult = RepairRuntimeDataAclForSynchronousSave();
+        if (repairResult.Success)
+        {
+            try
+            {
+                lock (_syncRoot)
+                {
+                    SaveCore();
+                }
+
+                LastSaveError = null;
+                SettingsChanged?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+            catch (Exception ex) when (IsRuntimeDataAccessException(ex))
+            {
+                LastSaveError = $"Settings save failed after runtime data ACL repair: {ex.Message}";
+                FrontendDebugLog.Error("FrontendSettingsService", ex, $"Settings save retry failed after runtime data ACL repair. Path={_settingsPath}, RepairCode={repairResult.Code}, RepairDetail={repairResult.Detail}");
+            }
+        }
+        else
+        {
+            LastSaveError = repairResult.Cancelled
+                ? "Settings save skipped because runtime data ACL repair was cancelled."
+                : $"Settings save failed because runtime data ACL repair failed: {repairResult.Detail}";
+            FrontendDebugLog.Warning(
+                "FrontendSettingsService",
+                $"Runtime data ACL repair did not complete before settings retry. Success={repairResult.Success}, Cancelled={repairResult.Cancelled}, Code={repairResult.Code}, Detail={repairResult.Detail}");
         }
 
         SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SaveCore()
+    {
+        var directory = Path.GetDirectoryName(_settingsPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var json = JsonSerializer.Serialize(Current, JsonOptions);
+        File.WriteAllText(_settingsPath, json);
+    }
+
+    private RuntimeDataAclRepairClientResult RepairRuntimeDataAclForSynchronousSave()
+    {
+        try
+        {
+            // Save is intentionally synchronous because it is called from many
+            // property setters. Blocking is limited to the rare ACL-repair path.
+            return _aclRepairClient
+                .RepairAsync(CancellationToken.None)
+                .ConfigureAwait(false)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Error("FrontendSettingsService", ex, "Runtime data ACL repair threw during synchronous settings save.");
+            return new RuntimeDataAclRepairClientResult(false, false, "ACL_REPAIR_EXCEPTION", ex.ToString());
+        }
+    }
+
+    private static bool IsRuntimeDataAccessException(Exception exception)
+        => (exception is UnauthorizedAccessException
+            or SecurityException)
+            || exception is IOException ioException && IsAclRelatedIOException(ioException);
+
+    private static bool IsAclRelatedIOException(IOException exception)
+    {
+        var win32Code = exception.HResult & 0xFFFF;
+        return win32Code is 3 // ERROR_PATH_NOT_FOUND
+            or 5 // ERROR_ACCESS_DENIED
+            or 32 // ERROR_SHARING_VIOLATION
+            or 53 // ERROR_BAD_NETPATH
+            or 80 // ERROR_FILE_EXISTS
+            or 183; // ERROR_ALREADY_EXISTS
     }
 
     /// <summary>

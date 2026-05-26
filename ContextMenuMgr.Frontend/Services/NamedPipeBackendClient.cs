@@ -506,6 +506,13 @@ public sealed class NamedPipeBackendClient : IBackendClient
             cancellationToken);
     }
 
+    public async Task RepairRuntimeDataAclAsync(CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest { Command = PipeCommand.RepairRuntimeDataAcl },
+            cancellationToken);
+    }
+
     /// <summary>
     /// Sets Win11 blocked item Async.
     /// </summary>

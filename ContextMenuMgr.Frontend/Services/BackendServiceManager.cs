@@ -346,6 +346,78 @@ public sealed class BackendServiceManager : IBackendServiceManager
         }
     }
 
+    public async Task<BackendServiceBootstrapResult> RepairRuntimeDataAclAsync(CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        FrontendDebugLog.Info("BackendServiceManager", "RepairRuntimeDataAclAsync started.");
+        var backendExePath = ResolveBackendExecutablePath();
+        if (backendExePath is null)
+        {
+            FrontendDebugLog.Info("BackendServiceManager", "Backend executable path not found for runtime data ACL repair.");
+            return new BackendServiceBootstrapResult(false, false, "BACKEND_EXE_MISSING", string.Empty);
+        }
+
+        var resultFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"ContextMenuMgr-aclrepair-{Guid.NewGuid():N}.json");
+
+        try
+        {
+            var bootstrapArguments = $"--service-bootstrap repair-runtime-data-acl --result-file \"{resultFilePath}\"";
+            FrontendDebugLog.Info("BackendServiceManager", $"Runtime data ACL repair bootstrap arguments: {bootstrapArguments}, ResultFile={resultFilePath}");
+            using var process = Process.Start(CreateElevatedBackendStartInfo(
+                backendExePath,
+                bootstrapArguments));
+            if (process is null)
+            {
+                FrontendDebugLog.Info("BackendServiceManager", "Failed to start elevated runtime data ACL repair bootstrap process.");
+                return new BackendServiceBootstrapResult(false, false, "FAILED_TO_START_ELEVATED_PROCESS", string.Empty);
+            }
+
+            FrontendDebugLog.Info("BackendServiceManager", $"Runtime data ACL repair bootstrap process started. PID={process.Id}");
+            await process.WaitForExitAsync(cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Runtime data ACL repair bootstrap process exited. ExitCode={process.ExitCode}, Elapsed={stopwatch.ElapsedMilliseconds} ms");
+            var scriptResult = await TryReadScriptResultAsync(resultFilePath, cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Runtime data ACL repair parsed result: Success={scriptResult?.Success}, Code={scriptResult?.Code}, Detail={scriptResult?.Detail}");
+
+            if (process.ExitCode == 0 && scriptResult?.Success == true)
+            {
+                return new BackendServiceBootstrapResult(true, false, scriptResult.Code, scriptResult.Detail);
+            }
+
+            return new BackendServiceBootstrapResult(
+                false,
+                false,
+                scriptResult?.Code ?? $"EXIT_CODE_{process.ExitCode}",
+                scriptResult?.Detail ?? string.Empty);
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UAC cancelled during runtime data ACL repair. Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, true, "ELEVATION_CANCELLED", string.Empty);
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"RepairRuntimeDataAclAsync threw. Exception={ex}, Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.ToString());
+        }
+        finally
+        {
+            try
+            {
+                var exists = File.Exists(resultFilePath);
+                FrontendDebugLog.Info("BackendServiceManager", $"Runtime data ACL repair result file exists before deletion: {exists}, Path={resultFilePath}");
+                if (exists)
+                {
+                    File.Delete(resultFilePath);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private static string? ResolveBackendExecutablePath()
     {
         var candidates = new List<string>

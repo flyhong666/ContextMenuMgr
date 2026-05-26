@@ -18,4 +18,6 @@ public interface IBackendServiceManager
     Task<BackendServiceBootstrapResult> UninstallServiceAsync(CancellationToken cancellationToken);
 
     Task<BackendServiceBootstrapResult> SetServiceAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken);
+
+    Task<BackendServiceBootstrapResult> RepairRuntimeDataAclAsync(CancellationToken cancellationToken);
 }

@@ -115,6 +115,8 @@ public interface IBackendClient : IAsyncDisposable
 
     Task RestartExplorerAsync(CancellationToken cancellationToken);
 
+    Task RepairRuntimeDataAclAsync(CancellationToken cancellationToken);
+
     Task SetWin11BlockedItemAsync(
         string handlerClsid,
         string displayName,
