@@ -611,6 +611,15 @@
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
     <value>會給受監視的 Shell 根路徑加上拒絕寫入權限。即使背景常駐程式結束，一般處理程序也無法繼續往這些位置新增快顯功能表項目。</value>
   </data>
+  <data name="Win11ModernContextMenuDisabledLabel" xml:space="preserve">
+    <value>停用 Win11 新版右鍵選單</value>
+  </data>
+  <data name="Win11ModernContextMenuDisabledDescription" xml:space="preserve">
+    <value>啟用後會恢復傳統右鍵選單，不再預設顯示 Windows 11 的新版精簡選單。變更後需要重新啟動檔案總管或重新登入後生效。</value>
+  </data>
+  <data name="Win11ContextMenuSettingTitle" xml:space="preserve">
+    <value>Win11 右鍵選單設定</value>
+  </data>
   <data name="RegistryProtectionWarningTitle" xml:space="preserve">
     <value>登錄檔權限鎖定警告</value>
   </data>

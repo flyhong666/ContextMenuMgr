@@ -37,6 +37,8 @@ public enum PipeCommand
     RemoveWin11BlockedItem,
     GetWin11BlockedItems,
     GetWin11ContextMenuSnapshot,
+    GetWin11ModernContextMenuDisabled,
+    SetWin11ModernContextMenuDisabled,
     SetAutoStartEnabled,
     GetAutoStartEnabled,
     AnalyzeFileTypeContext,

@@ -36,6 +36,11 @@ public sealed class FrontendSettings
     public bool LockNewContextMenuItems { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the Windows 11 modern context menu is disabled.
+    /// </summary>
+    public bool Win11ModernContextMenuDisabled { get; set; }
+
+    /// <summary>
     /// Gets or sets the hide Disabled Items.
     /// </summary>
     public bool HideDisabledItems { get; set; }

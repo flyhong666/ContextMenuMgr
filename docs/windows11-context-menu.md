@@ -53,6 +53,19 @@ Win11 新菜单通过 blocked list 启用或禁用：
 
 `SetEnabled` 的本质是写入或删除 CLSID value：禁用时写入 CLSID value，启用时删除该 value。机器级 blocked 优先导致禁用；即使用户级没有 blocked value，只要 HKLM blocked list 存在该 CLSID，snapshot 仍应显示禁用。
 
+## 4.1 全局恢复经典右键菜单设置
+
+设置页“增强”卡片中的“禁用 Win11 新版右键菜单”不是 packaged COM 条目的 blocked list，也不是传统 `shell` / `shellex` 开关。它使用 Windows 11 常见的每用户注册表 tweak：
+
+| 状态 | 注册表行为 |
+| --- | --- |
+| 启用经典菜单 / 禁用新版精简菜单 | 创建 `HKEY_USERS\<sid>\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32`，并把默认值设置为空字符串。 |
+| 恢复 Windows 11 默认新版菜单 | 删除 `HKEY_USERS\<sid>\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}`。 |
+
+该功能通过链路 A 进入 `Win11ClassicContextMenuService`。后端必须从 pipe 客户端解析前端用户上下文，并写 `HKEY_USERS\<sid>`；不要写服务进程的 `Registry.CurrentUser`，不要写 HKLM，也不要复用 `Windows11BlocksService`。更改后需要重启 Explorer 或重新登录才会可靠生效，当前实现不会在切换时自动重启 Explorer。
+
+因为该功能的开发需求和对应 registry tweak 行为都明确要求重启 Explorer 或重新登录后才会可靠生效，前端设置页在写入成功后只调用 `ExplorerRestartStateService.MarkRequired()`，让主窗口顶部已有的全局“重启资源管理器”按钮显示出来。不要在设置页新增独立重启按钮，也不要在切换开关时直接调用 `RestartExplorer` pipe 命令；真正的重启动作仍由用户点击全局按钮触发，成功后由 `ShellViewModel` 清除 `NeedsRestart` 状态。
+
 ## 5. 为什么 userContext 必须正确
 
 Win11 新菜单的 snapshot 和开关都依赖用户上下文：

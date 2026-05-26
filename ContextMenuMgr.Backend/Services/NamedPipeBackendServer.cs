@@ -21,6 +21,7 @@ public sealed class NamedPipeBackendServer
     private readonly ContextMenuRegistryCatalog _catalog;
     private readonly SpecialMenuService _specialMenuService;
     private readonly Windows11BlocksService _windows11BlocksService;
+    private readonly Win11ClassicContextMenuService _win11ClassicContextMenuService;
     private readonly AutoStartService _autoStartService;
     private readonly FileTypeSceneMenuService _fileTypeSceneMenuService;
     private readonly ExplorerRestartService _explorerRestartService;
@@ -39,6 +40,7 @@ public sealed class NamedPipeBackendServer
         ContextMenuRegistryCatalog catalog,
         SpecialMenuService specialMenuService,
         Windows11BlocksService windows11BlocksService,
+        Win11ClassicContextMenuService win11ClassicContextMenuService,
         AutoStartService autoStartService,
         FileTypeSceneMenuService fileTypeSceneMenuService,
         ExplorerRestartService explorerRestartService,
@@ -47,6 +49,7 @@ public sealed class NamedPipeBackendServer
         _catalog = catalog;
         _specialMenuService = specialMenuService;
         _windows11BlocksService = windows11BlocksService;
+        _win11ClassicContextMenuService = win11ClassicContextMenuService;
         _autoStartService = autoStartService;
         _fileTypeSceneMenuService = fileTypeSceneMenuService;
         _explorerRestartService = explorerRestartService;
@@ -454,6 +457,10 @@ public sealed class NamedPipeBackendServer
                 => await HandleGetWin11BlockedItemsAsync(request, stream, cancellationToken),
             PipeCommand.GetWin11ContextMenuSnapshot
                 => await HandleGetWin11ContextMenuSnapshotAsync(request, stream, cancellationToken),
+            PipeCommand.GetWin11ModernContextMenuDisabled
+                => await HandleGetWin11ModernContextMenuDisabledAsync(request, stream, cancellationToken),
+            PipeCommand.SetWin11ModernContextMenuDisabled when request.Enable is not null
+                => await HandleSetWin11ModernContextMenuDisabledAsync(request, stream, cancellationToken),
             PipeCommand.SetAutoStartEnabled when request.AutoStartEnabled is not null
                 => await _autoStartService.SetAutoStartEnabledAsync(
                     request.AutoStartEnabled.Value,
@@ -628,6 +635,67 @@ public sealed class NamedPipeBackendServer
             Items = items,
             ClientOperationId = request.ClientOperationId
         };
+    }
+
+    private async Task<PipeResponse> HandleGetWin11ModernContextMenuDisabledAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        await LogWin11CommandAsync(
+            PipeCommand.GetWin11ModernContextMenuDisabled,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: "started",
+            cancellationToken);
+
+        var response = await _win11ClassicContextMenuService.GetDisabledAsync(
+            request.ClientOperationId,
+            userContext,
+            cancellationToken);
+
+        await LogWin11CommandAsync(
+            PipeCommand.GetWin11ModernContextMenuDisabled,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: response.Success ? "succeeded" : "failed",
+            cancellationToken);
+
+        return response;
+    }
+
+    private async Task<PipeResponse> HandleSetWin11ModernContextMenuDisabledAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        await LogWin11CommandAsync(
+            PipeCommand.SetWin11ModernContextMenuDisabled,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: $"started, Disabled={request.Enable.GetValueOrDefault()}",
+            cancellationToken);
+
+        var response = await _win11ClassicContextMenuService.SetDisabledAsync(
+            request.Enable.GetValueOrDefault(),
+            request.ClientOperationId,
+            userContext,
+            cancellationToken);
+
+        await LogWin11CommandAsync(
+            PipeCommand.SetWin11ModernContextMenuDisabled,
+            userContext,
+            machineScope: false,
+            handlerClsid: null,
+            result: response.Success ? "succeeded" : "failed",
+            cancellationToken);
+
+        return response;
     }
 
     private async Task LogWin11CommandAsync(

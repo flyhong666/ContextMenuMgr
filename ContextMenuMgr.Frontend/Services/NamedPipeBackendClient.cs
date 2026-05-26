@@ -585,6 +585,29 @@ public sealed class NamedPipeBackendClient : IBackendClient
         return response.Items;
     }
 
+    public async Task<bool> GetWin11ModernContextMenuDisabledAsync(CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.GetWin11ModernContextMenuDisabled
+            },
+            cancellationToken);
+
+        return response.Win11ModernContextMenuDisabled ?? false;
+    }
+
+    public async Task SetWin11ModernContextMenuDisabledAsync(bool disabled, CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetWin11ModernContextMenuDisabled,
+                Enable = disabled
+            },
+            cancellationToken);
+    }
+
     /// <summary>
     /// Sets auto start enabled Async.
     /// </summary>

@@ -26,8 +26,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly FrontendThemeService _themeService;
     private readonly ContextMenuItemActionsService _actionsService;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
+    private readonly ExplorerRestartStateService _explorerRestartState;
     private bool _suppressProtectionSync;
     private bool _suppressAutoStartSync;
+    private bool _suppressWin11ContextMenuSync;
     private bool _suppressThemeSync;
     private bool _pendingRegistryProtectionEnable;
 
@@ -42,7 +44,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         LocalizationService localization,
         FrontendThemeService themeService,
         ContextMenuItemActionsService actionsService,
-        ListPlaceholderDebugStateService placeholderDebug)
+        ListPlaceholderDebugStateService placeholderDebug,
+        ExplorerRestartStateService explorerRestartState)
     {
         _settingsService = settingsService;
         _startupService = startupService;
@@ -52,6 +55,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _themeService = themeService;
         _actionsService = actionsService;
         _placeholderDebug = placeholderDebug;
+        _explorerRestartState = explorerRestartState;
 
         AvailableLanguages =
         [
@@ -83,6 +87,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         AutoStartOnLogin = false;
         KeepBackgroundAfterClose = _settingsService.Current.KeepBackgroundAfterClose;
         LockNewContextMenuItems = _settingsService.Current.LockNewContextMenuItems;
+        _suppressWin11ContextMenuSync = true;
+        Win11ModernContextMenuDisabled = IsWin11ModernContextMenuSupported
+            && _settingsService.Current.Win11ModernContextMenuDisabled;
+        _suppressWin11ContextMenuSync = false;
 
         _localization.LanguageChanged += OnLanguageChanged;
         _themeService.ThemePreferenceChanged += OnThemePreferenceChanged;
@@ -145,6 +153,11 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool LockNewContextMenuItems { get; set; }
 
+    [ObservableProperty]
+    public partial bool Win11ModernContextMenuDisabled { get; set; }
+
+    public bool IsWin11ModernContextMenuSupported { get; } = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+
     /// <summary>
     /// Gets or sets a value indicating whether uninstall Flyout Open.
     /// </summary>
@@ -192,6 +205,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string LockNewContextMenuItemsLabel => _localization.Translate("LockNewContextMenuItemsLabel");
 
     public string LockNewContextMenuItemsDescription => _localization.Translate("LockNewContextMenuItemsDescription");
+
+    public string Win11ModernContextMenuDisabledLabel => _localization.Translate("Win11ModernContextMenuDisabledLabel");
+
+    public string Win11ModernContextMenuDisabledDescription => _localization.Translate("Win11ModernContextMenuDisabledDescription");
+
+    public string Win11ContextMenuSettingTitle => _localization.Translate("Win11ContextMenuSettingTitle");
 
     public string RegistryProtectionWarningTitle => _localization.Translate("RegistryProtectionWarningTitle");
 
@@ -323,6 +342,24 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _pendingRegistryProtectionEnable = false;
         IsRegistryProtectionWarningFlyoutOpen = false;
         _ = UpdateRegistryProtectionSettingAsync(value);
+    }
+
+    partial void OnWin11ModernContextMenuDisabledChanged(bool value)
+    {
+        if (_suppressWin11ContextMenuSync)
+        {
+            return;
+        }
+
+        if (!IsWin11ModernContextMenuSupported)
+        {
+            _suppressWin11ContextMenuSync = true;
+            Win11ModernContextMenuDisabled = false;
+            _suppressWin11ContextMenuSync = false;
+            return;
+        }
+
+        _ = ApplyWin11ModernContextMenuDisabledAsync(value);
     }
 
     partial void OnIsRegistryProtectionWarningFlyoutOpenChanged(bool value)
@@ -485,6 +522,20 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             {
             }
 
+            _suppressWin11ContextMenuSync = true;
+            Win11ModernContextMenuDisabled = false;
+            _suppressWin11ContextMenuSync = false;
+            try
+            {
+                if (IsWin11ModernContextMenuSupported)
+                {
+                    await _workspace.SetWin11ModernContextMenuDisabledAsync(false);
+                }
+            }
+            catch
+            {
+            }
+
             KeepBackgroundAfterClose = false;
 
             _localization.SelectedLanguage = AppLanguageOption.System;
@@ -575,6 +626,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(UtilitiesTitle));
         OnPropertyChanged(nameof(LockNewContextMenuItemsLabel));
         OnPropertyChanged(nameof(LockNewContextMenuItemsDescription));
+        OnPropertyChanged(nameof(Win11ModernContextMenuDisabledLabel));
+        OnPropertyChanged(nameof(Win11ModernContextMenuDisabledDescription));
+        OnPropertyChanged(nameof(Win11ContextMenuSettingTitle));
         OnPropertyChanged(nameof(RegistryProtectionWarningTitle));
         OnPropertyChanged(nameof(RegistryProtectionWarningText));
         OnPropertyChanged(nameof(RegistryProtectionWarningConfirmText));
@@ -647,6 +701,34 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task LoadWin11ModernContextMenuSettingAsync()
+    {
+        if (!IsWin11ModernContextMenuSupported)
+        {
+            _suppressWin11ContextMenuSync = true;
+            Win11ModernContextMenuDisabled = false;
+            _settingsService.UpdateWin11ModernContextMenuDisabled(false);
+            _suppressWin11ContextMenuSync = false;
+            return;
+        }
+
+        try
+        {
+            var disabled = await _workspace.GetWin11ModernContextMenuDisabledAsync();
+            _suppressWin11ContextMenuSync = true;
+            Win11ModernContextMenuDisabled = disabled;
+            _settingsService.UpdateWin11ModernContextMenuDisabled(disabled);
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("SettingsPageViewModel", $"Failed to load Windows 11 context menu setting: {ex.Message}");
+        }
+        finally
+        {
+            _suppressWin11ContextMenuSync = false;
+        }
+    }
+
     /// <summary>
     /// Loads initial settings asynchronously to avoid blocking UI thread.
     /// This method is called fire-and-forget from the constructor.
@@ -664,6 +746,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
             // Load registry protection setting (async, non-blocking)
             await LoadRegistryProtectionSettingAsync();
+
+            // Registry is the source of truth; frontend settings only mirror it.
+            await LoadWin11ModernContextMenuSettingAsync();
         }
         catch (Exception ex)
         {
@@ -697,6 +782,29 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         finally
         {
             _suppressProtectionSync = false;
+        }
+    }
+
+    private async Task ApplyWin11ModernContextMenuDisabledAsync(bool value)
+    {
+        var previous = _settingsService.Current.Win11ModernContextMenuDisabled;
+        _settingsService.UpdateWin11ModernContextMenuDisabled(value);
+
+        try
+        {
+            await _workspace.SetWin11ModernContextMenuDisabledAsync(value);
+            _explorerRestartState.MarkRequired();
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Error("SettingsPageViewModel", ex, "Failed to update Windows 11 context menu setting.");
+            _settingsService.UpdateWin11ModernContextMenuDisabled(previous);
+            _suppressWin11ContextMenuSync = true;
+            Win11ModernContextMenuDisabled = previous;
+            _suppressWin11ContextMenuSync = false;
+            await FrontendMessageBox.ShowErrorAsync(
+                ex.Message,
+                Win11ContextMenuSettingTitle);
         }
     }
 

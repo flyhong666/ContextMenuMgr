@@ -125,6 +125,17 @@ public sealed class FrontendSettingsService
         Save();
     }
 
+    public void UpdateWin11ModernContextMenuDisabled(bool disabled)
+    {
+        if (Current.Win11ModernContextMenuDisabled == disabled)
+        {
+            return;
+        }
+
+        Current.Win11ModernContextMenuDisabled = disabled;
+        Save();
+    }
+
     /// <summary>
     /// Updates hide Disabled Items.
     /// </summary>

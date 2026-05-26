@@ -563,6 +563,18 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         return await _backendClient.SetRegistryProtectionSettingAsync(enable, cts.Token);
     }
 
+    public async Task<bool> GetWin11ModernContextMenuDisabledAsync()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        return await _backendClient.GetWin11ModernContextMenuDisabledAsync(cts.Token);
+    }
+
+    public async Task SetWin11ModernContextMenuDisabledAsync(bool disabled)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await _backendClient.SetWin11ModernContextMenuDisabledAsync(disabled, cts.Token);
+    }
+
     /// <summary>
     /// Gets service Status Text.
     /// </summary>

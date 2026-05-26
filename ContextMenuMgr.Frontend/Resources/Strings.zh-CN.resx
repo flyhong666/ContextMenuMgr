@@ -611,6 +611,15 @@
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
     <value>会给受监控的 Shell 根路径加上拒绝写入权限。即使后台守护程序退出，普通进程也无法继续往这些位置新增右键菜单项。</value>
   </data>
+  <data name="Win11ModernContextMenuDisabledLabel" xml:space="preserve">
+    <value>禁用 Win11 新版右键菜单</value>
+  </data>
+  <data name="Win11ModernContextMenuDisabledDescription" xml:space="preserve">
+    <value>启用后会恢复经典右键菜单，不再默认显示 Windows 11 的新版精简菜单。更改后需要重启资源管理器或重新登录后生效。</value>
+  </data>
+  <data name="Win11ContextMenuSettingTitle" xml:space="preserve">
+    <value>Win11 右键菜单设置</value>
+  </data>
   <data name="RegistryProtectionWarningTitle" xml:space="preserve">
     <value>注册表权限锁定警告</value>
   </data>

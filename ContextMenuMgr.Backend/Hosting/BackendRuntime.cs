@@ -84,6 +84,10 @@ public sealed class BackendRuntime : IDisposable
         var windows11BlocksService = new Windows11BlocksService(logger);
         BackendEmergencyLogger.Log("CreateDefault: Windows11BlocksService created.");
 
+        BackendEmergencyLogger.Log("CreateDefault: creating Win11ClassicContextMenuService.");
+        var win11ClassicContextMenuService = new Win11ClassicContextMenuService(logger);
+        BackendEmergencyLogger.Log("CreateDefault: Win11ClassicContextMenuService created.");
+
         BackendEmergencyLogger.Log("CreateDefault: creating AutoStartService.");
         var autoStartService = new AutoStartService(logger);
         BackendEmergencyLogger.Log("CreateDefault: AutoStartService created.");
@@ -101,7 +105,7 @@ public sealed class BackendRuntime : IDisposable
         BackendEmergencyLogger.Log("CreateDefault: ContextMenuRegistryMonitor created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating NamedPipeBackendServer.");
-        var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, windows11BlocksService, autoStartService, fileTypeSceneMenuService, explorerRestartService, logger);
+        var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, windows11BlocksService, win11ClassicContextMenuService, autoStartService, fileTypeSceneMenuService, explorerRestartService, logger);
         BackendEmergencyLogger.Log("CreateDefault: NamedPipeBackendServer created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating FrontendAutostartLauncher.");

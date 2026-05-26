@@ -611,6 +611,15 @@ Continue anyway? (Not recommended)</value>
   <data name="LockNewContextMenuItemsDescription" xml:space="preserve">
     <value>Adds deny write rules to the monitored shell roots so ordinary processes cannot add new context menu entries even when the backend is not running.</value>
   </data>
+  <data name="Win11ModernContextMenuDisabledLabel" xml:space="preserve">
+    <value>Disable Windows 11 modern context menu</value>
+  </data>
+  <data name="Win11ModernContextMenuDisabledDescription" xml:space="preserve">
+    <value>Restores the classic context menu instead of showing the Windows 11 compact menu by default. Restart File Explorer or sign out and back in for the change to take effect.</value>
+  </data>
+  <data name="Win11ContextMenuSettingTitle" xml:space="preserve">
+    <value>Windows 11 context menu setting</value>
+  </data>
   <data name="RegistryProtectionWarningTitle" xml:space="preserve">
     <value>Registry-level protection warning</value>
   </data>

@@ -64,4 +64,9 @@ public sealed record PipeResponse
     /// Gets or sets whether auto-start is enabled.
     /// </summary>
     public bool? AutoStartEnabled { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether the Windows 11 modern context menu is disabled for the frontend user.
+    /// </summary>
+    public bool? Win11ModernContextMenuDisabled { get; init; }
 }

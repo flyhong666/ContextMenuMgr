@@ -134,6 +134,10 @@ public interface IBackendClient : IAsyncDisposable
 
     Task<IReadOnlyList<ContextMenuEntry>> GetWin11ContextMenuSnapshotAsync(CancellationToken cancellationToken);
 
+    Task<bool> GetWin11ModernContextMenuDisabledAsync(CancellationToken cancellationToken);
+
+    Task SetWin11ModernContextMenuDisabledAsync(bool disabled, CancellationToken cancellationToken);
+
     Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken);
 
     Task<bool> GetAutoStartEnabledAsync(CancellationToken cancellationToken);
