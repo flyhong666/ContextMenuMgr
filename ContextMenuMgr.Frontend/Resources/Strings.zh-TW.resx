@@ -713,6 +713,9 @@
   <data name="DetailsChangeText" xml:space="preserve">
     <value>變更文字</value>
   </data>
+  <data name="DetailsChangeCommand" xml:space="preserve">
+    <value>更改命令</value>
+  </data>
   <data name="DetailsCommandText" xml:space="preserve">
     <value>命令文字</value>
   </data>
@@ -908,8 +911,14 @@
   <data name="ItemTextLabel" xml:space="preserve">
     <value>功能表文字</value>
   </data>
+  <data name="ItemCommandLabel" xml:space="preserve">
+    <value>命令</value>
+  </data>
   <data name="TextCannotBeEmpty" xml:space="preserve">
     <value>功能表文字不能空白。</value>
+  </data>
+  <data name="CommandCannotBeEmpty" xml:space="preserve">
+    <value>命令不能為空。</value>
   </data>
   <data name="ModulePathUnavailable" xml:space="preserve">
     <value>目前功能表項目沒有可用的模組檔案路徑。</value>

@@ -353,6 +353,8 @@ public sealed class NamedPipeBackendServer
                 => await _catalog.ApplyShellAttributeAsync(request.ItemId, request.ShellAttribute.Value, request.Enable.Value, cancellationToken),
             PipeCommand.SetDisplayText when request.ItemId is not null && request.TextValue is not null
                 => await _catalog.ApplyDisplayTextAsync(request.ItemId, request.TextValue, cancellationToken),
+            PipeCommand.SetCommandText when request.ItemId is not null && request.TextValue is not null
+                => await _catalog.ApplyCommandTextAsync(request.ItemId, request.TextValue, cancellationToken),
             PipeCommand.GetRegistryProtectionSetting
                 => await _catalog.GetRegistryProtectionSettingAsync(cancellationToken),
             PipeCommand.SetRegistryProtectionSetting when request.Enable is not null

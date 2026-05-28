@@ -56,6 +56,11 @@ public sealed record ContextMenuEntry
     public string? CommandText { get; init; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether command text can be edited.
+    /// </summary>
+    public bool CanEditCommandText { get; init; }
+
+    /// <summary>
     /// Gets or sets the handler Clsid.
     /// </summary>
     public string? HandlerClsid { get; init; }

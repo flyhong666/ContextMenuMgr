@@ -235,6 +235,23 @@ public sealed class NamedPipeBackendClient : IBackendClient
         return response.Item;
     }
 
+    public async Task<ContextMenuEntry?> SetCommandTextAsync(
+        string itemId,
+        string commandText,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetCommandText,
+                ItemId = itemId,
+                TextValue = commandText
+            },
+            cancellationToken);
+
+        return response.Item;
+    }
+
     /// <summary>
     /// Gets registry Protection Setting Async.
     /// </summary>

@@ -323,7 +323,12 @@
                                                         Command="{Binding ShowCommandTextCommand}"
                                                         Header="{Binding DetailsCommandTextLabel}"
                                                         StaysOpenOnClick="True"
-                                                        Visibility="{Binding HasCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                        Visibility="{Binding ShowReadOnlyCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding ChangeCommandTextCommand}"
+                                                        Header="{Binding DetailsChangeCommandLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding CanEditCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                     <MenuItem
                                                         Command="{Binding OpenFilePropertiesCommand}"
                                                         Header="{Binding DetailsFilePropertiesLabel}"

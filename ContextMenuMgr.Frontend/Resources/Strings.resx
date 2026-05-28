@@ -713,6 +713,9 @@ Continue anyway? (Not recommended)</value>
   <data name="DetailsChangeText" xml:space="preserve">
     <value>Change text</value>
   </data>
+  <data name="DetailsChangeCommand" xml:space="preserve">
+    <value>Change command</value>
+  </data>
   <data name="DetailsCommandText" xml:space="preserve">
     <value>Command text</value>
   </data>
@@ -908,8 +911,14 @@ Continue anyway? (Not recommended)</value>
   <data name="ItemTextLabel" xml:space="preserve">
     <value>Menu text</value>
   </data>
+  <data name="ItemCommandLabel" xml:space="preserve">
+    <value>Command</value>
+  </data>
   <data name="TextCannotBeEmpty" xml:space="preserve">
     <value>Menu text cannot be empty.</value>
+  </data>
+  <data name="CommandCannotBeEmpty" xml:space="preserve">
+    <value>Command cannot be empty.</value>
   </data>
   <data name="ModulePathUnavailable" xml:space="preserve">
     <value>No module file path is available for this menu item.</value>

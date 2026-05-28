@@ -17,6 +17,7 @@ public enum PipeCommand
     SetEnabled,
     SetShellAttribute,
     SetDisplayText,
+    SetCommandText,
     GetRegistryProtectionSetting,
     SetRegistryProtectionSetting,
     ApplyDecision,

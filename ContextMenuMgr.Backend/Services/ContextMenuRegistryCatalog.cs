@@ -932,6 +932,128 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
+    public async Task<PipeResponse> ApplyCommandTextAsync(string itemId, string commandText, CancellationToken cancellationToken)
+    {
+        var snapshot = await GetSnapshotAsync(cancellationToken);
+        var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            return CreateFailure($"Menu item '{itemId}' was not found.");
+        }
+
+        if (item.EntryKind != ContextMenuEntryKind.ShellVerb)
+        {
+            return CreateFailure("Only shell verb items support command text changes.", item);
+        }
+
+        if (item.IsWindows11ContextMenu)
+        {
+            return CreateFailure("Windows 11 context menu items do not support command text changes here.", item);
+        }
+
+        if (!item.IsPresentInRegistry || item.IsDeleted)
+        {
+            return CreateFailure($"Menu item '{item.DisplayName}' must exist in the registry before changing its command.", item);
+        }
+
+        if (!item.CanEditCommandText)
+        {
+            return CreateFailure("This menu item does not support command text changes.", item);
+        }
+
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            return CreateFailure("Command cannot be empty.", item);
+        }
+
+        using (var itemKey = OpenRegistryKey(item.BackendRegistryPath, writable: false))
+        {
+            if (itemKey is null)
+            {
+                return CreateFailure($"Unable to open {item.RegistryPath}.", item);
+            }
+
+            using var commandKey = itemKey.OpenSubKey("command", writable: false);
+            if (!CanEditCommandText(itemKey, commandKey))
+            {
+                return CreateFailure("This menu item does not support command text changes.", item);
+            }
+        }
+
+        if (IsNormalContextMenuRegistryItem(item))
+        {
+            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                "ApplyCommandText",
+                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                cancellationToken);
+
+            if (preflight is not null)
+            {
+                return preflight with { Item = item };
+            }
+        }
+
+        try
+        {
+            var commandPath = $@"{item.BackendRegistryPath}\command";
+            using var commandKey = CreateRegistrySubKey(commandPath, writable: true)
+                ?? throw new InvalidOperationException($"Unable to open {item.RegistryPath}\\command for writing.");
+            var oldValue = commandKey.GetValue(null);
+            commandKey.SetValue(string.Empty, commandText, RegistryValueKind.String);
+            await _logger.LogAsync(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "ApplyCommandText",
+                    commandPath,
+                    "(Default)",
+                    RegistryValueKind.String,
+                    commandText,
+                    writable: true,
+                    result: $"Success, OldValue={DiagnosticLogFormatter.FormatRegistryValueData(oldValue)}"),
+                cancellationToken);
+
+            var states = await _stateStore.LoadAsync(cancellationToken);
+            var state = GetOrCreateState(states, item);
+            state.CommandText = commandText;
+            state.ObservedEnabled = item.IsEnabled;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await _stateStore.SaveAsync(states, cancellationToken);
+            ShellChangeNotifier.NotifyAssociationsChanged();
+
+            var refreshed = (await GetSnapshotAsync(cancellationToken))
+                .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
+                ?? item with
+                {
+                    CommandText = commandText,
+                    CanEditCommandText = true,
+                    Notes = BuildNotes(item.EntryKind, commandText, item.HandlerClsid)
+                };
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"Updated command text for {item.DisplayName}.",
+                Item = refreshed
+            };
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update command text for {item.DisplayName}: {ex}", cancellationToken);
+            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
+            {
+                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
+                    "ApplyCommandTextFallback",
+                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+                    cancellationToken);
+                if (fallback is not null)
+                {
+                    return fallback with { Item = item };
+                }
+            }
+
+            return CreateFailure(ex.Message, item);
+        }
+    }
+
     /// <summary>
     /// Sets enhance Menu Item Enabled Async.
     /// </summary>
@@ -1773,9 +1895,12 @@ public sealed class ContextMenuRegistryCatalog
                 var editableText = root.EntryKind == ContextMenuEntryKind.ShellVerb
                     ? ResolveEditableText(itemKey, defaultValue)
                     : null;
-                var commandText = root.EntryKind == ContextMenuEntryKind.ShellVerb
-                    ? itemKey.OpenSubKey("command", writable: false)?.GetValue(null)?.ToString()
+                using var commandKey = root.EntryKind == ContextMenuEntryKind.ShellVerb
+                    ? itemKey.OpenSubKey("command", writable: false)
                     : null;
+                var commandText = commandKey?.GetValue(null)?.ToString();
+                var canEditCommandText = root.EntryKind == ContextMenuEntryKind.ShellVerb
+                    && CanEditCommandText(itemKey, commandKey);
 
                 var (iconPath, iconIndex) = root.EntryKind switch
                 {
@@ -1812,6 +1937,7 @@ public sealed class ContextMenuRegistryCatalog
                     BackendRegistryPath = instance.ComposeAbsolutePath(effectiveRelativePath),
                     SourceRootPath = root.StableRelativePath,
                     CommandText = commandText,
+                    CanEditCommandText = canEditCommandText,
                     HandlerClsid = handlerClsid,
                     IconPath = iconPath,
                     IconIndex = iconIndex,
@@ -2009,6 +2135,7 @@ public sealed class ContextMenuRegistryCatalog
         dirty |= UpdateIfChanged(state.BackendRegistryPath, entry.BackendRegistryPath, value => state.BackendRegistryPath = value);
         dirty |= UpdateIfChanged(state.SourceRootPath, entry.SourceRootPath, value => state.SourceRootPath = value);
         dirty |= UpdateIfChanged(state.CommandText, entry.CommandText, value => state.CommandText = value);
+        dirty |= UpdateIfChanged(state.CanEditCommandText, entry.CanEditCommandText, value => state.CanEditCommandText = value);
         dirty |= UpdateIfChanged(state.HandlerClsid, entry.HandlerClsid, value => state.HandlerClsid = value);
         dirty |= UpdateIfChanged(state.IconPath, entry.IconPath, value => state.IconPath = value);
         dirty |= UpdateIfChanged(state.IconIndex, entry.IconIndex, value => state.IconIndex = value);
@@ -2064,6 +2191,7 @@ public sealed class ContextMenuRegistryCatalog
             BackendRegistryPath = state.BackendRegistryPath,
             SourceRootPath = state.SourceRootPath,
             CommandText = state.CommandText,
+            CanEditCommandText = state.CanEditCommandText,
             HandlerClsid = state.HandlerClsid,
             IconPath = state.IconPath,
             IconIndex = state.IconIndex,
@@ -2102,6 +2230,7 @@ public sealed class ContextMenuRegistryCatalog
             BackendRegistryPath = state.BackendRegistryPath,
             SourceRootPath = state.SourceRootPath,
             CommandText = state.CommandText,
+            CanEditCommandText = state.CanEditCommandText,
             HandlerClsid = state.HandlerClsid,
             IconPath = state.IconPath,
             IconIndex = state.IconIndex,
@@ -2164,9 +2293,12 @@ public sealed class ContextMenuRegistryCatalog
             var editableText = entryKind == ContextMenuEntryKind.ShellVerb
                 ? ResolveEditableText(itemKey, defaultValue)
                 : null;
-            var commandText = entryKind == ContextMenuEntryKind.ShellVerb
-                ? itemKey.OpenSubKey("command", writable: false)?.GetValue(null)?.ToString()
+            using var commandKey = entryKind == ContextMenuEntryKind.ShellVerb
+                ? itemKey.OpenSubKey("command", writable: false)
                 : null;
+            var commandText = commandKey?.GetValue(null)?.ToString();
+            var canEditCommandText = entryKind == ContextMenuEntryKind.ShellVerb
+                && CanEditCommandText(itemKey, commandKey);
 
             var (iconPath, iconIndex) = entryKind switch
             {
@@ -2204,6 +2336,7 @@ public sealed class ContextMenuRegistryCatalog
                 BackendRegistryPath = instance.ComposeAbsolutePath(effectiveRelativePath),
                 SourceRootPath = stableRelativePath,
                 CommandText = commandText,
+                CanEditCommandText = canEditCommandText,
                 HandlerClsid = handlerClsid,
                 IconPath = iconPath,
                 IconIndex = iconIndex,
@@ -3234,6 +3367,38 @@ public sealed class ContextMenuRegistryCatalog
         return !string.IsNullOrWhiteSpace(extendedSubCommandsKey);
     }
 
+    private static bool CanEditCommandText(RegistryKey itemKey, RegistryKey? commandKey)
+    {
+        if (itemKey.GetValue("SubCommands") is not null)
+        {
+            return false;
+        }
+
+        var extendedSubCommandsKey = itemKey.GetValue("ExtendedSubCommandsKey")?.ToString();
+        if (!string.IsNullOrWhiteSpace(extendedSubCommandsKey))
+        {
+            return false;
+        }
+
+        if (commandKey?.GetValue("DelegateExecute") is not null)
+        {
+            return false;
+        }
+
+        using var dropTargetKey = itemKey.OpenSubKey("DropTarget", writable: false);
+        if (dropTargetKey?.GetValue("CLSID") is not null)
+        {
+            return false;
+        }
+
+        if (itemKey.GetValue("ExplorerCommandHandler") is not null)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool CanEditDisplayText(ContextMenuEntry item)
     {
         if (item.EntryKind != ContextMenuEntryKind.ShellVerb)
@@ -3853,6 +4018,16 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return Registry.ClassesRoot.OpenSubKey(absoluteRegistryPath, writable);
+    }
+
+    private static RegistryKey? CreateRegistrySubKey(string absoluteRegistryPath, bool writable)
+    {
+        if (TrySplitAbsoluteRegistryPath(absoluteRegistryPath, out var rootKey, out var subPath))
+        {
+            return rootKey.CreateSubKey(subPath, writable);
+        }
+
+        return Registry.ClassesRoot.CreateSubKey(absoluteRegistryPath, writable);
     }
 
     private static void DeleteRegistryKeyTree(string absoluteRegistryPath)

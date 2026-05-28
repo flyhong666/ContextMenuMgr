@@ -10,9 +10,15 @@ public static class TextInputDialog
     /// <summary>
     /// Shows async.
     /// </summary>
-    public static Task<string?> ShowAsync(string title, string label, string initialText)
+    public static Task<string?> ShowAsync(
+        string title,
+        string label,
+        string initialText,
+        double width = 500,
+        double height = 200,
+        bool multiline = false)
     {
-        var window = new TextInputFluentWindow(title, label, initialText)
+        var window = new TextInputFluentWindow(title, label, initialText, width, height, multiline)
         {
             Owner = System.Windows.Application.Current?.MainWindow
         };
@@ -26,15 +32,15 @@ public static class TextInputDialog
         /// <summary>
         /// Executes text Input Fluent Window.
         /// </summary>
-        public TextInputFluentWindow(string title, string label, string initialText)
+        public TextInputFluentWindow(string title, string label, string initialText, double width, double height, bool multiline)
         {
             Title = title;
-            Width = 500;
-            Height = 200;
-            MinWidth = 440;
-            MinHeight = 200;
+            Width = width;
+            Height = height;
+            MinWidth = Math.Min(440, width);
+            MinHeight = multiline ? 260 : 200;
             WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
-            ResizeMode = System.Windows.ResizeMode.NoResize;
+            ResizeMode = multiline ? System.Windows.ResizeMode.CanResizeWithGrip : System.Windows.ResizeMode.NoResize;
             ExtendsContentIntoTitleBar = true;
             WindowBackdropType = WindowBackdropType.Mica;
             Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["TextFillColorPrimaryBrush"];
@@ -49,7 +55,20 @@ public static class TextInputDialog
             _textBox = new System.Windows.Controls.TextBox
             {
                 Margin = new System.Windows.Thickness(16, 8, 16, 0),
-                Text = initialText
+                Text = initialText,
+                AcceptsReturn = multiline,
+                AcceptsTab = multiline,
+                TextWrapping = System.Windows.TextWrapping.NoWrap,
+                HorizontalScrollBarVisibility = multiline
+                    ? System.Windows.Controls.ScrollBarVisibility.Auto
+                    : System.Windows.Controls.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = multiline
+                    ? System.Windows.Controls.ScrollBarVisibility.Auto
+                    : System.Windows.Controls.ScrollBarVisibility.Disabled,
+                MinHeight = multiline ? 120 : 0,
+                VerticalAlignment = multiline
+                    ? System.Windows.VerticalAlignment.Stretch
+                    : System.Windows.VerticalAlignment.Top
             };
 
             var okButton = new Button
@@ -79,8 +98,8 @@ public static class TextInputDialog
                 {
                     new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto },
                     new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto },
-                    new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto },
-                    new System.Windows.Controls.RowDefinition { Height = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) }
+                    new System.Windows.Controls.RowDefinition { Height = multiline ? new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) : System.Windows.GridLength.Auto },
+                    new System.Windows.Controls.RowDefinition { Height = System.Windows.GridLength.Auto }
                 },
                 Children =
                 {

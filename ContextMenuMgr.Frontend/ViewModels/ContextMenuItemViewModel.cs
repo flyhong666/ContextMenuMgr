@@ -19,6 +19,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     private readonly Func<ContextMenuItemViewModel, bool, Task<bool>>? _setEnabledAsync;
     private readonly Func<ContextMenuItemViewModel, ContextMenuShellAttribute, bool, Task<bool>>? _setShellAttributeAsync;
     private readonly Func<ContextMenuItemViewModel, string, Task<bool>>? _setDisplayTextAsync;
+    private readonly Func<ContextMenuItemViewModel, string, Task<bool>>? _setCommandTextAsync;
     private readonly Func<ContextMenuItemViewModel, Task<bool>>? _acknowledgeItemStateAsync;
     private bool _suppressEnabledSync;
     private bool _suppressAttributeSync;
@@ -38,6 +39,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         Func<ContextMenuItemViewModel, ContextMenuShellAttribute, bool, Task<bool>>? setShellAttributeAsync = null,
         Func<ContextMenuItemViewModel, string, Task<bool>>? setDisplayTextAsync = null,
         Func<ContextMenuItemViewModel, Task<bool>>? acknowledgeItemStateAsync = null,
+        Func<ContextMenuItemViewModel, string, Task<bool>>? setCommandTextAsync = null,
         ContextMenuDeepAnalysisService? deepAnalysisService = null)
     {
         _iconPreviewService = iconPreviewService;
@@ -47,6 +49,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         _setEnabledAsync = setEnabledAsync;
         _setShellAttributeAsync = setShellAttributeAsync;
         _setDisplayTextAsync = setDisplayTextAsync;
+        _setCommandTextAsync = setCommandTextAsync;
         _acknowledgeItemStateAsync = acknowledgeItemStateAsync;
         Entry = entry;
         ApplyEntry(entry);
@@ -96,6 +99,14 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public bool HasCommandText => !string.IsNullOrWhiteSpace(Entry.CommandText);
 
+    public bool CanEditCommandText => Entry.CanEditCommandText
+        && Entry.EntryKind == ContextMenuEntryKind.ShellVerb
+        && !Entry.IsWindows11ContextMenu
+        && IsPresentInRegistry
+        && !IsDeleted;
+
+    public bool ShowReadOnlyCommandText => HasCommandText && !CanEditCommandText;
+
     public bool ShowInlineCommandText => Entry.EntryKind == ContextMenuEntryKind.ShellVerb && HasCommandText;
 
     public string? InlineCommandText => ShowInlineCommandText
@@ -114,7 +125,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         && !string.IsNullOrWhiteSpace(Entry.EditableText)
         && !string.Equals(KeyName, "open", StringComparison.OrdinalIgnoreCase);
 
-    public bool HasDetailsActions => CanEditText || HasCommandText || HasFileLocation || HasRegistryLocation || HasClsidLocation || CanSearchOnline;
+    public bool HasDetailsActions => CanEditText || CanEditCommandText || ShowReadOnlyCommandText || HasFileLocation || HasRegistryLocation || HasClsidLocation || CanSearchOnline;
 
     public bool CanSearchOnline => !string.IsNullOrWhiteSpace(DisplayName) || !string.IsNullOrWhiteSpace(KeyName);
 
@@ -153,6 +164,9 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasOtherAttributesSection))]
     [NotifyPropertyChangedFor(nameof(CanEditShellAttributes))]
     [NotifyPropertyChangedFor(nameof(HasActionFlyout))]
+    [NotifyPropertyChangedFor(nameof(CanEditCommandText))]
+    [NotifyPropertyChangedFor(nameof(ShowReadOnlyCommandText))]
+    [NotifyPropertyChangedFor(nameof(HasDetailsActions))]
     [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
     public partial bool IsDeleted { get; private set; }
 
@@ -217,6 +231,9 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasOtherAttributesSection))]
     [NotifyPropertyChangedFor(nameof(CanEditShellAttributes))]
     [NotifyPropertyChangedFor(nameof(HasActionFlyout))]
+    [NotifyPropertyChangedFor(nameof(CanEditCommandText))]
+    [NotifyPropertyChangedFor(nameof(ShowReadOnlyCommandText))]
+    [NotifyPropertyChangedFor(nameof(HasDetailsActions))]
     [NotifyPropertyChangedFor(nameof(CanReviewApproval))]
     [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
     public partial bool IsPresentInRegistry { get; private set; }
@@ -411,6 +428,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public string DetailsChangeTextLabel => _localization.Translate("DetailsChangeText");
 
+    public string DetailsChangeCommandLabel => _localization.Translate("DetailsChangeCommand");
+
     public string DetailsCommandTextLabel => _localization.Translate("DetailsCommandText");
 
     public string DetailsFilePropertiesLabel => _localization.Translate("DetailsFileProperties");
@@ -483,6 +502,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasFileLocation));
         OnPropertyChanged(nameof(HasRegistryLocation));
         OnPropertyChanged(nameof(HasCommandText));
+        OnPropertyChanged(nameof(CanEditCommandText));
+        OnPropertyChanged(nameof(ShowReadOnlyCommandText));
         OnPropertyChanged(nameof(ShowInlineCommandText));
         OnPropertyChanged(nameof(InlineCommandText));
         OnPropertyChanged(nameof(CanDeepAnalyzeMenuItem));
@@ -695,6 +716,38 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     private Task ShowCommandTextAsync() => _actionsService.ShowCommandTextAsync(this);
 
     [RelayCommand]
+    private async Task ChangeCommandTextAsync()
+    {
+        if (!CanEditCommandText || _setCommandTextAsync is null)
+        {
+            return;
+        }
+
+        var updatedCommand = await TextInputDialog.ShowAsync(
+            _localization.Translate("DetailsChangeCommand"),
+            _localization.Translate("ItemCommandLabel"),
+            Entry.CommandText ?? string.Empty,
+            width: 720,
+            height: 320,
+            multiline: true);
+
+        if (updatedCommand is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(updatedCommand))
+        {
+            await FrontendMessageBox.ShowErrorAsync(
+                _localization.Translate("CommandCannotBeEmpty"),
+                _localization.Translate("DetailsChangeCommand"));
+            return;
+        }
+
+        await _setCommandTextAsync(this, updatedCommand);
+    }
+
+    [RelayCommand]
     private Task OpenFilePropertiesAsync() => _actionsService.OpenFilePropertiesAsync(this);
 
     [RelayCommand]
@@ -790,6 +843,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(NeverDefaultLabel));
         OnPropertyChanged(nameof(ShowAsDisabledIfHiddenLabel));
         OnPropertyChanged(nameof(DetailsChangeTextLabel));
+        OnPropertyChanged(nameof(DetailsChangeCommandLabel));
         OnPropertyChanged(nameof(DetailsSearchOnline));
         OnPropertyChanged(nameof(DetailsCommandTextLabel));
         OnPropertyChanged(nameof(DetailsFilePropertiesLabel));

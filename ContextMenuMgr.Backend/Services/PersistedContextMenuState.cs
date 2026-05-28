@@ -58,6 +58,11 @@ public sealed class PersistedContextMenuState
     public string? CommandText { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether command text can be edited.
+    /// </summary>
+    public bool CanEditCommandText { get; set; }
+
+    /// <summary>
     /// Gets or sets the handler Clsid.
     /// </summary>
     public string? HandlerClsid { get; set; }
@@ -174,6 +179,7 @@ public sealed class PersistedContextMenuState
             BackendRegistryPath = BackendRegistryPath,
             SourceRootPath = SourceRootPath,
             CommandText = CommandText,
+            CanEditCommandText = CanEditCommandText,
             HandlerClsid = HandlerClsid,
             IconPath = IconPath,
             IconIndex = IconIndex,
@@ -214,6 +220,7 @@ public sealed class PersistedContextMenuState
             BackendRegistryPath = entry.BackendRegistryPath,
             SourceRootPath = entry.SourceRootPath,
             CommandText = entry.CommandText,
+            CanEditCommandText = entry.CanEditCommandText,
             HandlerClsid = entry.HandlerClsid,
             IconPath = entry.IconPath,
             IconIndex = entry.IconIndex,

@@ -62,6 +62,11 @@ public interface IBackendClient : IAsyncDisposable
         string textValue,
         CancellationToken cancellationToken);
 
+    Task<ContextMenuEntry?> SetCommandTextAsync(
+        string itemId,
+        string commandText,
+        CancellationToken cancellationToken);
+
     Task<bool> GetRegistryProtectionSettingAsync(CancellationToken cancellationToken);
 
     Task<bool> SetRegistryProtectionSettingAsync(bool enable, CancellationToken cancellationToken);

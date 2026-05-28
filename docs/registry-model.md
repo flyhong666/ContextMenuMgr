@@ -62,6 +62,7 @@
 | `BackendRegistryPath` | 后端实际操作时使用的位置，可能不同于展示路径。 |
 | `SourceRootPath` | 扫描根路径，用于判断来源和后续操作分流。 |
 | `CommandText` | `shell` verb 的命令行，Shell Extension 通常为空。 |
+| `CanEditCommandText` | 标识普通 legacy ShellVerb 是否允许编辑 `<verb>\command` 默认值；多命令父级、DelegateExecute、DropTarget、ExplorerCommandHandler、Shell Extension 和 Win11 项为 false。 |
 | `HandlerClsid` | `shellex` handler 的 CLSID。 |
 | `FilePath` | 解析出的命令程序或 COM server 路径，best-effort。 |
 | `IconPath` / `IconIndex` | 图标路径和索引，best-effort。 |
@@ -104,6 +105,8 @@
 | Windows 自带标记 | `Extended`、`NoWorkingDirectory`、`NeverDefault` 等属于属性，不等于禁用状态。 |
 
 不要承诺所有菜单项都能用同一种方式开关。某些项由第三方安装器、系统策略或 COM handler 自身逻辑控制，项目只能 best-effort 地修改注册表状态并记录结果。
+
+普通 ShellVerb 的命令文本编辑不解析命令行、不拆分程序和参数、也不重写引号；`SetCommandText` 只把用户输入的字符串原样写到 `<verb>\command` 的默认 `REG_SZ`。后端会先检查 `CanEditCommandText` 和当前注册表形态，并经过 Registry Write Protection preflight；不支持 Shell Extension、Windows 11 packaged context menu、`SubCommands` / `ExtendedSubCommandsKey` 父级、`DelegateExecute`、`DropTarget\CLSID` 或 `ExplorerCommandHandler` 项。
 
 ## 7. 删除、恢复与备份
 

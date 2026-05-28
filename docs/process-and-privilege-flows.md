@@ -156,6 +156,7 @@ ProbeHost 的边界：
 | 传统菜单启用/禁用 | 链路 A | 可能需要 | 否 | `SetEnabled` -> `ApplyDesiredStateAsync`，用户级项不能写 SYSTEM 的 `HKCU`。 |
 | 传统菜单删除/恢复 | 链路 A | 可能需要 | 否 | 删除前用 `RegistryBackupService` 导出 `.reg`。 |
 | 编辑菜单显示名 | 链路 A | 可能需要 | 否 | `SetDisplayText`，受 Registry Write Protection preflight 影响。 |
+| 编辑传统 ShellVerb 命令文本 | 链路 A | 可能需要 | 否 | `SetCommandText` -> `ApplyCommandTextAsync`，只允许普通 legacy ShellVerb 写 `<verb>\command` 默认值，不处理 Shell Extension、Win11、SubCommands、DelegateExecute、DropTarget 或 ExplorerCommandHandler。 |
 | Registry Write Protection 设置 | 链路 A | 否 | 否 | 作用于受监控传统菜单根的 ACL。 |
 | Win11 新菜单项禁用/恢复 | 链路 A | 是 | 否 | user blocked list 必须带 `BackendUserContext`，机器级另有 HKLM blocked list。 |
 | Win11 全局恢复经典菜单设置 | 链路 A | 是 | 否 | 写 `HKEY_USERS\<sid>\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32`，不得写服务 `HKCU` 或 HKLM；生效需要重启 Explorer 或重新登录。 |

@@ -102,7 +102,7 @@ ContextMenuRegistryMonitor 轮询快照
 
 ## 5. 传统右键菜单实现
 
-传统菜单由 `ContextMenuRegistryCatalog` 枚举 `MonitoredRoots`。核心类型是 `ContextMenuEntry`，它记录 `Category`、`EntryKind`、`RegistryPath`、`BackendRegistryPath`、`SourceRootPath`、`CommandText`、`HandlerClsid`、启用状态、删除状态、审核状态和一致性问题。
+传统菜单由 `ContextMenuRegistryCatalog` 枚举 `MonitoredRoots`。核心类型是 `ContextMenuEntry`，它记录 `Category`、`EntryKind`、`RegistryPath`、`BackendRegistryPath`、`SourceRootPath`、`CommandText`、`CanEditCommandText`、`HandlerClsid`、启用状态、删除状态、审核状态和一致性问题。
 
 当前传统菜单主要覆盖两类注册表模型：
 
@@ -110,6 +110,8 @@ ContextMenuRegistryMonitor 轮询快照
 | --- | --- | --- |
 | `shell` verb | `*\shell`、`Directory\Background\shell` | 读取命令、图标和属性；通过移动/改写相关键和值实现启用/禁用和属性修改。 |
 | `shellex\ContextMenuHandlers` | `*\shellex\ContextMenuHandlers` | 读取 handler CLSID；禁用通常涉及 disabled container 或 blocked shell extensions。 |
+
+普通 legacy `shell` verb 的命令文本编辑通过 `PipeCommand.SetCommandText` 进入 `ContextMenuRegistryCatalog.ApplyCommandTextAsync`，写 `<verb>\command` 的默认 `REG_SZ`。后端只为没有 `SubCommands` / `ExtendedSubCommandsKey`、没有 `DelegateExecute`、没有 `DropTarget\CLSID`、没有 `ExplorerCommandHandler` 的传统 ShellVerb 设置 `CanEditCommandText=true`；Shell Extension、Windows 11 packaged context menu 和多命令父级不走这条编辑路径。
 
 `ContextMenuStateStore` 保存后端状态，不只是缓存。它用于标记 pending approval、删除备份、删除时间、被抑制的检测等。`RegistryBackupService` 在删除前调用 `reg.exe export` 保存 `.reg`，恢复时调用 `reg.exe import`。
 

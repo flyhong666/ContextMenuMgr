@@ -545,6 +545,45 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         return false;
     }
 
+    public async Task<bool> SetCommandTextAsync(ContextMenuItemViewModel item, string commandText)
+    {
+        try
+        {
+            if (ProtectedMenuItemGuard.IsProtectedOpenItem(item)
+                && !await ProtectedMenuItemGuard.ConfirmAsync(_localization))
+            {
+                return false;
+            }
+
+            if (RegistryProtectionDialog.ShouldBlockNormalContextMenuRegistryMutation(_settingsService, item.Entry))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var updated = await _backendClient.SetCommandTextAsync(item.Id, commandText, cts.Token);
+            if (updated is not null)
+            {
+                UpsertItem(updated);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Error("ContextMenuWorkspaceService", ex, $"SetCommandTextAsync failed for {item.Id}.");
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return false;
+            }
+
+            ConnectionStatus = _localization.Format("ItemUpdateFailedStatus", item.DisplayName, ex.Message);
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Gets registry Protection Setting Async.
     /// </summary>
@@ -766,7 +805,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             }
             else
             {
-                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, _deepAnalysisService));
+                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService));
             }
         }
 
@@ -863,7 +902,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             return;
         }
 
-        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, _deepAnalysisService));
+        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService));
     }
 
     private void RemoveItem(string itemId)
