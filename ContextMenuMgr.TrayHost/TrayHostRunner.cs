@@ -19,7 +19,6 @@ internal sealed class TrayHostRunner : IDisposable
     private bool _ownsMutex;
 
     private NativeTrayHost? _trayHost;
-    private SystemToastNotificationService? _systemToastNotificationService;
 
     private TrayHostControlServer? _controlServer;
     private CancellationTokenSource? _controlServerCts;
@@ -54,12 +53,6 @@ internal sealed class TrayHostRunner : IDisposable
         try
         {
             var trayIconPath = ResolveTrayIconPath();
-
-            _systemToastNotificationService = new SystemToastNotificationService();
-            if (!ProtocolActivationRegistrar.TryRegister(AppContext.BaseDirectory, out var protocolRegistrationError))
-            {
-                _ = _logger.LogAsync(RuntimeLogLevel.Warning, $"Protocol activation registration failed: {protocolRegistrationError}");
-            }
 
             // The tray host only surfaces lightweight session-side UI. All real
             // state changes still flow through backend notifications and commands.
@@ -105,9 +98,6 @@ internal sealed class TrayHostRunner : IDisposable
         _controlServerCts?.Dispose();
         _controlServerCts = null;
         _controlServer = null;
-
-        _systemToastNotificationService?.Dispose();
-        _systemToastNotificationService = null;
 
         _trayHost?.Dispose();
         _trayHost = null;
@@ -198,11 +188,6 @@ internal sealed class TrayHostRunner : IDisposable
 
         var title = _localization.Translate("Tray.PendingApprovalTitle");
         var message = _localization.Format("Tray.PendingApprovalMessage", notification.Item.DisplayName);
-
-        if (_systemToastNotificationService?.TryShowNotification(title, message, notification.Item.Id) == true)
-        {
-            return;
-        }
 
         _trayHost?.ShowNotification(title, message);
     }

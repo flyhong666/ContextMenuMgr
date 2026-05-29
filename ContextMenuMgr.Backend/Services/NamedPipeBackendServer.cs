@@ -358,7 +358,10 @@ public sealed class NamedPipeBackendServer
             PipeCommand.GetRegistryProtectionSetting
                 => await _catalog.GetRegistryProtectionSettingAsync(cancellationToken),
             PipeCommand.SetRegistryProtectionSetting when request.Enable is not null
-                => await _catalog.SetRegistryProtectionSettingAsync(request.Enable.Value, cancellationToken),
+                => await _catalog.SetRegistryProtectionSettingAsync(
+                    request.Enable.Value,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken),
+                    cancellationToken),
             PipeCommand.ApplyDecision when request.ItemId is not null && request.Decision is not null
                 => await HandleApplyDecisionAsync(request, stream, cancellationToken),
             PipeCommand.DeleteItem when request.ItemId is not null
@@ -491,8 +494,8 @@ public sealed class NamedPipeBackendServer
         return await _catalog.ApplyDesiredStateAsync(
             request.ItemId ?? string.Empty,
             request.Enable.GetValueOrDefault(),
-            userContext,
-            cancellationToken);
+            cancellationToken,
+            userContext);
     }
 
     private async Task<PipeResponse> HandleApplyDecisionAsync(
@@ -504,8 +507,8 @@ public sealed class NamedPipeBackendServer
         return await _catalog.ApplyDecisionAsync(
             request.ItemId ?? string.Empty,
             request.Decision.GetValueOrDefault(),
-            userContext,
-            cancellationToken);
+            cancellationToken,
+            userContext);
     }
 
     private async Task<PipeResponse> HandleSetWin11BlockedItemAsync(
@@ -621,7 +624,7 @@ public sealed class NamedPipeBackendServer
             result: "started",
             cancellationToken);
 
-        var items = await _catalog.GetWindows11SnapshotAsync(userContext, cancellationToken);
+        var items = await _catalog.GetWindows11SnapshotAsync(cancellationToken, userContext);
         await LogWin11CommandAsync(
             PipeCommand.GetWin11ContextMenuSnapshot,
             userContext,

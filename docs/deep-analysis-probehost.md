@@ -110,7 +110,9 @@ ProbeHost 在枚举 `HMENU` 时通过 `MENUITEMINFO.hbmpItem` best-effort 读取
 
 ## 9. 构建与部署注意事项
 
-ProbeHost 必须随前端部署多架构目录。当前 `ContextMenuMgr.Frontend.csproj` 会用 MSBuild 构建 native C++ ProbeHost，并复制：
+ProbeHost 必须随前端部署多架构目录。当前 `ContextMenuMgr.Frontend.csproj` 会用 MSBuild 构建 native C++ ProbeHost。Debug 本地开发默认构建并复制 x86 / x64，以便未安装 ARM64 C++ 工具链的开发机可以直接运行前端；Release / Beta 和发布构建仍默认构建并复制 x86 / x64 / arm64。需要在 Debug 中强制构建三架构时可传入 `-p:NativeProbeHostPlatforms=Win32,x64,ARM64`。
+
+构建后复制：
 
 - `ContextMenuMgr.ProbeHost.exe`
 

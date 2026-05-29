@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Configurations>Debug;Release;Beta</Configurations>
@@ -27,6 +27,10 @@
     <NativeProbeHostBuildScript>$(MSBuildThisFileDirectory)..\Scripts\Build-NativeProbeHostArtifacts.ps1</NativeProbeHostBuildScript>
     <NlohmannJsonLicense>$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\third_party\nlohmann\nlohmann-json-LICENSE.MIT</NlohmannJsonLicense>
     <ForceRebuildNativeProbeHost Condition="'$(ForceRebuildNativeProbeHost)' == ''">false</ForceRebuildNativeProbeHost>
+    <NativeProbeHostPlatforms Condition="'$(NativeProbeHostPlatforms)' == '' and '$(Configuration)' == 'Debug'">Win32,x64</NativeProbeHostPlatforms>
+    <NativeProbeHostPlatforms Condition="'$(NativeProbeHostPlatforms)' == ''">Win32,x64,ARM64</NativeProbeHostPlatforms>
+    <NativeProbeHostVerificationLabels Condition="'$(NativeProbeHostVerificationLabels)' == '' and '$(NativeProbeHostPlatforms)' == 'Win32,x64'">x86 x64</NativeProbeHostVerificationLabels>
+    <NativeProbeHostVerificationLabels Condition="'$(NativeProbeHostVerificationLabels)' == ''">x86 x64 arm64</NativeProbeHostVerificationLabels>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Beta'">
@@ -41,6 +45,10 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.8" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="WPF-UI.DependencyInjection" Version="4.3.0" />
@@ -63,27 +71,19 @@
     <NativeProbeHostIncrementalInput Include="$(MSBuildThisFileDirectory)..\ContextMenuMgr.ProbeHost\third_party\nlohmann\json.hpp" />
     <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)x86\ContextMenuMgr.ProbeHost.exe" />
     <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)x64\ContextMenuMgr.ProbeHost.exe" />
-    <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" />
+    <NativeProbeHostIncrementalOutput Include="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" Condition="$(NativeProbeHostPlatforms.Contains('ARM64'))" />
   </ItemGroup>
 
   <Target Name="_RunNativeProbeHostArtifactBuild" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
-    <Message Importance="high" Text="Preparing native ProbeHost artifacts: x86, x64, arm64" />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platforms &quot;Win32,x64,ARM64&quot; -OutputRoot &quot;$(NativeProbeHostOutputRoot).&quot; -IntermediateRoot &quot;$(NativeProbeHostIntermediateRoot).&quot; -ForceRebuild &quot;$(ForceRebuildNativeProbeHost)&quot;" />
+    <Message Importance="high" Text="Preparing native ProbeHost artifacts: $(NativeProbeHostVerificationLabels)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(NativeProbeHostBuildScript)&quot; -Project &quot;$(NativeProbeHostProject)&quot; -Configuration &quot;$(Configuration)&quot; -Platforms &quot;$(NativeProbeHostPlatforms)&quot; -OutputRoot &quot;$(NativeProbeHostOutputRoot).&quot; -IntermediateRoot &quot;$(NativeProbeHostIntermediateRoot).&quot; -ForceRebuild &quot;$(ForceRebuildNativeProbeHost)&quot;" />
   </Target>
 
-  <Target Name="BuildNativeProbeHostArtifacts"
-          AfterTargets="Build"
-          BeforeTargets="CopyBackendArtifacts"
-          Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and '$(ForceRebuildNativeProbeHost)' != 'true'"
-          Inputs="@(NativeProbeHostIncrementalInput)"
-          Outputs="@(NativeProbeHostIncrementalOutput)">
+  <Target Name="BuildNativeProbeHostArtifacts" AfterTargets="Build" BeforeTargets="CopyBackendArtifacts" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and '$(ForceRebuildNativeProbeHost)' != 'true'" Inputs="@(NativeProbeHostIncrementalInput)" Outputs="@(NativeProbeHostIncrementalOutput)">
     <CallTarget Targets="_RunNativeProbeHostArtifactBuild" />
   </Target>
 
-  <Target Name="ForceBuildNativeProbeHostArtifacts"
-          AfterTargets="Build"
-          BeforeTargets="CopyBackendArtifacts"
-          Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and '$(ForceRebuildNativeProbeHost)' == 'true'">
+  <Target Name="ForceBuildNativeProbeHostArtifacts" AfterTargets="Build" BeforeTargets="CopyBackendArtifacts" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and '$(ForceRebuildNativeProbeHost)' == 'true'">
     <CallTarget Targets="_RunNativeProbeHostArtifactBuild" />
   </Target>
 
@@ -100,7 +100,7 @@
       <TrayHostArtifacts Include="$(MSBuildThisFileDirectory)..\artifacts\trayhost\$(Configuration)\net10.0-windows10.0.17763.0\**\*.*" />
       <NativeProbeHostX86Artifact Include="$(NativeProbeHostOutputRoot)x86\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
       <NativeProbeHostX64Artifact Include="$(NativeProbeHostOutputRoot)x64\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
-      <NativeProbeHostArm64Artifact Include="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'" />
+      <NativeProbeHostArm64Artifact Include="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true' and $(NativeProbeHostPlatforms.Contains('ARM64'))" />
     </ItemGroup>
 
     <Copy SourceFiles="@(BackendArtifacts)" DestinationFiles="@(BackendArtifacts->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
@@ -114,9 +114,9 @@
   <Target Name="VerifyNativeProbeHostArtifacts" AfterTargets="CopyBackendArtifacts" Condition="'$(SkipProbeHostArchitectureBuild)' != 'true'">
     <Error Condition="!Exists('$(OutDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe')" Text="x86 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
     <Error Condition="!Exists('$(OutDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe')" Text="x64 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
-    <Error Condition="!Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe')" Text="arm64 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="$(NativeProbeHostPlatforms.Contains('ARM64')) and !Exists('$(OutDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe')" Text="arm64 native ProbeHost output is missing ContextMenuMgr.ProbeHost.exe." />
     <Error Condition="!Exists('$(OutDir)ThirdPartyNotices\nlohmann-json-LICENSE.MIT')" Text="nlohmann/json license notice is missing from ThirdPartyNotices." />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProbeHostArchitectureVerifier)&quot; -Root &quot;$(OutDir)ProbeHost&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProbeHostArchitectureVerifier)&quot; -Root &quot;$(OutDir)ProbeHost&quot; -Labels $(NativeProbeHostVerificationLabels)" />
   </Target>
 
   <Target Name="CopyNativeProbeHostPublishArtifacts" AfterTargets="Publish" Condition="'$(PublishDir)' != '' and '$(SkipProbeHostArchitectureBuild)' != 'true'">

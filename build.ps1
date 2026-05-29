@@ -244,7 +244,8 @@ while ($pending.Count -gt 0 -or $running.Count -gt 0) {
     }
 
     if ($stopScheduling -and $running.Count -gt 0) {
-        foreach ($item in @($running)) {
+        $runningSnapshot = [object[]] $running.ToArray()
+        foreach ($item in $runningSnapshot) {
             if (-not $item.Process.HasExited) {
                 Write-Host "Stopping $($item.TargetName) after build failure. Log: $($item.LogPath)" -ForegroundColor Yellow
                 Stop-ProcessTree -ProcessId $item.Process.Id

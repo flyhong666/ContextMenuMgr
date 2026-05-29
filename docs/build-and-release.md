@@ -52,23 +52,23 @@ git submodule update --init --recursive
 
 ## 4. Debug 本地构建
 
-`ContextMenuMgr.Frontend.csproj` 在普通 framework-dependent build 中会负责准备运行所需辅助产物：
+`ContextMenuMgr.Frontend.csproj` 在普通 framework-dependent build 中会负责准备运行所需辅助产物。Debug 本地开发默认只构建 `Win32,x64` ProbeHost，避免未安装 ARM64 C++ 工具链的 x64 开发机无法 `dotnet run`；Release / Beta 和发布构建仍默认构建 `Win32,x64,ARM64`。
 
 ```text
 Frontend build
--> 使用 MSBuild 构建 native C++ ProbeHost Win32 / x64 / ARM64
+-> 使用 MSBuild 构建 native C++ ProbeHost（Debug 默认 Win32 / x64；Release / Beta 默认 Win32 / x64 / ARM64）
 -> 复制 Backend artifacts
 -> 复制 TrayHost artifacts
--> 复制 ProbeHost\x86 / x64 / arm64 下的 ContextMenuMgr.ProbeHost.exe
+-> 复制已构建 ProbeHost 架构目录下的 ContextMenuMgr.ProbeHost.exe
 -> 复制 ThirdPartyNotices\nlohmann-json-LICENSE.MIT
 -> 执行 Verify-ProbeHostArchitecture.ps1
 ```
 
-ProbeHost 是单文件 native exe。前端项目不再检查 `ContextMenuMgr.ProbeHost.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录中的 `ContextMenuMgr.Contracts.dll`。本地构建要求安装 Visual Studio Build Tools C++ workload、Windows SDK；如果要构建 arm64 ProbeHost，还需要 ARM64 工具链。
+ProbeHost 是单文件 native exe。前端项目不再检查 `ContextMenuMgr.ProbeHost.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录中的 `ContextMenuMgr.Contracts.dll`。本地构建要求安装 Visual Studio Build Tools C++ workload、Windows SDK；如果要构建 arm64 ProbeHost，还需要 ARM64 工具链。已安装 ARM64 工具链的开发机可用 `-p:NativeProbeHostPlatforms=Win32,x64,ARM64` 强制 Debug 也构建三架构。
 
-普通 `dotnet build` / `dotnet run` 不会无条件清理 native ProbeHost 输出。`ContextMenuMgr.Frontend.csproj` 会先用 MSBuild incremental build 检查 `ContextMenuMgr.ProbeHost.vcxproj`、`src\**\*.cpp`、`src\**\*.h` 和 `third_party\nlohmann\json.hpp` 是否晚于三个架构的目标 exe；全部最新时，`BuildNativeProbeHostArtifacts` target 会直接跳过，不启动 PowerShell。
+普通 `dotnet build` / `dotnet run` 不会无条件清理 native ProbeHost 输出。`ContextMenuMgr.Frontend.csproj` 会先用 MSBuild incremental build 检查 `ContextMenuMgr.ProbeHost.vcxproj`、`src\**\*.cpp`、`src\**\*.h` 和 `third_party\nlohmann\json.hpp` 是否晚于当前 `NativeProbeHostPlatforms` 对应架构的目标 exe；全部最新时，`BuildNativeProbeHostArtifacts` target 会直接跳过，不启动 PowerShell。
 
-如果 target 需要运行，`Scripts\Build-NativeProbeHostArtifacts.ps1` 会在一次 PowerShell 进程中处理 Win32 / x64 / ARM64，并且只解析一次 `MSBuild.exe` 路径。脚本仍会对每个架构单独检查目标 `ContextMenuMgr.ProbeHost.exe` 是否最新；如果某个架构已是最新，会输出该 label 的 `Skipped=True` 并跳过该架构的 MSBuild。需要强制重建时可传入：
+如果 target 需要运行，`Scripts\Build-NativeProbeHostArtifacts.ps1` 会在一次 PowerShell 进程中处理 `NativeProbeHostPlatforms` 指定的平台，并且只解析一次 `MSBuild.exe` 路径。脚本仍会对每个架构单独检查目标 `ContextMenuMgr.ProbeHost.exe` 是否最新；如果某个架构已是最新，会输出该 label 的 `Skipped=True` 并跳过该架构的 MSBuild。需要强制重建时可传入：
 
 ```powershell
 dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj -p:ForceRebuildNativeProbeHost=true
@@ -92,6 +92,10 @@ artifacts\probehost-native\<Configuration>\obj\arm64\
 ## 5. Release 发布
 
 `build.ps1` 负责组合多个平台和分发模式。`Scripts/Build.Common.psm1` 中的关键步骤包括：
+
+`build.ps1` 会按 `MaxParallel` 并行启动多个 `Scripts/Build-Target.ps1` 子进程。任一目标失败后会停止继续调度，并对仍在运行的目标取 `.ToArray()` 快照后逐个停止，避免在 PowerShell 5.1 中直接用 `@(...)` 包装 generic list 时触发类型转换异常。
+
+并行发布目标会给 `dotnet restore/publish` 传入目标专属的 `BaseOutputPath` 和 `--artifacts-path`。辅助项目的 `OutputPath` 必须从 `$(BaseOutputPath)` 派生；不要硬编码回仓库级共享目录，否则 x86/x64/arm64 同时发布时可能抢写同一个 `.runtimeconfig.json`、`.deps.json` 或 apphost。
 
 | 步骤 | 说明 |
 | --- | --- |

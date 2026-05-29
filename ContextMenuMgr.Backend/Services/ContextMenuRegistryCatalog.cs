@@ -9,7 +9,6 @@ using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Diagnostics;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -71,7 +70,6 @@ public sealed class ContextMenuRegistryCatalog
     private readonly RegistryBackupService _backupService;
     private readonly BackendProtectionSettingsStore _protectionSettingsStore;
     private readonly Windows11ContextMenuCatalog _windows11Catalog;
-    private readonly SemaphoreSlim _registryWriteProtectionGate = new(1, 1);
     private volatile bool _interactiveSessionObserved;
     private volatile bool _interactiveSessionSnapshotSettled;
 
@@ -88,16 +86,16 @@ public sealed class ContextMenuRegistryCatalog
         _stateStore = stateStore;
         _backupService = backupService;
         _protectionSettingsStore = protectionSettingsStore;
-        _windows11Catalog = new Windows11ContextMenuCatalog(logger);
+        _windows11Catalog = new Windows11ContextMenuCatalog();
     }
 
     /// <summary>
     /// Gets snapshot Async.
     /// </summary>
-    public async Task<IReadOnlyList<ContextMenuEntry>> GetSnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ContextMenuEntry>> GetSnapshotAsync(CancellationToken cancellationToken = default, BackendUserContext? userContext = null)
     {
         return await BuildSnapshotAsync(
-            await EnumerateActualEntriesAsync(cancellationToken),
+            await EnumerateActualEntriesAsync(cancellationToken, userContext),
             static state => MonitoredStableRootPaths.Contains(state.SourceRootPath) || state.IsWindows11ContextMenu,
             persistDiscoveredStates: true,
             persistSnapshotUpdates: true,
@@ -169,117 +167,13 @@ public sealed class ContextMenuRegistryCatalog
             .ToArray();
     }
 
-    public async Task<T> RunWithRegistryWriteProtectionTemporarilyDisabledAsync<T>(
-        IReadOnlyCollection<string> relativeRootPaths,
-        Func<CancellationToken, Task<T>> operation,
-        CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
+        CancellationToken cancellationToken = default,
+        BackendUserContext? userContext = null)
     {
-        var protectedRoots = NormalizeRegistryWriteProtectionRelativePaths(relativeRootPaths);
-        if (protectedRoots.Count == 0)
-        {
-            return await operation(cancellationToken);
-        }
-
-        var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
-        if (!settings.LockNewContextMenuItems)
-        {
-            return await operation(cancellationToken);
-        }
-
-        var rootsText = string.Join(";", protectedRoots);
-        await _registryWriteProtectionGate.WaitAsync(cancellationToken);
-
-        T? result = default;
-        var operationCompleted = false;
-        InvalidOperationException? unlockFailure = null;
-        string? relockFailureMessage = null;
-
-        try
-        {
-            await _logger.LogAsync($"RegistryWriteProtectionTemporaryUnlockStart: Roots={rootsText}.", cancellationToken);
-            var unlockErrors = ApplyRegistryWriteProtectionToRoots(protectedRoots, enable: false);
-            if (unlockErrors.Count > 0)
-            {
-                var detail = string.Join(Environment.NewLine, unlockErrors);
-                unlockFailure = new InvalidOperationException(
-                    $"Unable to temporarily disable registry write protection for app-owned operation.{Environment.NewLine}{detail}");
-                await _logger.LogAsync(
-                    RuntimeLogLevel.Warning,
-                    $"RegistryWriteProtectionTemporaryUnlockEnd: Roots={rootsText}, Result=Failure.{Environment.NewLine}{detail}",
-                    cancellationToken);
-            }
-            else
-            {
-                await _logger.LogAsync($"RegistryWriteProtectionTemporaryUnlockEnd: Roots={rootsText}, Result=Success.", cancellationToken);
-                result = await operation(cancellationToken);
-                operationCompleted = true;
-            }
-        }
-        finally
-        {
-            try
-            {
-                await _logger.LogAsync($"RegistryWriteProtectionTemporaryRelockStart: Roots={rootsText}.", CancellationToken.None);
-                var relockErrors = ApplyRegistryWriteProtectionToRoots(protectedRoots, enable: true);
-                if (relockErrors.Count > 0)
-                {
-                    relockFailureMessage = string.Join(Environment.NewLine, relockErrors);
-                    await _logger.LogAsync(
-                        RuntimeLogLevel.Error,
-                        $"RegistryWriteProtectionTemporaryRelockFailed: Roots={rootsText}.{Environment.NewLine}{relockFailureMessage}",
-                        CancellationToken.None);
-                    await _logger.LogAsync(
-                        RuntimeLogLevel.Error,
-                        $"RegistryWriteProtectionTemporaryRelockEnd: Roots={rootsText}, Result=Failure.",
-                        CancellationToken.None);
-                }
-                else
-                {
-                    await _logger.LogAsync($"RegistryWriteProtectionTemporaryRelockEnd: Roots={rootsText}, Result=Success.", CancellationToken.None);
-                }
-            }
-            catch (Exception ex)
-            {
-                relockFailureMessage = ex.Message;
-                await _logger.LogAsync(
-                    RuntimeLogLevel.Error,
-                    $"RegistryWriteProtectionTemporaryRelockFailed: Roots={rootsText}, Exception={ex}",
-                    CancellationToken.None);
-                await _logger.LogAsync(
-                    RuntimeLogLevel.Error,
-                    $"RegistryWriteProtectionTemporaryRelockEnd: Roots={rootsText}, Result=Failure.",
-                    CancellationToken.None);
-            }
-            finally
-            {
-                _registryWriteProtectionGate.Release();
-            }
-        }
-
-        if (unlockFailure is not null)
-        {
-            throw unlockFailure;
-        }
-
-        if (operationCompleted
-            && !string.IsNullOrWhiteSpace(relockFailureMessage)
-            && result is PipeResponse response)
-        {
-            var warningMessage = string.IsNullOrWhiteSpace(response.Message)
-                ? $"Warning: registry write protection relock failed. {relockFailureMessage}"
-                : $"{response.Message}{Environment.NewLine}Warning: registry write protection relock failed. {relockFailureMessage}";
-            result = (T)(object)(response with { Message = warningMessage });
-        }
-
-        return operationCompleted
-            ? result!
-            : throw new InvalidOperationException("Unable to temporarily disable registry write protection for app-owned operation.");
-    }
-
-    private async Task<bool> IsRegistryWriteProtectionEnabledAsync(CancellationToken cancellationToken)
-    {
-        var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
-        return settings.LockNewContextMenuItems;
+        return _windows11Catalog.IsSupported
+            ? await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext)
+            : [];
     }
 
     internal async Task<PipeResponse?> CreateRegistryWriteProtectionPreflightFailureAsync(
@@ -287,7 +181,8 @@ public sealed class ContextMenuRegistryCatalog
         IEnumerable<string?> targetPaths,
         CancellationToken cancellationToken)
     {
-        if (!await IsRegistryWriteProtectionEnabledAsync(cancellationToken))
+        var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
+        if (!settings.LockNewContextMenuItems)
         {
             return null;
         }
@@ -310,15 +205,6 @@ public sealed class ContextMenuRegistryCatalog
             RegistryProtectionEnabled = true,
             Message = "Registry write protection is enabled. Please disable the context-menu add/modify protection in Settings before editing, adding, disabling, or deleting context menu items."
         };
-    }
-
-    public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
-        BackendUserContext? userContext,
-        CancellationToken cancellationToken = default)
-    {
-        return _windows11Catalog.IsSupported
-            ? await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext)
-            : [];
     }
 
     private async Task<IReadOnlyList<ContextMenuEntry>> BuildSnapshotAsync(
@@ -509,11 +395,17 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<PipeResponse> ApplyDesiredStateAsync(
         string itemId,
         bool enable,
-        BackendUserContext? userContext,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null,
+        ContextMenuEntry? fallbackItem = null)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken);
+        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            item = TryUseSceneFallbackItem(itemId, fallbackItem);
+        }
+
         if (item is null)
         {
             return CreateFailure($"Menu item '{itemId}' was not found.");
@@ -522,29 +414,6 @@ public sealed class ContextMenuRegistryCatalog
         if (item.IsDeleted)
         {
             return CreateFailure($"Menu item '{item.DisplayName}' is deleted. Undo the deletion before changing its state.");
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        await _logger.LogAsync(
-            "ApplyDesiredStateStart: "
-            + $"ItemId={item.Id}, DisplayName={item.DisplayName}, EntryKind={item.EntryKind}, "
-            + $"IsWindows11ContextMenu={item.IsWindows11ContextMenu}, Enable={enable}, "
-            + $"RegistryPath={item.RegistryPath}, BackendRegistryPath={item.BackendRegistryPath}, "
-            + $"SourceRootPath={item.SourceRootPath}, HandlerClsid={item.HandlerClsid}, "
-            + $"UserSid={DiagnosticLogFormatter.FormatSid(userContext)}.",
-            cancellationToken);
-
-        if (IsNormalContextMenuRegistryItem(item))
-        {
-            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                enable ? "EnableItem" : "DisableItem",
-                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                cancellationToken);
-
-            if (preflight is not null)
-            {
-                return preflight;
-            }
         }
 
         try
@@ -598,13 +467,9 @@ public sealed class ContextMenuRegistryCatalog
 
             await _logger.LogAsync($"{(enable ? "Enabled" : "Disabled")} {item.DisplayName} ({item.RegistryPath}).", cancellationToken);
 
-            var refreshed = (await GetSnapshotAsync(cancellationToken))
+            var refreshed = (await GetSnapshotAsync(cancellationToken, userContext))
                 .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
                 ?? item with { IsEnabled = enable };
-            stopwatch.Stop();
-            await _logger.LogAsync(
-                $"ApplyDesiredStateEnd: ItemId={item.Id}, DisplayName={item.DisplayName}, Enable={enable}, Result=Success, RefreshedIsEnabled={refreshed.IsEnabled}, ElapsedMs={stopwatch.ElapsedMilliseconds}.",
-                cancellationToken);
 
             return new PipeResponse
             {
@@ -615,20 +480,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            stopwatch.Stop();
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update {item.DisplayName}: {ex}, ElapsedMs={stopwatch.ElapsedMilliseconds}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    enable ? "EnableItemFallback" : "DisableItemFallback",
-                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback;
-                }
-            }
-
+            await _logger.LogAsync($"Failed to update {item.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -639,20 +491,20 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<PipeResponse> ApplyDecisionAsync(
         string itemId,
         ContextMenuDecision decision,
-        BackendUserContext? userContext,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken);
+        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
 
         return decision switch
         {
             ContextMenuDecision.Allow => item is null
                 ? CreateFailure($"Menu item '{itemId}' was not found.")
-                : await ApplyDesiredStateAsync(itemId, enable: true, userContext, cancellationToken),
+                : await ApplyDesiredStateAsync(itemId, enable: true, cancellationToken, userContext),
             ContextMenuDecision.Deny => item is null
                 ? await RemovePendingApprovalStateAsync(itemId, cancellationToken)
-                : await ApplyDesiredStateAsync(itemId, enable: false, userContext, cancellationToken),
+                : await ApplyDesiredStateAsync(itemId, enable: false, cancellationToken, userContext),
             ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, cancellationToken),
             _ => CreateFailure("Unknown approval decision.")
         };
@@ -760,19 +612,6 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure($"Menu item '{item.DisplayName}' is deleted. Undo the deletion before editing its attributes.", item);
         }
 
-        if (IsNormalContextMenuRegistryItem(item))
-        {
-            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                "ApplyShellAttribute",
-                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                cancellationToken);
-
-            if (preflight is not null)
-            {
-                return preflight with { Item = item };
-            }
-        }
-
         try
         {
             SetShellVerbAttribute(item.BackendRegistryPath, attribute, enable);
@@ -803,19 +642,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set {attribute} for {item.DisplayName}: {ex}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    "ApplyShellAttributeFallback",
-                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback with { Item = item };
-                }
-            }
-
+            await _logger.LogAsync($"Failed to set {attribute} for {item.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -863,35 +690,11 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure("The resolved menu text is too long.", item);
         }
 
-        if (IsNormalContextMenuRegistryItem(item))
-        {
-            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                "ApplyDisplayText",
-                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                cancellationToken);
-
-            if (preflight is not null)
-            {
-                return preflight with { Item = item };
-            }
-        }
-
         try
         {
             using var menuKey = OpenRegistryKey(item.BackendRegistryPath, writable: true)
                 ?? throw new InvalidOperationException($"Unable to open {item.RegistryPath} for writing.");
-            var oldValue = menuKey.GetValue("MUIVerb");
             menuKey.SetValue("MUIVerb", textValue, RegistryValueKind.String);
-            await _logger.LogAsync(
-                DiagnosticLogFormatter.BuildRegistryOperationLog(
-                    "ApplyDisplayText",
-                    item.BackendRegistryPath,
-                    "MUIVerb",
-                    RegistryValueKind.String,
-                    textValue,
-                    writable: true,
-                    result: $"Success, OldValue={DiagnosticLogFormatter.FormatRegistryValueData(oldValue)}"),
-                cancellationToken);
 
             var states = await _stateStore.LoadAsync(cancellationToken);
             var state = GetOrCreateState(states, item);
@@ -915,19 +718,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update display text for {item.DisplayName}: {ex}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    "ApplyDisplayTextFallback",
-                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback with { Item = item };
-                }
-            }
-
+            await _logger.LogAsync($"Failed to update display text for {item.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
     }
@@ -980,17 +771,13 @@ public sealed class ContextMenuRegistryCatalog
             }
         }
 
-        if (IsNormalContextMenuRegistryItem(item))
+        var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
+            "ApplyCommandText",
+            [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
+            cancellationToken);
+        if (preflight is not null)
         {
-            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                "ApplyCommandText",
-                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                cancellationToken);
-
-            if (preflight is not null)
-            {
-                return preflight with { Item = item };
-            }
+            return preflight with { Item = item };
         }
 
         try
@@ -1038,18 +825,6 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update command text for {item.DisplayName}: {ex}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex) && IsNormalContextMenuRegistryItem(item))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    "ApplyCommandTextFallback",
-                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback with { Item = item };
-                }
-            }
-
             return CreateFailure(ex.Message, item);
         }
     }
@@ -1084,30 +859,10 @@ public sealed class ContextMenuRegistryCatalog
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                var targetRoot = $@"{relativeGroupPath}\shell";
-                var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    enable ? "EnableEnhanceShellItem" : "DisableEnhanceShellItem",
-                    [targetRoot],
-                    cancellationToken);
-                if (preflight is not null)
-                {
-                    return preflight;
-                }
-
                 SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
             }
             else if (itemElement.Element("Guid") is not null)
             {
-                var targetRoot = $@"{relativeGroupPath}\shellex\ContextMenuHandlers";
-                var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    enable ? "EnableEnhanceShellExItem" : "DisableEnhanceShellExItem",
-                    [targetRoot],
-                    cancellationToken);
-                if (preflight is not null)
-                {
-                    return preflight;
-                }
-
                 SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable);
             }
             else
@@ -1122,7 +877,6 @@ public sealed class ContextMenuRegistryCatalog
             catch (Exception ex)
             {
                 await _logger.LogAsync(
-                    RuntimeLogLevel.Warning,
                     $"Enhance menu registry update succeeded but state sync failed under {groupRegistryPath}. "
                     + $"KeyName={itemElement.Attribute("KeyName")?.Value?.Trim()}, Guid={itemElement.Element("Guid")?.Value?.Trim()}, Enable={enable}: {ex.Message}",
                     cancellationToken);
@@ -1145,19 +899,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update enhance menu item: {ex}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    "SetEnhanceMenuItemFallback",
-                    [groupRegistryPath],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback;
-                }
-            }
-
+            await _logger.LogAsync($"Failed to update enhance menu item: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message);
         }
     }
@@ -1194,22 +936,6 @@ public sealed class ContextMenuRegistryCatalog
         {
             if (string.Equals(storageKind, "Registry", StringComparison.OrdinalIgnoreCase))
             {
-                if (IsProtectedNormalContextMenuRootPath(path))
-                {
-                    var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                        "SetDetailedEditRuleValue",
-                        [path],
-                        cancellationToken);
-
-                    if (preflight is not null)
-                    {
-                        return preflight;
-                    }
-                }
-
-                await _logger.LogAsync(
-                    $"DetailedEditRegistryWriteStart: StorageKind={storageKind}, RawPath={path}, NormalizedPath={path.Replace('/', '\\').Trim()}, UserSid={userSid ?? "<null>"}, ValueName={DiagnosticLogFormatter.FormatRegistryValue(keyName)}, ValueKind={valueKind ?? RegistryValueKind.String.ToString()}, Operation={(value is null ? "DeleteValue" : "SetValue")}, ValueData={DiagnosticLogFormatter.FormatRegistryValueData(value)}.",
-                    cancellationToken);
                 WriteDetailedEditRegistryValue(path, keyName, valueKind, value, userSid);
             }
             else
@@ -1218,7 +944,7 @@ public sealed class ContextMenuRegistryCatalog
             }
 
             await _logger.LogAsync(
-                $"Updated detailed edit rule value. Path={path}, KeyName={keyName}, ValueKind={valueKind}, Value={DiagnosticLogFormatter.FormatRegistryValueData(value)}.",
+                $"Updated detailed edit rule value. Path={path}, KeyName={keyName}, ValueKind={valueKind}, Value={(value is null ? "<delete>" : value)}.",
                 cancellationToken);
 
             return new PipeResponse
@@ -1229,19 +955,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to update detailed edit rule value {path}\\{keyName}: {ex}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex) && IsProtectedNormalContextMenuRootPath(path))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    "SetDetailedEditRuleValueFallback",
-                    [path],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback;
-                }
-            }
-
+            await _logger.LogAsync($"Failed to update detailed edit rule value {path}\\{keyName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message);
         }
     }
@@ -1378,13 +1092,13 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Sets registry Protection Setting Async.
     /// </summary>
-    public async Task<PipeResponse> SetRegistryProtectionSettingAsync(bool enable, CancellationToken cancellationToken)
+    public async Task<PipeResponse> SetRegistryProtectionSettingAsync(bool enable, BackendUserContext? userContext, CancellationToken cancellationToken)
     {
-        var errors = ApplyRegistryWriteProtection(enable);
+        var errors = ApplyRegistryWriteProtection(enable, userContext);
         if (errors.Count > 0)
         {
             var detail = string.Join(Environment.NewLine, errors);
-            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Registry write protection update skipped some protected roots:{Environment.NewLine}{detail}", cancellationToken);
+            await _logger.LogAsync($"Registry write protection update skipped some protected roots:{Environment.NewLine}{detail}", cancellationToken);
         }
 
         var settings = await _protectionSettingsStore.LoadAsync(cancellationToken);
@@ -1405,31 +1119,20 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Deletes item Async.
     /// </summary>
-    public async Task<PipeResponse> DeleteItemAsync(
-        string itemId,
-        CancellationToken cancellationToken)
+    public async Task<PipeResponse> DeleteItemAsync(string itemId, CancellationToken cancellationToken)
     {
+        var snapshot = await GetSnapshotAsync(cancellationToken);
+        var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
         var states = await _stateStore.LoadAsync(cancellationToken);
         var persistedState = states.GetValueOrDefault(itemId);
-        var usedFallbackItem = false;
-        ContextMenuEntry? item = null;
-
-        if (item is null)
-        {
-            var snapshot = await GetSnapshotAsync(cancellationToken);
-            item = SelectPreferredDeleteCandidate(
-                snapshot.Where(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase)),
-                currentUserSid: null);
-        }
-
-        if (item is null)
-        {
-            item = await TryFindEntryByIdAsync(itemId, cancellationToken);
-        }
 
         if (item is null && persistedState is null)
         {
-            return CreateFailure($"Menu item '{itemId}' was not found.");
+            item = await TryFindEntryByIdAsync(itemId, cancellationToken);
+            if (item is null)
+            {
+                return CreateFailure($"Menu item '{itemId}' was not found.");
+            }
         }
 
         if (item is not null && item.IsDeleted)
@@ -1437,28 +1140,9 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure($"Menu item '{item.DisplayName}' is already deleted.", item);
         }
 
-        if (item is null && persistedState?.IsDeleted == true)
-        {
-            var deletedItem = CreateVirtualEntry(persistedState, GetDeletedConsistencyIssue(persistedState), ContextMenuChangeKind.None, null);
-            return CreateFailure($"Menu item '{persistedState.DisplayName}' is already deleted.", deletedItem);
-        }
-
         if (item is not null && !item.IsPresentInRegistry)
         {
             return await RemoveMissingItemStateAsync(item, cancellationToken);
-        }
-
-        if (item is not null && IsNormalContextMenuRegistryItem(item))
-        {
-            var preflight = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                "DeleteItem",
-                [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                cancellationToken);
-
-            if (preflight is not null)
-            {
-                return preflight with { Item = item };
-            }
         }
 
         try
@@ -1469,49 +1153,8 @@ public sealed class ContextMenuRegistryCatalog
                 return CreateFailure($"Cannot delete '{itemId}': registry path is unknown.");
             }
 
-            using (var existingKey = OpenRegistryKey(backendRegistryPath, writable: false))
-            {
-                var targetExists = existingKey is not null;
-                await _logger.LogAsync(
-                    "Preparing to delete context menu item: "
-                    + $"itemId={itemId}; "
-                    + $"displayName={item?.DisplayName ?? persistedState?.DisplayName ?? itemId}; "
-                    + $"registryPath={item?.RegistryPath ?? persistedState?.RegistryPath}; "
-                    + $"backendRegistryPath={backendRegistryPath}; "
-                    + $"handlerClsid={item?.HandlerClsid ?? persistedState?.HandlerClsid}; "
-                    + $"usedFallbackItem={usedFallbackItem}; "
-                    + $"targetExists={targetExists}.",
-                    cancellationToken);
-
-                if (!targetExists)
-                {
-                    return await RemoveStaleDeleteStateAsync(
-                        itemId,
-                        item?.DisplayName ?? persistedState?.DisplayName ?? itemId,
-                        states,
-                        cancellationToken);
-                }
-            }
-
-            string backupFilePath;
-            try
-            {
-                await _logger.LogAsync($"DeleteItemBackupStart: ItemId={itemId}, RegistryPath={backendRegistryPath}.", cancellationToken);
-                backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
-                await _logger.LogAsync($"DeleteItemBackupEnd: ItemId={itemId}, RegistryPath={backendRegistryPath}, BackupPath={backupFilePath}, Result=Success.", cancellationToken);
-            }
-            catch (InvalidOperationException ex) when (IsRegistryKeyMissingExportError(ex.Message))
-            {
-                return await RemoveStaleDeleteStateAsync(
-                    itemId,
-                    item?.DisplayName ?? persistedState?.DisplayName ?? itemId,
-                    states,
-                    cancellationToken);
-            }
-
-            await _logger.LogAsync($"DeleteRegistryKeyStart: ItemId={itemId}, BackendRegistryPath={backendRegistryPath}.", cancellationToken);
+            var backupFilePath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
             DeleteRegistryKey(backendRegistryPath);
-            await _logger.LogAsync($"DeleteRegistryKeyEnd: ItemId={itemId}, BackendRegistryPath={backendRegistryPath}, Result=Success.", cancellationToken);
 
             var state = GetOrCreateState(states, item ?? CreateMinimalEntry(itemId, persistedState!));
             state.DesiredEnabled = null;
@@ -1521,16 +1164,12 @@ public sealed class ContextMenuRegistryCatalog
             state.DeletedAtUtc = DateTimeOffset.UtcNow;
             state.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await _stateStore.SaveAsync(states, cancellationToken);
-            await _logger.LogAsync($"DeleteItemStateSaved: ItemId={itemId}, BackupPath={backupFilePath}, IsDeleted=true.", cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"ShellChangeNotifierCalled: Action=DeleteItem, ItemId={itemId}.", cancellationToken);
 
             await _logger.LogAsync($"Deleted {state.DisplayName} with backup {backupFilePath}.", cancellationToken);
 
-            var refreshed = SelectPreferredDeleteCandidate(
-                    (await GetSnapshotAsync(cancellationToken))
-                    .Where(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase)),
-                    currentUserSid: null)
+            var refreshed = (await GetSnapshotAsync(cancellationToken))
+                .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
                 ?? CreateVirtualEntry(state, null, ContextMenuChangeKind.None, null);
 
             return new PipeResponse
@@ -1543,21 +1182,117 @@ public sealed class ContextMenuRegistryCatalog
         catch (Exception ex)
         {
             var displayName = item?.DisplayName ?? persistedState?.DisplayName ?? itemId;
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to delete {displayName}: {ex}", cancellationToken);
-            if (IsRegistryWriteProtectionException(ex) && item is not null && IsNormalContextMenuRegistryItem(item))
-            {
-                var fallback = await CreateRegistryWriteProtectionPreflightFailureAsync(
-                    "DeleteItemFallback",
-                    [item.BackendRegistryPath, item.RegistryPath, item.SourceRootPath],
-                    cancellationToken);
-                if (fallback is not null)
-                {
-                    return fallback with { Item = item };
-                }
-            }
-
+            await _logger.LogAsync($"Failed to delete {displayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, item);
         }
+    }
+
+    private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(
+        string itemId,
+        CancellationToken cancellationToken)
+    {
+        var separatorIndex = itemId.LastIndexOf('|');
+        if (separatorIndex < 0)
+        {
+            return null;
+        }
+
+        var stableRelativePath = itemId[..separatorIndex];
+        var keyName = itemId[(separatorIndex + 1)..];
+        var candidates = new List<ContextMenuEntry>();
+
+        foreach (var instance in EnumerateRootInstances())
+        {
+            using var baseKey = instance.OpenBaseKey(stableRelativePath);
+            if (baseKey is null)
+            {
+                continue;
+            }
+
+            using var itemKey = baseKey.OpenSubKey(keyName, writable: false);
+            if (itemKey is null)
+            {
+                continue;
+            }
+
+            var category = DetermineCategoryFromPath(stableRelativePath);
+            var entryKind = stableRelativePath.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
+                ? ContextMenuEntryKind.ShellExtension
+                : ContextMenuEntryKind.ShellVerb;
+            var defaultValue = itemKey.GetValue(null)?.ToString();
+            var handlerClsid = entryKind == ContextMenuEntryKind.ShellExtension
+                ? ResolveShellExtensionHandlerClsid(keyName, defaultValue)
+                : null;
+            var displayName = ResolveDisplayName(
+                new RegistryRootDescriptor(category, stableRelativePath, entryKind),
+                itemKey,
+                keyName,
+                defaultValue,
+                handlerClsid);
+            var editableText = entryKind == ContextMenuEntryKind.ShellVerb
+                ? ResolveEditableText(itemKey, defaultValue)
+                : null;
+            using var commandKey = entryKind == ContextMenuEntryKind.ShellVerb
+                ? itemKey.OpenSubKey("command", writable: false)
+                : null;
+            var commandText = commandKey?.GetValue(null)?.ToString();
+            var canEditCommandText = entryKind == ContextMenuEntryKind.ShellVerb
+                && CanEditCommandText(itemKey, commandKey);
+
+            var (iconPath, iconIndex) = entryKind switch
+            {
+                ContextMenuEntryKind.ShellVerb => ShellMetadataResolver.ResolveVerbIcon(itemKey, commandText),
+                ContextMenuEntryKind.ShellExtension => ShellMetadataResolver.ResolveShellExtensionIcon(handlerClsid),
+                _ => (null, 0)
+            };
+
+            var filePath = entryKind switch
+            {
+                ContextMenuEntryKind.ShellVerb => ShellMetadataResolver.ResolveVerbFilePath(itemKey, commandText),
+                ContextMenuEntryKind.ShellExtension => ShellMetadataResolver.ResolveShellExtensionFilePath(handlerClsid),
+                _ => null
+            };
+
+            iconPath = GuidMetadataCatalog.NormalizeCandidatePath(iconPath, filePath);
+
+            var effectiveRelativePath = $@"{stableRelativePath}\{keyName}";
+            var isEnabled = entryKind switch
+            {
+                ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
+                ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
+                _ => true
+            };
+
+            candidates.Add(new ContextMenuEntry
+            {
+                Id = itemId,
+                Category = category,
+                EntryKind = entryKind,
+                KeyName = keyName,
+                DisplayName = displayName,
+                EditableText = editableText,
+                RegistryPath = effectiveRelativePath,
+                BackendRegistryPath = instance.ComposeAbsolutePath(effectiveRelativePath),
+                SourceRootPath = stableRelativePath,
+                CommandText = commandText,
+                CanEditCommandText = canEditCommandText,
+                HandlerClsid = handlerClsid,
+                IconPath = iconPath,
+                IconIndex = iconIndex,
+                FilePath = filePath,
+                OnlyWithShift = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("Extended") is not null,
+                OnlyInExplorer = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("OnlyInBrowserWindow") is not null,
+                NoWorkingDirectory = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("NoWorkingDirectory") is not null,
+                NeverDefault = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("NeverDefault") is not null,
+                ShowAsDisabledIfHidden = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("ShowAsDisabledIfHidden") is not null,
+                IsEnabled = isEnabled,
+                IsPresentInRegistry = true,
+                Notes = BuildNotes(entryKind, commandText, handlerClsid)
+            });
+        }
+
+        await Task.CompletedTask;
+        return SelectPreferredDeleteCandidate(candidates);
     }
 
     private async Task<PipeResponse> RemoveMissingItemStateAsync(ContextMenuEntry item, CancellationToken cancellationToken)
@@ -1575,28 +1310,6 @@ public sealed class ContextMenuRegistryCatalog
         {
             Success = true,
             Message = $"Removed missing item {item.DisplayName} from the list.",
-            Item = null
-        };
-    }
-
-    private async Task<PipeResponse> RemoveStaleDeleteStateAsync(
-        string itemId,
-        string displayName,
-        Dictionary<string, PersistedContextMenuState> states,
-        CancellationToken cancellationToken)
-    {
-        if (states.Remove(itemId))
-        {
-            PruneTransientStates(states);
-            await _stateStore.SaveAsync(states, cancellationToken);
-        }
-
-        await _logger.LogAsync($"Delete skipped for missing registry key. Removed stale state for {displayName}.", cancellationToken);
-
-        return new PipeResponse
-        {
-            Success = true,
-            Message = $"Removed missing item {displayName} from the list.",
             Item = null
         };
     }
@@ -1666,9 +1379,7 @@ public sealed class ContextMenuRegistryCatalog
 
         try
         {
-            await _logger.LogAsync($"UndoDeleteRestoreStart: ItemId={itemId}, BackupPath={state.BackupFilePath}.", cancellationToken);
             await _backupService.RestoreBackupAsync(state.BackupFilePath, cancellationToken);
-            await _logger.LogAsync($"UndoDeleteRestoreEnd: ItemId={itemId}, BackupPath={state.BackupFilePath}, Result=Success.", cancellationToken);
             _backupService.DeleteBackupFile(state.BackupFilePath);
 
             state.IsDeleted = false;
@@ -1680,9 +1391,7 @@ public sealed class ContextMenuRegistryCatalog
             state.DesiredEnabled = null;
             PruneTransientStates(states);
             await _stateStore.SaveAsync(states, cancellationToken);
-            await _logger.LogAsync($"UndoDeleteStateSaved: ItemId={itemId}, IsDeleted=false.", cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
-            await _logger.LogAsync($"ShellChangeNotifierCalled: Action=UndoDelete, ItemId={itemId}.", cancellationToken);
 
             await _logger.LogAsync($"Restored deleted item {state.DisplayName}.", cancellationToken);
 
@@ -1700,7 +1409,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to restore {state.DisplayName}: {ex}", cancellationToken);
+            await _logger.LogAsync($"Failed to restore {state.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, state.ToDeletedEntry());
         }
     }
@@ -1718,12 +1427,9 @@ public sealed class ContextMenuRegistryCatalog
 
         try
         {
-            await _logger.LogAsync($"PurgeDeletedBackupStart: ItemId={itemId}, BackupPath={state.BackupFilePath}.", cancellationToken);
             _backupService.DeleteBackupFile(state.BackupFilePath);
-            await _logger.LogAsync($"PurgeDeletedBackupEnd: ItemId={itemId}, BackupPath={state.BackupFilePath}, Result=Success.", cancellationToken);
             states.Remove(itemId);
             await _stateStore.SaveAsync(states, cancellationToken);
-            await _logger.LogAsync($"PurgeDeletedStateSaved: ItemId={itemId}, RemovedState=true.", cancellationToken);
             await _logger.LogAsync($"Permanently removed backup for {state.DisplayName}.", cancellationToken);
 
             return new PipeResponse
@@ -1734,7 +1440,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to permanently remove {state.DisplayName}: {ex}", cancellationToken);
+            await _logger.LogAsync($"Failed to permanently remove {state.DisplayName}: {ex.Message}", cancellationToken);
             return CreateFailure(ex.Message, state.ToDeletedEntry());
         }
     }
@@ -1754,7 +1460,7 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Executes quarantine New Item Async.
     /// </summary>
-    public async Task<ContextMenuEntry> QuarantineNewItemAsync(ContextMenuEntry item, CancellationToken cancellationToken)
+    public async Task<ContextMenuEntry> QuarantineNewItemAsync(ContextMenuEntry item, CancellationToken cancellationToken, BackendUserContext? userContext = null)
     {
         // Step 1: disable the newly detected item immediately. This keeps the
         // service in a deny-by-default posture until the user explicitly allows it.
@@ -1764,11 +1470,7 @@ public sealed class ContextMenuRegistryCatalog
                 SetShellVerbEnabled(item.BackendRegistryPath, enable: false);
                 break;
             case ContextMenuEntryKind.ShellExtension when item.IsWindows11ContextMenu:
-                await _logger.LogAsync(
-                    RuntimeLogLevel.Warning,
-                    "Quarantining Win11 context menu entry without frontend user context; using compatibility fallback user detection.",
-                    cancellationToken);
-                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, null, enable: false))
+                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable: false))
                 {
                     throw new InvalidOperationException($"Unable to quarantine the Win11 context menu item '{item.DisplayName}'.");
                 }
@@ -1796,7 +1498,7 @@ public sealed class ContextMenuRegistryCatalog
 
         await _logger.LogAsync($"Quarantined new menu item pending approval: {item.DisplayName} ({item.RegistryPath}).", cancellationToken);
 
-        return (await GetSnapshotAsync(cancellationToken))
+        return (await GetSnapshotAsync(cancellationToken, userContext))
             .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
             ?? item with
             {
@@ -1832,46 +1534,36 @@ public sealed class ContextMenuRegistryCatalog
         return true;
     }
 
-    private async Task<IReadOnlyList<ContextMenuEntry>> EnumerateActualEntriesAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ContextMenuEntry>> EnumerateActualEntriesAsync(CancellationToken cancellationToken, BackendUserContext? userContext = null)
     {
-        await _logger.LogAsync($"EnumerateActualEntriesStart: MonitoredRootCount={MonitoredRoots.Length}, Win11Supported={_windows11Catalog.IsSupported}.", cancellationToken);
         var results = new List<ContextMenuEntry>();
         foreach (var item in EnumerateEntries(MonitoredRoots))
         {
             results.Add(item);
         }
 
-        var classicCount = results.Count;
-        var win11Count = 0;
         if (_windows11Catalog.IsSupported)
         {
-            await _logger.LogAsync(
-                RuntimeLogLevel.Warning,
-                "Enumerating Win11 context menu entries without frontend user context; user-level blocked state may be incomplete in this compatibility snapshot path.",
-                cancellationToken);
-            var win11Entries = await _windows11Catalog.EnumerateEntriesAsync(cancellationToken);
-            win11Count = win11Entries.Count;
-            results.AddRange(win11Entries);
+            results.AddRange(await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext));
         }
 
-        await _logger.LogAsync($"EnumerateActualEntriesEnd: MonitoredRootCount={MonitoredRoots.Length}, RegistryEntriesFound={classicCount}, Win11EntriesAdded={win11Count}, TotalEntries={results.Count}.", cancellationToken);
         return results;
     }
 
-    private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots, string? currentUserSid = null)
+    private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots)
     {
         foreach (var root in roots)
         {
-            foreach (var item in EnumerateRoot(root, currentUserSid))
+            foreach (var item in EnumerateRoot(root))
             {
                 yield return item;
             }
         }
     }
 
-    private IEnumerable<ContextMenuEntry> EnumerateRoot(RegistryRootDescriptor root, string? currentUserSid = null)
+    private IEnumerable<ContextMenuEntry> EnumerateRoot(RegistryRootDescriptor root)
     {
-        foreach (var instance in EnumerateRootInstances(currentUserSid))
+        foreach (var instance in EnumerateRootInstances())
         {
             using var baseKey = instance.OpenBaseKey(root.RelativePath);
             if (baseKey is null)
@@ -1891,14 +1583,16 @@ public sealed class ContextMenuRegistryCatalog
                 var handlerClsid = root.EntryKind == ContextMenuEntryKind.ShellExtension
                     ? ResolveShellExtensionHandlerClsid(subKeyName, defaultValue)
                     : null;
-                var displayName = ResolveDisplayName(root, itemKey, subKeyName, defaultValue, handlerClsid, currentUserSid);
+                var displayName = ResolveDisplayName(root, itemKey, subKeyName, defaultValue, handlerClsid);
                 var editableText = root.EntryKind == ContextMenuEntryKind.ShellVerb
                     ? ResolveEditableText(itemKey, defaultValue)
+                    : null;
+                var commandText = root.EntryKind == ContextMenuEntryKind.ShellVerb
+                    ? itemKey.OpenSubKey("command", writable: false)?.GetValue(null)?.ToString()
                     : null;
                 using var commandKey = root.EntryKind == ContextMenuEntryKind.ShellVerb
                     ? itemKey.OpenSubKey("command", writable: false)
                     : null;
-                var commandText = commandKey?.GetValue(null)?.ToString();
                 var canEditCommandText = root.EntryKind == ContextMenuEntryKind.ShellVerb
                     && CanEditCommandText(itemKey, commandKey);
 
@@ -1920,7 +1614,7 @@ public sealed class ContextMenuRegistryCatalog
                 var effectiveRelativePath = $@"{root.RelativePath}\{subKeyName}";
                 var isEnabled = root.EntryKind switch
                 {
-                    ContextMenuEntryKind.ShellVerb => ShellVerbVisibility.IsEnabled(itemKey),
+                    ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
                     ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
                     _ => true
                 };
@@ -1955,33 +1649,24 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private string ResolveDisplayName(
+    private static string ResolveDisplayName(
         RegistryRootDescriptor root,
         RegistryKey itemKey,
         string fallbackKeyName,
         string? rawDefaultValue,
-        string? handlerClsid,
-        string? currentUserSid)
+        string? handlerClsid)
     {
-        string displayName;
-        if (itemKey.Name.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase))
+        var displayName = itemKey.Name.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
+            ? ShellMetadataResolver.ResolveShellExtensionDisplayName(fallbackKeyName, handlerClsid, rawDefaultValue)
+            : ShellMetadataResolver.ResolveVerbDisplayName(itemKey, fallbackKeyName);
+
+        if (itemKey.Name.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(displayName, fallbackKeyName, StringComparison.Ordinal)
+            && Guid.TryParse(fallbackKeyName, out _)
+            && !string.IsNullOrWhiteSpace(rawDefaultValue)
+            && !Guid.TryParse(rawDefaultValue, out _))
         {
-            var userContext = CreateResolverUserContext(currentUserSid);
-            var resolution = ShellMetadataResolver.ResolveShellExtensionDisplayNameDetails(
-                fallbackKeyName,
-                handlerClsid,
-                rawDefaultValue,
-                userContext);
-            displayName = resolution.DisplayName;
-            LogShellExtensionDisplayNameResolution(
-                fallbackKeyName,
-                handlerClsid,
-                rawDefaultValue,
-                resolution);
-        }
-        else
-        {
-            displayName = ShellMetadataResolver.ResolveVerbDisplayName(itemKey, fallbackKeyName);
+            displayName = rawDefaultValue;
         }
 
         if (root.Category == ContextMenuCategory.RecycleBin
@@ -1991,33 +1676,6 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return NormalizeDisplayName(displayName);
-    }
-
-    private void LogShellExtensionDisplayNameResolution(
-        string keyName,
-        string? handlerClsid,
-        string? handlerDefaultValue,
-        ShellMetadataResolver.ShellExtensionDisplayNameResolution resolution)
-    {
-        if (string.Equals(resolution.DisplayName, keyName, StringComparison.Ordinal))
-        {
-            _logger.LogFireAndForget(
-                $"ShellExtensionDisplayNameFallback: KeyName={keyName}, HandlerClsid={handlerClsid}, HandlerDefaultValue={handlerDefaultValue}, CheckedClsidRoots={string.Join(";", resolution.CheckedClsidRoots)}, FilePath={resolution.FilePath}, FinalDisplayName={resolution.DisplayName}.");
-            return;
-        }
-
-        if (Guid.TryParse(keyName, out _))
-        {
-            _logger.LogFireAndForget(
-                $"ShellExtensionDisplayNameResolvedFromClsid: KeyName={keyName}, HandlerClsid={handlerClsid}, Source={resolution.Source}, DisplayName={resolution.DisplayName}.");
-        }
-    }
-
-    private static BackendUserContext? CreateResolverUserContext(string? currentUserSid)
-    {
-        return string.IsNullOrWhiteSpace(currentUserSid)
-            ? null
-            : new BackendUserContext(currentUserSid, string.Empty, string.Empty, string.Empty, string.Empty, null);
     }
 
     private static string? ResolveShellExtensionHandlerClsid(string keyName, string? defaultValue)
@@ -2135,7 +1793,6 @@ public sealed class ContextMenuRegistryCatalog
         dirty |= UpdateIfChanged(state.BackendRegistryPath, entry.BackendRegistryPath, value => state.BackendRegistryPath = value);
         dirty |= UpdateIfChanged(state.SourceRootPath, entry.SourceRootPath, value => state.SourceRootPath = value);
         dirty |= UpdateIfChanged(state.CommandText, entry.CommandText, value => state.CommandText = value);
-        dirty |= UpdateIfChanged(state.CanEditCommandText, entry.CanEditCommandText, value => state.CanEditCommandText = value);
         dirty |= UpdateIfChanged(state.HandlerClsid, entry.HandlerClsid, value => state.HandlerClsid = value);
         dirty |= UpdateIfChanged(state.IconPath, entry.IconPath, value => state.IconPath = value);
         dirty |= UpdateIfChanged(state.IconIndex, entry.IconIndex, value => state.IconIndex = value);
@@ -2191,7 +1848,6 @@ public sealed class ContextMenuRegistryCatalog
             BackendRegistryPath = state.BackendRegistryPath,
             SourceRootPath = state.SourceRootPath,
             CommandText = state.CommandText,
-            CanEditCommandText = state.CanEditCommandText,
             HandlerClsid = state.HandlerClsid,
             IconPath = state.IconPath,
             IconIndex = state.IconIndex,
@@ -2230,7 +1886,6 @@ public sealed class ContextMenuRegistryCatalog
             BackendRegistryPath = state.BackendRegistryPath,
             SourceRootPath = state.SourceRootPath,
             CommandText = state.CommandText,
-            CanEditCommandText = state.CanEditCommandText,
             HandlerClsid = state.HandlerClsid,
             IconPath = state.IconPath,
             IconIndex = state.IconIndex,
@@ -2245,197 +1900,6 @@ public sealed class ContextMenuRegistryCatalog
             IsEnabled = state.DesiredEnabled ?? true,
             Notes = state.Notes
         };
-    }
-
-    private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(
-        string itemId,
-        CancellationToken cancellationToken)
-    {
-        var separatorIndex = itemId.LastIndexOf('|');
-        if (separatorIndex < 0)
-        {
-            return null;
-        }
-
-        var stableRelativePath = itemId[..separatorIndex];
-        var keyName = itemId[(separatorIndex + 1)..];
-        var candidates = new List<ContextMenuEntry>();
-
-        foreach (var instance in EnumerateRootInstances())
-        {
-            using var baseKey = instance.OpenBaseKey(stableRelativePath);
-            if (baseKey is null)
-            {
-                continue;
-            }
-
-            using var itemKey = baseKey.OpenSubKey(keyName, writable: false);
-            if (itemKey is null)
-            {
-                continue;
-            }
-
-            var category = DetermineCategoryFromPath(stableRelativePath);
-            var entryKind = stableRelativePath.Contains(@"\shellex\", StringComparison.OrdinalIgnoreCase)
-                ? ContextMenuEntryKind.ShellExtension
-                : ContextMenuEntryKind.ShellVerb;
-            var defaultValue = itemKey.GetValue(null)?.ToString();
-            var handlerClsid = entryKind == ContextMenuEntryKind.ShellExtension
-                ? ResolveShellExtensionHandlerClsid(keyName, defaultValue)
-                : null;
-            var displayName = ResolveDisplayName(
-                new RegistryRootDescriptor(category, stableRelativePath, entryKind),
-                itemKey,
-                keyName,
-                defaultValue,
-                handlerClsid,
-                currentUserSid: null);
-            var editableText = entryKind == ContextMenuEntryKind.ShellVerb
-                ? ResolveEditableText(itemKey, defaultValue)
-                : null;
-            using var commandKey = entryKind == ContextMenuEntryKind.ShellVerb
-                ? itemKey.OpenSubKey("command", writable: false)
-                : null;
-            var commandText = commandKey?.GetValue(null)?.ToString();
-            var canEditCommandText = entryKind == ContextMenuEntryKind.ShellVerb
-                && CanEditCommandText(itemKey, commandKey);
-
-            var (iconPath, iconIndex) = entryKind switch
-            {
-                ContextMenuEntryKind.ShellVerb => ShellMetadataResolver.ResolveVerbIcon(itemKey, commandText),
-                ContextMenuEntryKind.ShellExtension => ShellMetadataResolver.ResolveShellExtensionIcon(handlerClsid),
-                _ => (null, 0)
-            };
-
-            var filePath = entryKind switch
-            {
-                ContextMenuEntryKind.ShellVerb => ShellMetadataResolver.ResolveVerbFilePath(itemKey, commandText),
-                ContextMenuEntryKind.ShellExtension => ShellMetadataResolver.ResolveShellExtensionFilePath(handlerClsid),
-                _ => null
-            };
-
-            iconPath = GuidMetadataCatalog.NormalizeCandidatePath(iconPath, filePath);
-
-            var effectiveRelativePath = $@"{stableRelativePath}\{keyName}";
-            var isEnabled = entryKind switch
-            {
-                ContextMenuEntryKind.ShellVerb => ShellVerbVisibility.IsEnabled(itemKey),
-                ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
-                _ => true
-            };
-
-            candidates.Add(new ContextMenuEntry
-            {
-                Id = itemId,
-                Category = category,
-                EntryKind = entryKind,
-                KeyName = keyName,
-                DisplayName = displayName,
-                EditableText = editableText,
-                RegistryPath = effectiveRelativePath,
-                BackendRegistryPath = instance.ComposeAbsolutePath(effectiveRelativePath),
-                SourceRootPath = stableRelativePath,
-                CommandText = commandText,
-                CanEditCommandText = canEditCommandText,
-                HandlerClsid = handlerClsid,
-                IconPath = iconPath,
-                IconIndex = iconIndex,
-                FilePath = filePath,
-                OnlyWithShift = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("Extended") is not null,
-                OnlyInExplorer = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("OnlyInBrowserWindow") is not null,
-                NoWorkingDirectory = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("NoWorkingDirectory") is not null,
-                NeverDefault = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("NeverDefault") is not null,
-                ShowAsDisabledIfHidden = entryKind == ContextMenuEntryKind.ShellVerb && itemKey.GetValue("ShowAsDisabledIfHidden") is not null,
-                IsEnabled = isEnabled,
-                IsPresentInRegistry = true,
-                Notes = BuildNotes(entryKind, commandText, handlerClsid)
-            });
-        }
-
-        await Task.CompletedTask;
-        return SelectPreferredDeleteCandidate(candidates, currentUserSid: null);
-    }
-
-    private static ContextMenuCategory DetermineCategoryFromPath(string stableRelativePath)
-    {
-        if (stableRelativePath.StartsWith(@"AllFilesystemObjects", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.AllFileSystemObjects;
-        if (stableRelativePath.StartsWith(@"*\shell", StringComparison.OrdinalIgnoreCase) || stableRelativePath.StartsWith(@"*\shellex", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.File;
-        if (stableRelativePath.StartsWith(@"Folder\shell", StringComparison.OrdinalIgnoreCase) || stableRelativePath.StartsWith(@"Folder\shellex", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.Folder;
-        if (stableRelativePath.StartsWith(@"Directory\shell", StringComparison.OrdinalIgnoreCase) || stableRelativePath.StartsWith(@"Directory\shellex", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.Directory;
-        if (stableRelativePath.StartsWith(@"Directory\Background", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.DirectoryBackground;
-        if (stableRelativePath.StartsWith(@"DesktopBackground", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.DesktopBackground;
-        if (stableRelativePath.StartsWith(@"Drive", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.Drive;
-        if (stableRelativePath.StartsWith(@"LibraryFolder", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.Library;
-        if (stableRelativePath.StartsWith(@"UserLibraryFolder", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.Library;
-        if (stableRelativePath.StartsWith(@"CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.Computer;
-        if (stableRelativePath.StartsWith(@"CLSID\{645FF040-5081-101B-9F08-00AA002F954E}", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.RecycleBin;
-        if (stableRelativePath.StartsWith(@"SystemFileAssociations", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.File;
-        if (stableRelativePath.StartsWith(@"Launcher.ImmersiveApplication", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.File;
-        if (stableRelativePath.StartsWith(@"lnkfile", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.File;
-        if (stableRelativePath.StartsWith(@"exefile", StringComparison.OrdinalIgnoreCase))
-            return ContextMenuCategory.File;
-
-        return ContextMenuCategory.File;
-    }
-
-    private static ContextMenuEntry? SelectPreferredDeleteCandidate(
-        IEnumerable<ContextMenuEntry> candidates,
-        string? currentUserSid)
-    {
-        return candidates
-            .Where(static entry => entry.IsPresentInRegistry && !entry.IsDeleted)
-            .OrderBy(entry => GetDeleteTargetRank(entry, currentUserSid))
-            .ThenBy(static entry => IsDisabledContainerEntry(entry) ? 1 : 0)
-            .FirstOrDefault();
-    }
-
-    private static int GetDeleteTargetRank(ContextMenuEntry entry, string? currentUserSid)
-    {
-        if (!string.IsNullOrWhiteSpace(currentUserSid)
-            && IsUnderUserClasses(entry.BackendRegistryPath, currentUserSid))
-        {
-            return 0;
-        }
-
-        if (entry.BackendRegistryPath.StartsWith(@"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\", StringComparison.OrdinalIgnoreCase)
-            || entry.BackendRegistryPath.StartsWith(@"HKLM\SOFTWARE\Classes\", StringComparison.OrdinalIgnoreCase))
-        {
-            return 1;
-        }
-
-        return 2;
-    }
-
-    private static bool IsUnderUserClasses(string registryPath, string userSid)
-    {
-        return registryPath.StartsWith($@"HKEY_USERS\{userSid}\Software\Classes\", StringComparison.OrdinalIgnoreCase)
-               || registryPath.StartsWith($@"HKU\{userSid}\Software\Classes\", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsRegistryKeyMissingExportError(string? message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return false;
-        }
-
-        return message.Contains("系统找不到指定的注册表项或值", StringComparison.Ordinal)
-               || message.Contains("The system was unable to find the specified registry key or value", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("unable to find the specified registry key", StringComparison.OrdinalIgnoreCase);
     }
 
     private static PersistedContextMenuState GetOrCreateState(
@@ -2696,42 +2160,22 @@ public sealed class ContextMenuRegistryCatalog
         return blockedKey?.GetValue(handlerClsid) is not null;
     }
 
-    private void SetShellVerbEnabled(string registryPath, bool enable)
+    private static void SetShellVerbEnabled(string registryPath, bool enable)
     {
         using var menuKey = OpenRegistryKey(registryPath, writable: true)
             ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
 
         if (enable)
         {
-            ShellVerbVisibility.SetEnabled(menuKey, registryPath, enable: true);
-            _logger.LogFireAndForget(
-                DiagnosticLogFormatter.BuildRegistryOperationLog(
-                    "SetShellVerbEnabled",
-                    registryPath,
-                    "HideBasedOnVelocityId|ProgrammaticAccessOnly|LegacyDisable",
-                    RegistryValueKind.String,
-                    null,
-                    writable: true,
-                    result: "DeleteValues Success, Enable=true"));
+            menuKey.DeleteValue("LegacyDisable", throwOnMissingValue: false);
         }
         else
         {
-            var skipLegacyDisable = ShellVerbVisibility.IsOpenInNewWindowVerb(registryPath);
-            ShellVerbVisibility.SetEnabled(menuKey, registryPath, enable: false);
-
-            _logger.LogFireAndForget(
-                DiagnosticLogFormatter.BuildRegistryOperationLog(
-                    "SetShellVerbEnabled",
-                    registryPath,
-                    "HideBasedOnVelocityId|ProgrammaticAccessOnly|LegacyDisable",
-                    RegistryValueKind.String,
-                    string.Empty,
-                    writable: true,
-                    result: $"SetValues Success, Enable=false, SkipLegacyDisable={skipLegacyDisable}"));
+            menuKey.SetValue("LegacyDisable", string.Empty, RegistryValueKind.String);
         }
     }
 
-    private void SetShellVerbAttribute(string registryPath, ContextMenuShellAttribute attribute, bool enable)
+    private static void SetShellVerbAttribute(string registryPath, ContextMenuShellAttribute attribute, bool enable)
     {
         using var menuKey = OpenRegistryKey(registryPath, writable: true)
             ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
@@ -2749,16 +2193,14 @@ public sealed class ContextMenuRegistryCatalog
         if (enable)
         {
             menuKey.SetValue(valueName, string.Empty, RegistryValueKind.String);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog($"SetShellVerbAttribute:{attribute}", registryPath, valueName, RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
         }
         else
         {
             menuKey.DeleteValue(valueName, throwOnMissingValue: false);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog($"SetShellVerbAttribute:{attribute}", registryPath, valueName, RegistryValueKind.String, null, writable: true, result: "DeleteValue Success"));
         }
     }
 
-    private void SetShellExtensionEnabled(ContextMenuEntry item, bool enable)
+    private static void SetShellExtensionEnabled(ContextMenuEntry item, bool enable)
     {
         if (string.IsNullOrWhiteSpace(item.HandlerClsid))
         {
@@ -2771,12 +2213,10 @@ public sealed class ContextMenuRegistryCatalog
         if (enable)
         {
             blockedKey.DeleteValue(item.HandlerClsid, throwOnMissingValue: false);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("SetShellExtensionEnabled", @"HKEY_LOCAL_MACHINE\" + BlockedShellExtensionsPath, item.HandlerClsid, RegistryValueKind.String, null, writable: true, result: "DeleteValue Success, Enable=true"));
         }
         else
         {
             blockedKey.SetValue(item.HandlerClsid, item.DisplayName, RegistryValueKind.String);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("SetShellExtensionEnabled", @"HKEY_LOCAL_MACHINE\" + BlockedShellExtensionsPath, item.HandlerClsid, RegistryValueKind.String, item.DisplayName, writable: true, result: "SetValue Success, Enable=false"));
         }
     }
 
@@ -3290,33 +2730,24 @@ public sealed class ContextMenuRegistryCatalog
     {
         if (string.IsNullOrWhiteSpace(cultureName))
         {
-            return NormalizeSupportedCultureName(CultureInfo.CurrentUICulture);
+            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                ? "zh-CN"
+                : "en-US";
         }
 
         try
         {
             var culture = CultureInfo.GetCultureInfo(cultureName.Trim());
-            return NormalizeSupportedCultureName(culture);
+            return culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                ? "zh-CN"
+                : "en-US";
         }
         catch (CultureNotFoundException)
         {
-            return NormalizeSupportedCultureName(CultureInfo.CurrentUICulture);
+            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                ? "zh-CN"
+                : "en-US";
         }
-    }
-
-    private static string NormalizeSupportedCultureName(CultureInfo culture)
-    {
-        if (culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
-        {
-            return culture.Name.Contains("Hant", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(culture.Name, "zh-TW", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(culture.Name, "zh-HK", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(culture.Name, "zh-MO", StringComparison.OrdinalIgnoreCase)
-                ? "zh-TW"
-                : "zh-CN";
-        }
-
-        return "en-US";
     }
 
     private static string GetUniqueRegistryPath(string basePath, string keyName)
@@ -3369,13 +2800,7 @@ public sealed class ContextMenuRegistryCatalog
 
     private static bool CanEditCommandText(RegistryKey itemKey, RegistryKey? commandKey)
     {
-        if (itemKey.GetValue("SubCommands") is not null)
-        {
-            return false;
-        }
-
-        var extendedSubCommandsKey = itemKey.GetValue("ExtendedSubCommandsKey")?.ToString();
-        if (!string.IsNullOrWhiteSpace(extendedSubCommandsKey))
+        if (HasMultiItemSubCommands(itemKey))
         {
             return false;
         }
@@ -3391,12 +2816,7 @@ public sealed class ContextMenuRegistryCatalog
             return false;
         }
 
-        if (itemKey.GetValue("ExplorerCommandHandler") is not null)
-        {
-            return false;
-        }
-
-        return true;
+        return itemKey.GetValue("ExplorerCommandHandler") is null;
     }
 
     private static bool CanEditDisplayText(ContextMenuEntry item)
@@ -3416,96 +2836,6 @@ public sealed class ContextMenuRegistryCatalog
         return itemKey is not null && HasMultiItemSubCommands(itemKey);
     }
 
-    private static bool IsNormalContextMenuRegistryItem(ContextMenuEntry item)
-    {
-        if (item.IsWindows11ContextMenu)
-        {
-            return false;
-        }
-
-        if (item.EntryKind is not (ContextMenuEntryKind.ShellVerb or ContextMenuEntryKind.ShellExtension))
-        {
-            return false;
-        }
-
-        return IsProtectedNormalContextMenuRootPath(item.BackendRegistryPath)
-               || IsProtectedNormalContextMenuRootPath(item.RegistryPath)
-               || IsProtectedNormalContextMenuRootPath(item.SourceRootPath);
-    }
-
-    internal static bool IsProtectedNormalContextMenuRootPath(string? path)
-    {
-        var normalized = NormalizeProtectedPath(path);
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return false;
-        }
-
-        if (normalized.Contains(@"\ShellNew\", StringComparison.OrdinalIgnoreCase)
-            || normalized.EndsWith(@"\ShellNew", StringComparison.OrdinalIgnoreCase)
-            || normalized.Contains(@"Shell Extensions\Blocked", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return HasPathSegment(normalized, "shell")
-               || normalized.Contains(@"\shellex\ContextMenuHandlers", StringComparison.OrdinalIgnoreCase)
-               || normalized.StartsWith(@"shellex\ContextMenuHandlers", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? NormalizeProtectedPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        var normalized = path.Trim().Replace('/', '\\').Trim('\\');
-        foreach (var prefix in new[]
-        {
-            @"HKEY_CLASSES_ROOT\",
-            @"HKCR\",
-            @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\",
-            @"HKLM\SOFTWARE\Classes\"
-        })
-        {
-            if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return normalized[prefix.Length..].Trim('\\');
-            }
-        }
-
-        foreach (var prefix in new[] { @"HKEY_USERS\", @"HKU\" })
-        {
-            if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var remainder = normalized[prefix.Length..];
-            var classesMarker = @"\Software\Classes\";
-            var classesIndex = remainder.IndexOf(classesMarker, StringComparison.OrdinalIgnoreCase);
-            if (classesIndex >= 0)
-            {
-                return remainder[(classesIndex + classesMarker.Length)..].Trim('\\');
-            }
-        }
-
-        return normalized;
-    }
-
-    private static bool HasPathSegment(string path, string segment)
-    {
-        var parts = path.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Any(part => string.Equals(part, segment, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static bool IsRegistryWriteProtectionException(Exception ex)
-    {
-        return ex is UnauthorizedAccessException or SecurityException
-               || ex.InnerException is not null && IsRegistryWriteProtectionException(ex.InnerException);
-    }
-
     private static PipeResponse CreateFailure(string message, ContextMenuEntry? item = null)
     {
         return new PipeResponse
@@ -3516,7 +2846,7 @@ public sealed class ContextMenuRegistryCatalog
         };
     }
 
-    private List<string> ApplyRegistryWriteProtection(bool enable)
+    private List<string> ApplyRegistryWriteProtection(bool enable, BackendUserContext? userContext)
     {
         var errors = new List<string>();
 
@@ -3526,43 +2856,36 @@ public sealed class ContextMenuRegistryCatalog
         {
             ApplyRegistryWriteProtection(RegistryHive.LocalMachine, relativePath, enable, errors);
 
+            if (userContext is not null)
+            {
+                try
+                {
+                    using var userRoot = OpenUserRegistryRoot(userContext, writable: true);
+                    ApplyRegistryWriteProtectionToUserKey(userRoot, relativePath, enable, errors);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Unable to apply protection to user registry: {ex.Message}");
+                }
+            }
+            else
+            {
+                errors.Add("Unable to apply protection to user registry: caller user context is not available.");
+            }
         }
 
         return errors;
     }
 
-    private List<string> ApplyRegistryWriteProtectionToRoots(IEnumerable<string> relativePaths, bool enable)
+    private static RegistryKey OpenUserRegistryRoot(BackendUserContext userContext, bool writable)
     {
-        var errors = new List<string>();
-
-        foreach (var relativePath in NormalizeRegistryWriteProtectionRelativePaths(relativePaths))
+        if (string.IsNullOrWhiteSpace(userContext.Sid))
         {
-            ApplyRegistryWriteProtection(RegistryHive.LocalMachine, relativePath, enable, errors);
+            throw new InvalidOperationException("The frontend user SID is not available.");
         }
 
-        return errors;
-    }
-
-    private static IReadOnlyList<string> NormalizeRegistryWriteProtectionRelativePaths(IEnumerable<string> relativePaths)
-    {
-        var normalizedPaths = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var relativePath in relativePaths)
-        {
-            var normalized = NormalizeClassesRootRelativePath(relativePath);
-            if (string.IsNullOrWhiteSpace(normalized))
-            {
-                continue;
-            }
-
-            if (seen.Add(normalized))
-            {
-                normalizedPaths.Add(normalized);
-            }
-        }
-
-        return normalizedPaths;
+        return Registry.Users.OpenSubKey(userContext.Sid, writable)
+            ?? throw new InvalidOperationException($"The registry hive for user {userContext.Sid} is not loaded.");
     }
 
     private static void ApplyRegistryWriteProtectionToUserKey(RegistryKey userRoot, string relativePath, bool enable, List<string> errors)
@@ -3614,29 +2937,24 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private void ApplyRegistryWriteProtection(RegistryHive hive, string relativePath, bool enable, List<string> errors)
+    private static void ApplyRegistryWriteProtection(RegistryHive hive, string relativePath, bool enable, List<string> errors)
     {
-        var fullPath = $@"{hive}\Software\Classes\{relativePath}";
-        var requestedRights = RegistryRights.ChangePermissions | RegistryRights.ReadKey;
         try
         {
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("RegistryWriteProtectionOpen", fullPath, requestedRights, $"Enable={enable}"));
             using var classesRoot = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
             using var key = classesRoot.OpenSubKey(
                 $@"Software\Classes\{relativePath}",
                 RegistryKeyPermissionCheck.ReadWriteSubTree,
-                requestedRights);
+                RegistryRights.ChangePermissions | RegistryRights.ReadKey);
 
             if (key is null)
             {
-                _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("RegistryWriteProtectionSkipped", fullPath, requestedRights, "MissingKey"));
                 return;
             }
 
             var security = key.GetAccessControl(AccessControlSections.Access);
             foreach (var rule in CreateProtectionRules())
             {
-                _logger.LogFireAndForget($"RegistryWriteProtectionRule: Hive={hive}, Path={fullPath}, Enable={enable}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
                 if (enable)
                 {
                     security.AddAccessRule(rule);
@@ -3648,11 +2966,9 @@ public sealed class ContextMenuRegistryCatalog
             }
 
             key.SetAccessControl(security);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("RegistryWriteProtectionSetAccessControl", fullPath, requestedRights, $"Success, Enable={enable}"));
         }
         catch (Exception ex)
         {
-            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"RegistryWriteProtectionFailure: Hive={hive}, Path={fullPath}, Enable={enable}, Rights={DiagnosticLogFormatter.FormatRegistryRights(requestedRights)}, Exception={ex}");
             errors.Add($"{hive}\\Software\\Classes\\{relativePath}: {ex.Message}");
         }
     }
@@ -3866,52 +3182,67 @@ public sealed class ContextMenuRegistryCatalog
         return existingIsDisabledContainer ? candidate : existing;
     }
 
+    private static ContextMenuEntry? SelectPreferredDeleteCandidate(IEnumerable<ContextMenuEntry> candidates)
+    {
+        return candidates
+            .Where(static entry => entry.IsPresentInRegistry && !entry.IsDeleted)
+            .OrderBy(static entry => entry.BackendRegistryPath.StartsWith(@"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(static entry => IsDisabledContainerEntry(entry) ? 1 : 0)
+            .FirstOrDefault();
+    }
+
     private static bool IsDisabledContainerEntry(ContextMenuEntry entry)
     {
         return entry.RegistryPath.Contains(@"\-ContextMenuHandlers\", StringComparison.OrdinalIgnoreCase)
                || entry.BackendRegistryPath.Contains(@"\-ContextMenuHandlers\", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IEnumerable<RegistryRootInstance> EnumerateRootInstances(string? currentUserSid = null)
+    private static ContextMenuCategory DetermineCategoryFromPath(string stableRelativePath)
     {
-        if (!string.IsNullOrWhiteSpace(currentUserSid))
+        var match = MonitoredRoots.FirstOrDefault(root =>
+            stableRelativePath.StartsWith(root.StableRelativePath, StringComparison.OrdinalIgnoreCase)
+            || stableRelativePath.StartsWith(root.RelativePath, StringComparison.OrdinalIgnoreCase));
+
+        if (match is not null)
         {
-            // This order is intentional. BuildSnapshotAsync stores entries by logical
-            // item id and later duplicates replace earlier ones, so current-user
-            // classic registrations must be yielded last to win over duplicate HKLM
-            // or other loaded HKU registrations.
-            foreach (var userSid in EnumerateLoadedUserClassSids()
-                         .Where(sid => !string.Equals(sid, currentUserSid, StringComparison.OrdinalIgnoreCase)))
-            {
-                yield return new RegistryRootInstance(
-                    Registry.Users,
-                    $@"{userSid}\Software\Classes",
-                    $@"HKEY_USERS\{userSid}\Software\Classes");
-            }
-
-            yield return new RegistryRootInstance(
-                Registry.LocalMachine,
-                @"SOFTWARE\Classes",
-                @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes");
-
-            using var currentUserClassesKey = Registry.Users.OpenSubKey($@"{currentUserSid}\Software\Classes", writable: false);
-            if (currentUserClassesKey is not null)
-            {
-                yield return new RegistryRootInstance(
-                    Registry.Users,
-                    $@"{currentUserSid}\Software\Classes",
-                    $@"HKEY_USERS\{currentUserSid}\Software\Classes");
-            }
-
-            yield break;
+            return match.Category;
         }
 
+        if (stableRelativePath.StartsWith(@"Directory\Background", StringComparison.OrdinalIgnoreCase))
+        {
+            return ContextMenuCategory.DirectoryBackground;
+        }
+
+        if (stableRelativePath.StartsWith(@"DesktopBackground", StringComparison.OrdinalIgnoreCase))
+        {
+            return ContextMenuCategory.DesktopBackground;
+        }
+
+        if (stableRelativePath.StartsWith(@"Drive", StringComparison.OrdinalIgnoreCase))
+        {
+            return ContextMenuCategory.Drive;
+        }
+
+        if (stableRelativePath.StartsWith(@"LibraryFolder", StringComparison.OrdinalIgnoreCase)
+            || stableRelativePath.StartsWith(@"UserLibraryFolder", StringComparison.OrdinalIgnoreCase))
+        {
+            return ContextMenuCategory.Library;
+        }
+
+        return ContextMenuCategory.File;
+    }
+
+    private static IEnumerable<RegistryRootInstance> EnumerateRootInstances()
+    {
         yield return new RegistryRootInstance(
             Registry.LocalMachine,
             @"SOFTWARE\Classes",
             @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes");
 
-        foreach (var userSid in EnumerateLoadedUserClassSids())
+        foreach (var userSid in Registry.Users.GetSubKeyNames()
+                     .Where(static sid => sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
+                                          && !sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(static sid => sid, StringComparer.OrdinalIgnoreCase))
         {
             yield return new RegistryRootInstance(
                 Registry.Users,
@@ -3920,15 +3251,7 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private static IEnumerable<string> EnumerateLoadedUserClassSids()
-    {
-        return Registry.Users.GetSubKeyNames()
-            .Where(static sid => sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
-                                 && !sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(static sid => sid, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private void WriteDetailedEditRegistryValue(
+    private static void WriteDetailedEditRegistryValue(
         string fullPath,
         string keyName,
         string? valueKind,
@@ -3943,15 +3266,6 @@ public sealed class ContextMenuRegistryCatalog
         if (value is null)
         {
             key.DeleteValue(keyName, throwOnMissingValue: false);
-            _logger.LogFireAndForget(
-                DiagnosticLogFormatter.BuildRegistryOperationLog(
-                    "WriteDetailedEditRegistryValue",
-                    fullPath,
-                    keyName,
-                    kind,
-                    null,
-                    writable: true,
-                    result: $"DeleteValue Success, NormalizedSubPath={subPath}, UserSid={userSid ?? "<null>"}"));
             return;
         }
 
@@ -3965,15 +3279,6 @@ public sealed class ContextMenuRegistryCatalog
         };
 
         key.SetValue(keyName, boxedValue, kind);
-        _logger.LogFireAndForget(
-            DiagnosticLogFormatter.BuildRegistryOperationLog(
-                "WriteDetailedEditRegistryValue",
-                fullPath,
-                keyName,
-                kind,
-                boxedValue,
-                writable: true,
-                result: $"SetValue Success, NormalizedSubPath={subPath}, UserSid={userSid ?? "<null>"}"));
     }
 
     private static RegistryValueKind ParseDetailedEditRegistryValueKind(string? valueKind)
@@ -4151,7 +3456,7 @@ public sealed class ContextMenuRegistryCatalog
         try
         {
             IntPtr tokenHandle;
-            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
             if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
             {
                 return false;
@@ -4200,7 +3505,7 @@ public sealed class ContextMenuRegistryCatalog
         try
         {
             IntPtr tokenHandle;
-            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
             if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
             {
                 return false;
@@ -4249,7 +3554,7 @@ public sealed class ContextMenuRegistryCatalog
         try
         {
             IntPtr tokenHandle;
-            var processHandle = Process.GetCurrentProcess().SafeHandle;
+            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
             if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
             {
                 return false;
