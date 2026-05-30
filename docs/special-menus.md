@@ -43,10 +43,15 @@ ShellNew 是 SpecialMenu 中最容易踩坑的部分。
 | `NullFile` | 表示创建空文件。当前创建请求未提供 `DataText` 时倾向写入 `NullFile`。 |
 | `Data` | 当前 `ShellNewCreateRequest` 支持 `DataText`，后端会写入二进制 `Data`。 |
 | `Command` | `ShellNewUpdateRequest` 支持更新 `Command`。 |
+| 创建请求字段 | 新建时会应用前端表单中的扩展名、显示名、图标路径、命令、数据文本和 `BeforeSeparator`；命令优先于 `Data`，没有命令和数据时写 `NullFile`。 |
 | `FileName` | Windows ShellNew 支持这种方式，但当前代码重点处理的是 `NullFile`、`Data`、`Command` 和相关元数据。 |
 | `Config\BeforeSeparator` | 当前更新请求支持 `BeforeSeparator`。 |
 | Explorer ShellNew order key | `Software\Microsoft\Windows\CurrentVersion\Explorer\Discardable\PostSetup\ShellNew`，控制 Explorer 侧排序信息。 |
 | Classes 排序值 | 排序会同时考虑扩展名、Explorer order key 和 Classes 相关数据。 |
+
+创建 ShellNew 时，后端必须先基于前端用户上下文解析文件类型，而不能使用服务进程的 `Registry.ClassesRoot` 来验证 ProgId。解析顺序是用户 `HKU\<SID>\Software\Classes\.ext`、机器 `HKLM\SOFTWARE\Classes\.ext`、用户 `FileExts\.ext\UserChoice\ProgId`，再考虑 `OpenWithProgids`。ProgId 只在同一组用户 / 机器 Classes 根中存在时才视为有效；`UserChoice` 只读不写，不修改 hash，也不会为项目创建全局 fake ProgId。
+
+即使扩展名没有出现在用户或机器 Classes 中，创建仍会继续写用户级 `HKU\<SID>\Software\Classes\.ext\ShellNew`。ProgId 是可选元数据：解析到有效 ProgId 时用于 per-user `FriendlyTypeName` 和返回项 metadata；没有 ProgId 时仍创建扩展名级 ShellNew，显示名优先写到 ShellNew 的 `MenuText` 并用于返回项。`UserChoice` 始终只读，不写入、不修改 hash。
 
 排序复杂的原因是 Explorer “新建”菜单不是简单按注册表子键自然顺序显示。`SpecialMenuService` 的 `MoveShellNewAsync` 会在需要时临时解锁 ShellNew order ACL，更新排序，再按原锁定状态尝试恢复。
 

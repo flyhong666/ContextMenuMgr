@@ -602,7 +602,18 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                 var shellNewAddData = await MenuItemFormDialog.ShowAddShellNewAsync(Title, _localization);
                 return shellNewAddData is null
                     ? null
-                    : new PipeRequest { SpecialKind = Kind, ShellNewCreate = new ShellNewCreateRequest(shellNewAddData.Extension), ClientOperationId = operationId };
+                    : new PipeRequest
+                    {
+                        SpecialKind = Kind,
+                        ShellNewCreate = new ShellNewCreateRequest(
+                            shellNewAddData.Extension,
+                            EmptyToNull(shellNewAddData.DisplayName),
+                            EmptyToNull(shellNewAddData.IconPath),
+                            EmptyToNull(shellNewAddData.Command),
+                            null,
+                            shellNewAddData.BeforeSeparator),
+                        ClientOperationId = operationId
+                    };
             case SpecialMenuKind.SendTo:
                 var sendToData = await MenuItemFormDialog.ShowAddSendToAsync(Title, _localization);
                 if (sendToData is null)

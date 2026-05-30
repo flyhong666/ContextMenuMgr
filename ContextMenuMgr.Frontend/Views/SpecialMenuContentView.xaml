@@ -22,7 +22,7 @@
                     Opacity="0.72"
                     Text="{Binding Description}"
                     TextWrapping="Wrap" />
-                <DockPanel Margin="0,12,0,0">
+                <StackPanel Margin="0,12,0,0">
                     <StackPanel
                         VerticalAlignment="Bottom"
                         DockPanel.Dock="Right"
@@ -107,7 +107,7 @@
                                 SelectedItem="{Binding SelectedDropEffect, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                     </StackPanel>
-                </DockPanel>
+                </StackPanel>
                 <ui:TextBlock
                     Margin="0,8,0,0"
                     Foreground="#C75000"

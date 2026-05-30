@@ -78,7 +78,13 @@ public sealed record SpecialMenuEntry
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 }
 
-public sealed record ShellNewCreateRequest(string Extension, string? DataText = null);
+public sealed record ShellNewCreateRequest(
+    string Extension,
+    string? DisplayName = null,
+    string? IconPath = null,
+    string? Command = null,
+    string? DataText = null,
+    bool BeforeSeparator = false);
 
 public sealed record ShellNewUpdateRequest(
     string Id,

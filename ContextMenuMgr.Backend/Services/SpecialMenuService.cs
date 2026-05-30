@@ -695,6 +695,9 @@ public sealed class SpecialMenuService
 
         if (!string.IsNullOrWhiteSpace(progId))
         {
+            parts.Add(($@"{progId}\ShellNew", true));
+            parts.Add(($@"{progId}\-ShellNew", false));
+            // Older ContextMenuMgr builds probed this nonstandard shape. Keep it readable for compatibility.
             parts.Add(($@"{extension}\{progId}\ShellNew", true));
             parts.Add(($@"{extension}\{progId}\-ShellNew", false));
         }
@@ -747,46 +750,260 @@ public sealed class SpecialMenuService
             throw new InvalidOperationException("The extension must include a file type, for example .txt.");
         }
 
-        using var existingExtensionKey = GetClassesRootSpecs(context)
-            .Select(spec => spec.Root.OpenSubKey(extension, writable: false))
-            .FirstOrDefault(key => key is not null)
-            ?? throw new InvalidOperationException($"The extension {extension} does not exist. Set its default app first.");
-        var existingProgId = existingExtensionKey.GetValue(null)?.ToString();
-        _logger.LogFireAndForget($"CreateShellNewStart: Sid={context.Sid}, Extension={extension}, ExistingProgId={existingProgId}, UserClassesPath={DiagnosticLogFormatter.FormatUserHivePath(context, UserClassesPath)}.");
-        if (string.IsNullOrWhiteSpace(existingProgId) || Registry.ClassesRoot.OpenSubKey(existingProgId) is null)
+        _logger.LogFireAndForget($"CreateShellNewStart: ShellNewCreateFixVersion=RelaxExtensionRegistration-v2, Sid={context.Sid}, Extension={extension}.");
+        var specs = GetClassesRootSpecs(context);
+        var extensionExists = ShellNewExtensionExists(extension, specs);
+        var progIdResolution = ResolveShellNewProgId(extension, context, specs);
+        _logger.LogFireAndForget($"CreateShellNewStart: Sid={context.Sid}, Extension={extension}, ExtensionExists={extensionExists}, ResolvedProgId={progIdResolution?.ProgId}, ProgIdSource={progIdResolution?.Source}, UserClassesPath={DiagnosticLogFormatter.FormatUserHivePath(context, UserClassesPath)}.");
+        if (!extensionExists)
         {
-            throw new InvalidOperationException($"The extension {extension} does not have a valid ProgId/default app.");
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"CreateShellNewExtensionNotRegisteredWarning: Sid={context.Sid}, Extension={extension}, Action=CreateUserClassesExtensionShellNew.");
+        }
+
+        if (progIdResolution is null)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"CreateShellNewNoProgIdWarning: Sid={context.Sid}, Extension={extension}, Action=ContinueWithExtensionLevelShellNew.");
         }
 
         using var userRoot = GetUserRegistryRoot(context, writable: true);
         using var userClasses = userRoot.CreateSubKey(UserClassesPath, writable: true)
-            ?? throw new InvalidOperationException("Unable to open current-user classes.");
+            ?? throw new InvalidOperationException("The current user's registry hive is not available.");
         using var extensionKey = userClasses.CreateSubKey(extension, writable: true)
-            ?? throw new InvalidOperationException($"Unable to create {extension}.");
-        var progId = extensionKey.GetValue(null)?.ToString();
-        if (string.IsNullOrWhiteSpace(progId))
+            ?? throw new InvalidOperationException($"Unable to create HKEY_USERS\\{context.Sid}\\{UserClassesPath}\\{extension}. Check registry permissions.");
+        var currentProgId = extensionKey.GetValue(null)?.ToString();
+        if (string.IsNullOrWhiteSpace(currentProgId)
+            && progIdResolution is not null
+            && progIdResolution.SourceKind != ShellNewProgIdSourceKind.UserChoice)
         {
-            extensionKey.SetValue(null, existingProgId, RegistryValueKind.String);
+            extensionKey.SetValue(null, progIdResolution.ProgId, RegistryValueKind.String);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}", null, RegistryValueKind.String, progIdResolution.ProgId, writable: true, result: "SetValue Success"));
+            currentProgId = progIdResolution.ProgId;
         }
 
         using var shellNewKey = extensionKey.CreateSubKey("ShellNew", writable: true)
-            ?? throw new InvalidOperationException("Unable to create ShellNew key.");
-        if (!string.IsNullOrEmpty(request.DataText))
+            ?? throw new InvalidOperationException($"Unable to create HKEY_USERS\\{context.Sid}\\{UserClassesPath}\\{extension}\\ShellNew. Check registry permissions.");
+        var shellNewPath = $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}\ShellNew";
+        var wroteValues = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.Command))
+        {
+            shellNewKey.SetValue("Command", request.Command, RegistryValueKind.String);
+            shellNewKey.DeleteValue("NullFile", throwOnMissingValue: false);
+            shellNewKey.DeleteValue("Data", throwOnMissingValue: false);
+            wroteValues.Add("Command");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", shellNewPath, "Command", RegistryValueKind.String, request.Command, writable: true, result: "SetValue Success"));
+        }
+        else if (request.DataText is not null)
         {
             var data = Encoding.UTF8.GetBytes(request.DataText);
             shellNewKey.SetValue("Data", data, RegistryValueKind.Binary);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}\ShellNew", "Data", RegistryValueKind.Binary, data, writable: true, result: "SetValue Success"));
+            shellNewKey.DeleteValue("NullFile", throwOnMissingValue: false);
+            wroteValues.Add("Data");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", shellNewPath, "Data", RegistryValueKind.Binary, data, writable: true, result: "SetValue Success"));
         }
         else
         {
             shellNewKey.SetValue("NullFile", string.Empty, RegistryValueKind.String);
-            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}\ShellNew", "NullFile", RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
+            shellNewKey.DeleteValue("Command", throwOnMissingValue: false);
+            shellNewKey.DeleteValue("Data", throwOnMissingValue: false);
+            wroteValues.Add("NullFile");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", shellNewPath, "NullFile", RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
         }
 
+        if (!string.IsNullOrWhiteSpace(request.IconPath))
+        {
+            shellNewKey.SetValue("IconPath", request.IconPath, RegistryValueKind.String);
+            wroteValues.Add("IconPath");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", shellNewPath, "IconPath", RegistryValueKind.String, request.IconPath, writable: true, result: "SetValue Success"));
+        }
+
+        var friendlyProgId = !string.IsNullOrWhiteSpace(currentProgId) ? currentProgId : progIdResolution?.ProgId;
+        if (!string.IsNullOrWhiteSpace(request.DisplayName) && !string.IsNullOrWhiteSpace(friendlyProgId))
+        {
+            using var progIdKey = userClasses.CreateSubKey(friendlyProgId, writable: true);
+            progIdKey?.SetValue("FriendlyTypeName", request.DisplayName, RegistryValueKind.String);
+            wroteValues.Add("FriendlyTypeName");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{friendlyProgId}", "FriendlyTypeName", RegistryValueKind.String, request.DisplayName, writable: true, result: "SetValue Success"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            shellNewKey.SetValue("MenuText", request.DisplayName, RegistryValueKind.String);
+            wroteValues.Add("MenuText");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", shellNewPath, "MenuText", RegistryValueKind.String, request.DisplayName, writable: true, result: "SetValue Success"));
+            if (string.IsNullOrWhiteSpace(friendlyProgId))
+            {
+                _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"CreateShellNewDisplayNameWarning: Sid={context.Sid}, Extension={extension}, Reason=NoValidProgIdForFriendlyTypeName.");
+            }
+        }
+
+        if (request.BeforeSeparator)
+        {
+            using var config = shellNewKey.CreateSubKey("Config", writable: true);
+            config?.SetValue("BeforeSeparator", string.Empty, RegistryValueKind.String);
+            wroteValues.Add("Config\\BeforeSeparator");
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("CreateShellNew", $@"{shellNewPath}\Config", "BeforeSeparator", RegistryValueKind.String, string.Empty, writable: true, result: "SetValue Success"));
+        }
+
+        _logger.LogFireAndForget($"CreateShellNewWriteValues: Sid={context.Sid}, ShellNewPath={shellNewPath}, Values={string.Join(";", wroteValues)}.");
         var spec = GetUserClassesRootSpec(context);
-        var item = EnumerateShellNewForExtension(spec, extension).First();
+        var item = EnumerateShellNewForExtension(spec, extension).FirstOrDefault()
+            ?? CreateSyntheticShellNewEntry(context, extension, request, progIdResolution?.ProgId, shellNewPath);
+        item = ApplyShellNewCreateRequestToReturnedItem(item, request);
         _logger.LogFireAndForget($"CreateShellNewEnd: Sid={context.Sid}, Extension={extension}, CreatedKeyPath={item.RegistryPath}, ResultItemId={item.Id}, ResultPath={item.RegistryPath}.");
         return item;
+    }
+
+    private static bool ShellNewExtensionExists(string extension, IReadOnlyList<ClassesRootSpec> specs)
+    {
+        foreach (var spec in specs)
+        {
+            using var key = spec.Root.OpenSubKey(extension, writable: false);
+            if (key is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private ShellNewProgIdResolution? ResolveShellNewProgId(string extension, BackendUserContext context, IReadOnlyList<ClassesRootSpec> specs)
+    {
+        foreach (var spec in specs.Where(static item => string.Equals(item.SourceScope, "User", StringComparison.OrdinalIgnoreCase)))
+        {
+            using var extensionKey = spec.Root.OpenSubKey(extension, writable: false);
+            var candidate = extensionKey?.GetValue(null)?.ToString();
+            if (IsValidShellNewProgId(candidate, specs))
+            {
+                return new ShellNewProgIdResolution(candidate!, "UserExtensionDefault", ShellNewProgIdSourceKind.ExtensionDefault);
+            }
+        }
+
+        foreach (var spec in specs.Where(static item => string.Equals(item.SourceScope, "System", StringComparison.OrdinalIgnoreCase)))
+        {
+            using var extensionKey = spec.Root.OpenSubKey(extension, writable: false);
+            var candidate = extensionKey?.GetValue(null)?.ToString();
+            if (IsValidShellNewProgId(candidate, specs))
+            {
+                return new ShellNewProgIdResolution(candidate!, "MachineExtensionDefault", ShellNewProgIdSourceKind.ExtensionDefault);
+            }
+        }
+
+        var userChoiceProgId = ReadUserChoiceProgId(extension, context);
+        if (IsValidShellNewProgId(userChoiceProgId, specs))
+        {
+            return new ShellNewProgIdResolution(userChoiceProgId!, "UserChoice", ShellNewProgIdSourceKind.UserChoice);
+        }
+
+        if (!string.IsNullOrWhiteSpace(userChoiceProgId))
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"CreateShellNewUserChoiceInvalidProgId: Sid={context.Sid}, Extension={extension}, ProgId={userChoiceProgId}.");
+        }
+
+        foreach (var spec in specs)
+        {
+            using var extensionKey = spec.Root.OpenSubKey(extension, writable: false);
+            using var openWithProgids = extensionKey?.OpenSubKey("OpenWithProgids", writable: false);
+            if (openWithProgids is null)
+            {
+                continue;
+            }
+
+            foreach (var candidate in openWithProgids.GetValueNames().Where(static name => !string.IsNullOrWhiteSpace(name)))
+            {
+                if (IsValidShellNewProgId(candidate, specs))
+                {
+                    return new ShellNewProgIdResolution(candidate, $"OpenWithProgids:{spec.SourceScope}", ShellNewProgIdSourceKind.OpenWithProgids);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ReadUserChoiceProgId(string extension, BackendUserContext context)
+    {
+        using var userRoot = GetUserRegistryRoot(context, writable: false);
+        using var userChoice = userRoot.OpenSubKey($@"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{extension}\UserChoice", writable: false);
+        return userChoice?.GetValue("ProgId")?.ToString();
+    }
+
+    private static bool IsValidShellNewProgId(string? progId, IReadOnlyList<ClassesRootSpec> specs)
+    {
+        if (string.IsNullOrWhiteSpace(progId))
+        {
+            return false;
+        }
+
+        foreach (var spec in specs)
+        {
+            using var key = spec.Root.OpenSubKey(progId, writable: false);
+            if (key is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static SpecialMenuEntry CreateSyntheticShellNewEntry(
+        BackendUserContext context,
+        string extension,
+        ShellNewCreateRequest request,
+        string? progId,
+        string shellNewPath)
+    {
+        var (iconPath, iconIndex) = ParseIconLocation(request.IconPath);
+        var beforeSeparator = request.BeforeSeparator.ToString();
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Extension"] = extension,
+            ["ProgId"] = progId ?? string.Empty,
+            ["CreationKind"] = !string.IsNullOrWhiteSpace(request.Command) ? "Command" : request.DataText is not null ? "Data" : "NullFile",
+            ["BeforeSeparator"] = beforeSeparator,
+            ["DisabledRegistryPath"] = $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{extension}\-ShellNew",
+            ["SourceScope"] = "User"
+        };
+        AddKnownShellNewLocalization(extension, metadata);
+        return new SpecialMenuEntry
+        {
+            Id = EncodeId(SpecialMenuKind.ShellNew, shellNewPath),
+            Kind = SpecialMenuKind.ShellNew,
+            DisplayName = StripAcceleratorPrefix(string.IsNullOrWhiteSpace(request.DisplayName) ? extension : request.DisplayName),
+            KeyName = extension,
+            IsEnabled = true,
+            IconPath = iconPath,
+            IconIndex = iconIndex,
+            RegistryPath = shellNewPath,
+            CommandText = request.Command,
+            TargetPath = extension,
+            CanMove = true,
+            Notes = progId,
+            Metadata = metadata
+        };
+    }
+
+    private static SpecialMenuEntry ApplyShellNewCreateRequestToReturnedItem(SpecialMenuEntry item, ShellNewCreateRequest request)
+    {
+        var result = item;
+        if (!string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            result = result with { DisplayName = StripAcceleratorPrefix(request.DisplayName) };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.IconPath))
+        {
+            var (iconPath, iconIndex) = ParseIconLocation(request.IconPath);
+            result = result with { IconPath = iconPath, IconIndex = iconIndex };
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Command))
+        {
+            result = result with { CommandText = request.Command };
+        }
+
+        return result;
     }
 
     private SpecialMenuEntry UpdateShellNew(ShellNewUpdateRequest request, BackendUserContext context)
@@ -2819,7 +3036,7 @@ public sealed class SpecialMenuService
         }
 
         return Registry.Users.OpenSubKey(context.Sid, writable)
-            ?? throw new InvalidOperationException($"The registry hive for user {context.Sid} is not loaded.");
+            ?? throw new InvalidOperationException("The current user's registry hive is not available.");
     }
 
     private static string GetSendToPath(BackendUserContext context) => context.GetSendToPath();
@@ -3294,6 +3511,15 @@ public sealed class SpecialMenuService
     };
 
     private sealed record ClassesRootSpec(RegistryKey Root, string RegistryPrefix, string SourceScope);
+
+    private sealed record ShellNewProgIdResolution(string ProgId, string Source, ShellNewProgIdSourceKind SourceKind);
+
+    private enum ShellNewProgIdSourceKind
+    {
+        ExtensionDefault,
+        UserChoice,
+        OpenWithProgids
+    }
 
     private static IReadOnlyList<SpecialMenuEntry> GetDefaultShellNewEntries()
     {
