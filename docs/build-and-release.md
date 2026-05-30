@@ -52,7 +52,7 @@ git submodule update --init --recursive
 
 ## 4. Debug 本地构建
 
-`ContextMenuMgr.Frontend.csproj` 在普通 framework-dependent build 中会负责准备运行所需辅助产物。Debug 本地开发默认只构建 `Win32,x64` ProbeHost，避免未安装 ARM64 C++ 工具链的 x64 开发机无法 `dotnet run`；Release / Beta 和发布构建仍默认构建 `Win32,x64,ARM64`。
+`ContextMenuMgr.Frontend.csproj` 在普通 framework-dependent build 中会负责准备运行所需辅助产物。Debug 本地开发默认只构建 `Win32,x64` ProbeHost，避免未安装 ARM64 C++ 工具链的 x64 开发机无法 `dotnet run`；Release / Beta 和发布构建仍默认构建 `Win32,x64,ARM64`。portable anycpu 发布的最终 ProbeHost 校验会沿用同一组标签：Debug 校验 x86 / x64，非 Debug 校验 x86 / x64 / arm64。
 
 ```text
 Frontend build

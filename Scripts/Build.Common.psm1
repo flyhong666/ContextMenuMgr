@@ -666,6 +666,13 @@ function Publish-Application {
         Ensure-FileExists -Path (Join-Path $probeHostOutput "ContextMenuMgr.ProbeHost.exe") -Description "ProbeHost executable ($probeHostLabel)"
     }
 
+    if ($Platform -eq "anycpu" -and $probeHostLabels.Count -eq 0) {
+        $probeHostLabels = @("x86", "x64")
+        if ($Configuration -ne "Debug") {
+            $probeHostLabels += "arm64"
+        }
+    }
+
     $thirdPartyNoticeDir = Join-Path $publishDir "ThirdPartyNotices"
     New-Item -ItemType Directory -Path $thirdPartyNoticeDir -Force | Out-Null
     Copy-Item -LiteralPath $probeHostLicense -Destination (Join-Path $thirdPartyNoticeDir "nlohmann-json-LICENSE.MIT") -Force

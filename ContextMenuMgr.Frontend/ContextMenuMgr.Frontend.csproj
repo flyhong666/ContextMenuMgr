@@ -120,16 +120,17 @@
   </Target>
 
   <Target Name="CopyNativeProbeHostPublishArtifacts" AfterTargets="Publish" Condition="'$(PublishDir)' != '' and '$(SkipProbeHostArchitectureBuild)' != 'true'">
-    <MakeDir Directories="$(PublishDir)ProbeHost\x86;$(PublishDir)ProbeHost\x64;$(PublishDir)ProbeHost\arm64;$(PublishDir)ThirdPartyNotices" />
+    <MakeDir Directories="$(PublishDir)ProbeHost\x86;$(PublishDir)ProbeHost\x64;$(PublishDir)ThirdPartyNotices" />
+    <MakeDir Directories="$(PublishDir)ProbeHost\arm64" Condition="$(NativeProbeHostPlatforms.Contains('ARM64'))" />
     <Copy SourceFiles="$(NativeProbeHostOutputRoot)x86\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\x86" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(NativeProbeHostOutputRoot)x64\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\x64" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\arm64" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeProbeHostOutputRoot)arm64\ContextMenuMgr.ProbeHost.exe" DestinationFolder="$(PublishDir)ProbeHost\arm64" SkipUnchangedFiles="true" Condition="$(NativeProbeHostPlatforms.Contains('ARM64'))" />
     <Copy SourceFiles="$(NlohmannJsonLicense)" DestinationFolder="$(PublishDir)ThirdPartyNotices" SkipUnchangedFiles="true" />
     <Error Condition="!Exists('$(PublishDir)ProbeHost\x86\ContextMenuMgr.ProbeHost.exe')" Text="x86 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
     <Error Condition="!Exists('$(PublishDir)ProbeHost\x64\ContextMenuMgr.ProbeHost.exe')" Text="x64 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
-    <Error Condition="!Exists('$(PublishDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe')" Text="arm64 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
+    <Error Condition="$(NativeProbeHostPlatforms.Contains('ARM64')) and !Exists('$(PublishDir)ProbeHost\arm64\ContextMenuMgr.ProbeHost.exe')" Text="arm64 native ProbeHost publish output is missing ContextMenuMgr.ProbeHost.exe." />
     <Error Condition="!Exists('$(PublishDir)ThirdPartyNotices\nlohmann-json-LICENSE.MIT')" Text="nlohmann/json license notice is missing from publish ThirdPartyNotices." />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProbeHostArchitectureVerifier)&quot; -Root &quot;$(PublishDir)ProbeHost&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProbeHostArchitectureVerifier)&quot; -Root &quot;$(PublishDir)ProbeHost&quot; -Labels $(NativeProbeHostVerificationLabels)" />
   </Target>
 
 </Project>
