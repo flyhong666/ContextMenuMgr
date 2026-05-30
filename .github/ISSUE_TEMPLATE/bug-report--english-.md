@@ -1,7 +1,7 @@
 ---
 name: Bug report (English)
 about: Create a report to help us improve
-title: ''
+title: "[BUG]"
 labels: bug
 assignees: PLFJY
 

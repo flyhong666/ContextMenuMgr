@@ -1,7 +1,7 @@
 ---
 name: Bug 反馈（中文）
 about: 撰写一份报告，帮助我们改进
-title: ''
+title: "[BUG]"
 labels: bug
 assignees: PLFJY
 
