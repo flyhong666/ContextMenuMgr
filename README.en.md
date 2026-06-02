@@ -5,7 +5,7 @@
   <span>Context Menu Manager Plus</span>
 </h1>
 <p align="center">
-  <span align="center">Context Menu Manager Plus is a powerful utility that help you manage you context menu on Windows and avoid third party to add rubish to your context menu.</span>
+  <span align="center">Context Menu Manager Plus is a powerful utility that help you manage you context menu on Windows and avoid third party to add rubbish to your context menu.</span>
 </p>
 
 [中文版 README](./README.md)
