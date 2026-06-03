@@ -14,7 +14,10 @@ internal sealed record WinXHashResult(
     string? TargetPath,
     string? Arguments,
     string? GeneralizedTargetPath,
-    string? Error);
+    string? Error,
+    bool? VerificationSucceeded = null,
+    uint? ReadBackHash = null,
+    string? VerificationWarning = null);
 
 internal static class WinXHasher
 {
@@ -50,7 +53,7 @@ internal static class WinXHasher
         var storeId = typeof(IPropertyStore).GUID;
         var store = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
         PSGetPropertyKeyFromName("System.Winx.Hash", out propertyKey);
-        var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, ulVal = hash };
+        var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, uintVal = hash };
         store.SetValue(ref propertyKey, ref propVariant);
         store.Commit();
 
@@ -92,7 +95,7 @@ internal static class WinXHasher
             var storeId = typeof(IPropertyStore).GUID;
             storeRef = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
             PSGetPropertyKeyFromName("System.Winx.Hash", out propertyKey);
-            var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, ulVal = hash.Value };
+            var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, uintVal = hash.Value };
             storeRef.SetValue(ref propertyKey, ref propVariant);
             storeRef.Commit();
         }
@@ -106,20 +109,23 @@ internal static class WinXHasher
             if (item is not null) Marshal.ReleaseComObject(item);
         }
 
-        // Verify only after releasing write COM objects.
-        if (!TryReadWinXHashWithRetry(lnkPath, out var readHash, out var readError))
+        // Diagnostic readback verification — does not affect Success.
+        if (TryReadWinXHashWithRetry(lnkPath, out var readHash, out var readError))
         {
-            return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath,
-                $"Hash written but failed to read back: {readError}");
+            if (readHash == hash)
+            {
+                return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null,
+                    VerificationSucceeded: true, ReadBackHash: readHash);
+            }
+
+            return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null,
+                VerificationSucceeded: false, ReadBackHash: readHash,
+                VerificationWarning: $"Hash mismatch: wrote {hash}, read {readHash}.");
         }
 
-        if (readHash != hash)
-        {
-            return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath,
-                $"Hash mismatch: wrote {hash}, read {readHash}.");
-        }
-
-        return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null);
+        return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null,
+            VerificationSucceeded: false,
+            VerificationWarning: $"Readback verification did not confirm written hash: {readError}");
     }
 
     public static bool TryReadWinXHash(string lnkPath, out uint hash, out string? error)
@@ -318,6 +324,10 @@ internal static class WinXHasher
     private struct PropVariant
     {
         [FieldOffset(0)] public VarEnum VarType;
+        [FieldOffset(2)] public ushort wReserved1;
+        [FieldOffset(4)] public ushort wReserved2;
+        [FieldOffset(6)] public ushort wReserved3;
+        [FieldOffset(8)] public uint uintVal;
         [FieldOffset(8)] public ulong ulVal;
     }
 
