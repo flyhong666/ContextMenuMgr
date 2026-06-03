@@ -120,7 +120,9 @@ public sealed record WinXCreateEntryRequest(
     string TargetPath,
     string GroupName,
     string? Arguments = null,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    string? IconPath = null,
+    bool? RunAsAdministrator = null);
 
 public sealed record WinXUpdateEntryRequest(
     string Id,
@@ -129,6 +131,7 @@ public sealed record WinXUpdateEntryRequest(
     string? Arguments = null,
     string? WorkingDirectory = null,
     string? GroupName = null,
+    string? IconPath = null,
     bool? RunAsAdministrator = null);
 
 public sealed record WinXMoveRequest(string Id, bool MoveUp);

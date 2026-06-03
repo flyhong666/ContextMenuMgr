@@ -920,6 +920,9 @@ Continue anyway? (Not recommended)</value>
   <data name="CommandCannotBeEmpty" xml:space="preserve">
     <value>Command cannot be empty.</value>
   </data>
+  <data name="CannotEditWinXGroupHeader" xml:space="preserve">
+    <value>Win+X group headers cannot be edited as normal entries.</value>
+  </data>
   <data name="ModulePathUnavailable" xml:space="preserve">
     <value>No module file path is available for this menu item.</value>
   </data>

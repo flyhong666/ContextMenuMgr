@@ -1350,7 +1350,14 @@ public sealed class SpecialMenuService
         var index = Directory.GetFiles(groupPath, "*.lnk").Length + 1;
         var fileName = $"{index:00} - {RemoveIllegalChars(Path.GetFileNameWithoutExtension(request.TargetPath))}.lnk";
         var path = GetUniqueFilePath(Path.Combine(groupPath, fileName));
-        ShortcutFile.Write(path, request.TargetPath, request.Arguments, request.WorkingDirectory, request.DisplayName, null, null);
+        ShortcutFile.Write(
+            path,
+            request.TargetPath,
+            request.Arguments,
+            request.WorkingDirectory,
+            request.DisplayName,
+            request.IconPath,
+            request.RunAsAdministrator);
         DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
         WinXHasher.HashLnk(path);
         return CreateWinXEntryFromPath(path, groupName);
@@ -1385,8 +1392,10 @@ public sealed class SpecialMenuService
             request.Arguments ?? current.Arguments,
             request.WorkingDirectory ?? current.WorkingDirectory,
             request.DisplayName ?? current.Description,
-            current.IconLocation,
-            request.RunAsAdministrator);
+            request.IconPath is not null
+                ? (string.IsNullOrEmpty(request.IconPath) ? null : request.IconPath)
+                : current.IconLocation,
+            request.RunAsAdministrator ?? current.RunAsAdministrator);
 
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
         {

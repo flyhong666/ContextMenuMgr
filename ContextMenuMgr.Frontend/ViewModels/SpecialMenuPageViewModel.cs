@@ -641,12 +641,30 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                     return null;
                 }
 
+                if (string.IsNullOrWhiteSpace(winxData.TargetPath))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
                 if (string.Equals(winxData.GroupName, "Group:", StringComparison.OrdinalIgnoreCase) || winxData.GroupName.StartsWith("Group:", StringComparison.OrdinalIgnoreCase))
                 {
                     return new PipeRequest { SpecialKind = Kind, WinXCreateGroup = new WinXCreateGroupRequest(winxData.GroupName.Length > 6 ? winxData.GroupName[6..].Trim() : string.Empty), ClientOperationId = operationId };
                 }
 
-                return new PipeRequest { SpecialKind = Kind, WinXCreateEntry = new WinXCreateEntryRequest(winxData.Name, winxData.TargetPath, winxData.GroupName, winxData.Arguments), ClientOperationId = operationId };
+                return new PipeRequest
+                {
+                    SpecialKind = Kind,
+                    WinXCreateEntry = new WinXCreateEntryRequest(
+                        winxData.Name,
+                        winxData.TargetPath,
+                        winxData.GroupName,
+                        EmptyToNull(winxData.Arguments),
+                        EmptyToNull(winxData.WorkingDirectory),
+                        EmptyToNull(winxData.IconPath),
+                        winxData.RunAsAdmin),
+                    ClientOperationId = operationId
+                };
             case SpecialMenuKind.DragDrop:
                 var dragDrop = await TextInputDialog.ShowAsync(Title, "GUID|Group(Folder/Directory/Drive/AllFilesystemObjects)", "{00000000-0000-0000-0000-000000000000}|Folder");
                 var dragDropParts = SplitParts(dragDrop, 2);
@@ -764,6 +782,19 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                     return null;
                 }
 
+                if (string.IsNullOrWhiteSpace(winxData.TargetPath))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
+                // Guard against editing Win+X group headers as normal entries.
+                if (item.Entry.Metadata.GetValueOrDefault("EntryType") == "Group")
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("CannotEditWinXGroupHeader"), Title);
+                    return null;
+                }
+
                 return new PipeRequest
                 {
                     SpecialKind = Kind,
@@ -771,9 +802,10 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                         item.Id,
                         winxData.Name,
                         winxData.TargetPath,
-                        winxData.Arguments,
-                        winxData.WorkingDirectory,
+                        EmptyToNull(winxData.Arguments),
+                        EmptyToNull(winxData.WorkingDirectory),
                         winxData.GroupName,
+                        EmptyToNull(winxData.IconPath),
                         winxData.RunAsAdmin),
                     ClientOperationId = operationId
                 };

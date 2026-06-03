@@ -920,6 +920,9 @@
   <data name="CommandCannotBeEmpty" xml:space="preserve">
     <value>命令不能為空。</value>
   </data>
+  <data name="CannotEditWinXGroupHeader" xml:space="preserve">
+    <value>無法將 Win+X 群組標題作為一般條目編輯。</value>
+  </data>
   <data name="ModulePathUnavailable" xml:space="preserve">
     <value>目前功能表項目沒有可用的模組檔案路徑。</value>
   </data>

@@ -920,6 +920,9 @@
   <data name="CommandCannotBeEmpty" xml:space="preserve">
     <value>命令不能为空。</value>
   </data>
+  <data name="CannotEditWinXGroupHeader" xml:space="preserve">
+    <value>无法将 Win+X 组标题作为普通条目编辑。</value>
+  </data>
   <data name="ModulePathUnavailable" xml:space="preserve">
     <value>当前菜单项没有可用的模块文件路径。</value>
   </data>
