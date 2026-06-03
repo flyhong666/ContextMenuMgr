@@ -600,7 +600,10 @@ function Publish-Application {
         -ArtifactsPath $taskArtifactsRoot `
         -InformationalVersion $Version
 
-    if ($Platform -ne "anycpu") {
+    if ($Platform -eq "anycpu") {
+        $frontendPublishArguments += "-p:NativeProbeHostPlatforms=Win32%2Cx64%2CARM64"
+    }
+    else {
         $frontendPublishArguments += "-p:SkipProbeHostArchitectureBuild=true"
     }
 
@@ -667,10 +670,7 @@ function Publish-Application {
     }
 
     if ($Platform -eq "anycpu" -and $probeHostLabels.Count -eq 0) {
-        $probeHostLabels = @("x86", "x64")
-        if ($Configuration -ne "Debug") {
-            $probeHostLabels += "arm64"
-        }
+        $probeHostLabels = @("x86", "x64", "arm64")
     }
 
     $thirdPartyNoticeDir = Join-Path $publishDir "ThirdPartyNotices"
