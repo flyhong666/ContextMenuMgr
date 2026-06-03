@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Security;
 using System.Text;
+using System.Threading;
 using ComTypes = System.Runtime.InteropServices.ComTypes;
 
 namespace ContextMenuMgr.Backend.Services;
@@ -59,55 +60,66 @@ internal static class WinXHasher
 
     public static WinXHashResult HashLnkWithResult(string lnkPath)
     {
+        string? targetPath = null;
+        string? arguments = null;
+        string? generalizedTargetPath = null;
+        uint? hash = null;
+
+        IShellItem? item = null;
+        var storeRef = default(IPropertyStore);
+
         try
         {
-            SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out var item);
+            SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out item);
             var item2 = (IShellItem2)item;
 
             PSGetPropertyKeyFromName("System.Link.TargetParsingPath", out var propertyKey);
-            string? targetPath;
             try { targetPath = item2.GetString(propertyKey); }
             catch { targetPath = null; }
 
             PSGetPropertyKeyFromName("System.Link.Arguments", out propertyKey);
-            string? arguments;
             try { arguments = item2.GetString(propertyKey); }
             catch { arguments = null; }
 
-            var generalizedTargetPath = GeneralizePath(targetPath);
+            generalizedTargetPath = GeneralizePath(targetPath);
             var blob = (generalizedTargetPath + arguments
                 + "do not prehash links.  this should only be done by the user.").ToLowerInvariant();
             var input = Encoding.Unicode.GetBytes(blob);
             var output = new byte[input.Length];
             HashData(input, input.Length, output, output.Length);
-            var hash = BitConverter.ToUInt32(output, 0);
+            hash = BitConverter.ToUInt32(output, 0);
 
             var storeId = typeof(IPropertyStore).GUID;
-            var store = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
+            storeRef = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
             PSGetPropertyKeyFromName("System.Winx.Hash", out propertyKey);
-            var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, ulVal = hash };
-            store.SetValue(ref propertyKey, ref propVariant);
-            store.Commit();
-
-            // Verify the hash was written correctly.
-            if (!TryReadWinXHash(lnkPath, out var readHash, out var readError))
-            {
-                return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath, $"Hash written but failed to read back: {readError}");
-            }
-
-            if (readHash != hash)
-            {
-                return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath, $"Hash mismatch: wrote {hash}, read {readHash}.");
-            }
-
-            Marshal.ReleaseComObject(store);
-            Marshal.ReleaseComObject(item);
-            return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null);
+            var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, ulVal = hash.Value };
+            storeRef.SetValue(ref propertyKey, ref propVariant);
+            storeRef.Commit();
         }
         catch (Exception ex)
         {
-            return new WinXHashResult(false, null, null, null, null, ex.Message);
+            return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath, ex.Message);
         }
+        finally
+        {
+            if (storeRef is not null) Marshal.ReleaseComObject(storeRef);
+            if (item is not null) Marshal.ReleaseComObject(item);
+        }
+
+        // Verify only after releasing write COM objects.
+        if (!TryReadWinXHashWithRetry(lnkPath, out var readHash, out var readError))
+        {
+            return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath,
+                $"Hash written but failed to read back: {readError}");
+        }
+
+        if (readHash != hash)
+        {
+            return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath,
+                $"Hash mismatch: wrote {hash}, read {readHash}.");
+        }
+
+        return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null);
     }
 
     public static bool TryReadWinXHash(string lnkPath, out uint hash, out string? error)
@@ -119,7 +131,7 @@ internal static class WinXHasher
             SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out var item);
             var item2 = (IShellItem2)item;
             var storeId = typeof(IPropertyStore).GUID;
-            var store = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
+            var store = item2.GetPropertyStore(GPS.DEFAULT, ref storeId);
             PSGetPropertyKeyFromName("System.Winx.Hash", out var propertyKey);
             var pv = new PropVariant();
             try
@@ -148,6 +160,39 @@ internal static class WinXHasher
             error = ex.Message;
             return false;
         }
+    }
+
+    private static bool TryReadWinXHashWithRetry(string lnkPath, out uint hash, out string? error)
+    {
+        hash = 0;
+        error = null;
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            if (TryReadWinXHash(lnkPath, out hash, out error))
+            {
+                return true;
+            }
+
+            if (!IsSharingViolation(error))
+            {
+                break;
+            }
+
+            Thread.Sleep(50);
+        }
+
+        return false;
+    }
+
+    private static bool IsSharingViolation(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return false;
+        }
+
+        return error.Contains("0x80070020", StringComparison.OrdinalIgnoreCase)
+               || error.Contains("being used by another process", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? GeneralizePath(string? filePath)
@@ -279,6 +324,7 @@ internal static class WinXHasher
     [Flags]
     private enum GPS
     {
+        DEFAULT = 0x00000000,
         READWRITE = 0x00000002
     }
 }
