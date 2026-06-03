@@ -1,4 +1,4 @@
-﻿﻿using System.Collections.Concurrent;
+﻿﻿﻿﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -329,12 +329,7 @@ public sealed class NamedPipeBackendServer
                     Items = await _catalog.GetSceneSnapshotAsync(request.SceneKind.Value, request.ScopeValue, cancellationToken)
                 },
             PipeCommand.SetEnhanceMenuItemEnabled when request.ScopeValue is not null && request.DefinitionXml is not null && request.Enable is not null
-                => await _catalog.SetEnhanceMenuItemEnabledAsync(
-                    request.ScopeValue,
-                    request.DefinitionXml,
-                    request.Enable.Value,
-                    request.CultureName,
-                    cancellationToken),
+                => await HandleSetEnhanceMenuItemEnabledAsync(request, stream, cancellationToken),
             PipeCommand.SetDetailedEditRuleValue
                 => await _catalog.SetDetailedEditRuleValueAsync(
                     request.RuleStorageKind,
@@ -496,6 +491,21 @@ public sealed class NamedPipeBackendServer
             request.Enable.GetValueOrDefault(),
             cancellationToken,
             userContext);
+    }
+
+    private async Task<PipeResponse> HandleSetEnhanceMenuItemEnabledAsync(
+        PipeRequest request,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        return await _catalog.SetEnhanceMenuItemEnabledAsync(
+            request.ScopeValue ?? string.Empty,
+            request.DefinitionXml ?? string.Empty,
+            request.Enable.GetValueOrDefault(),
+            request.CultureName,
+            userContext!,
+            cancellationToken);
     }
 
     private async Task<PipeResponse> HandleApplyDecisionAsync(

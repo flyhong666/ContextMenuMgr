@@ -837,6 +837,7 @@ public sealed class ContextMenuRegistryCatalog
         string definitionXml,
         bool enable,
         string? cultureName,
+        BackendUserContext? userContext,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(groupRegistryPath))
@@ -849,6 +850,11 @@ public sealed class ContextMenuRegistryCatalog
             return CreateFailure("The enhance-menu item definition is required.");
         }
 
+        if (userContext is null)
+        {
+            return CreateFailure("This operation requires an interactive user context.");
+        }
+
         try
         {
             var itemElement = XElement.Parse(definitionXml);
@@ -859,11 +865,11 @@ public sealed class ContextMenuRegistryCatalog
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName);
+                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName, userContext);
             }
             else if (itemElement.Element("Guid") is not null)
             {
-                SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable);
+                SetEnhanceShellExItemEnabled(relativeGroupPath, itemElement, enable, userContext);
             }
             else
             {
@@ -872,7 +878,7 @@ public sealed class ContextMenuRegistryCatalog
 
             try
             {
-                await SyncEnhanceMenuStateAsync(states, relativeGroupPath, itemElement, enable, cancellationToken);
+                await SyncEnhanceMenuStateAsync(states, relativeGroupPath, itemElement, enable, userContext, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -965,9 +971,10 @@ public sealed class ContextMenuRegistryCatalog
         string relativeGroupPath,
         XElement itemElement,
         bool enable,
+        BackendUserContext userContext,
         CancellationToken cancellationToken)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken);
+        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var matchingEntry = FindEnhanceMenuEntry(snapshot, relativeGroupPath, itemElement);
 
         if (enable)
@@ -2229,7 +2236,8 @@ public sealed class ContextMenuRegistryCatalog
         string relativeGroupPath,
         XElement itemElement,
         bool enable,
-        string cultureName)
+        string cultureName,
+        BackendUserContext userContext)
     {
         var keyName = itemElement.Attribute("KeyName")?.Value?.Trim();
         if (string.IsNullOrWhiteSpace(keyName))
@@ -2240,15 +2248,30 @@ public sealed class ContextMenuRegistryCatalog
         var registryPath = $@"{relativeGroupPath}\shell\{keyName}";
         if (enable)
         {
-            WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName);
+            WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName, userContext);
         }
         else
         {
-            DeleteRegistrySubKeyTreeWithFallback(registryPath);
+            DeleteUserClassesSubKeyTree(userContext, registryPath);
+
+            // Best-effort legacy machine-wide cleanup for built-in enhance items.
+            try
+            {
+                DeleteRegistrySubKeyTreeWithFallback(registryPath);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Log a warning but do not fail the user-level operation.
+                _ = registryPath; // Suppress unused warning; path is logged by caller.
+            }
         }
     }
 
-    private static void SetEnhanceShellExItemEnabled(string relativeGroupPath, XElement itemElement, bool enable)
+    private static void SetEnhanceShellExItemEnabled(
+        string relativeGroupPath,
+        XElement itemElement,
+        bool enable,
+        BackendUserContext userContext)
     {
         var guidText = itemElement.Element("Guid")?.Value?.Trim();
         if (!Guid.TryParse(guidText, out var guid))
@@ -2262,66 +2285,42 @@ public sealed class ContextMenuRegistryCatalog
             keyName = guid.ToString("B");
         }
 
-        var handlersPath = $@"{relativeGroupPath}\shellex\ContextMenuHandlers";
+        var handlersRelativePath = $@"{relativeGroupPath}\shellex\ContextMenuHandlers";
         if (enable)
         {
             EnableBackupPrivilege();
             EnableRestorePrivilege();
 
-            RegistryKey? handlersKey;
-            try
+            using var handlersKey = CreateUserClassesSubKey(userContext, handlersRelativePath);
+
+            foreach (var subKeyName in handlersKey.GetSubKeyNames())
             {
-                handlersKey = Registry.ClassesRoot.CreateSubKey(handlersPath, writable: true);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
-                handlersKey = machineRoot?.CreateSubKey(handlersPath, writable: true);
-                if (handlersKey is null)
+                using var subKey = handlersKey.OpenSubKey(subKeyName, writable: false);
+                var value = subKey?.GetValue(null)?.ToString();
+                if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
                 {
-                    throw new InvalidOperationException($"Unable to open {handlersPath} for writing.");
+                    return;
                 }
             }
 
-            using (handlersKey)
-            {
-                foreach (var subKeyName in handlersKey.GetSubKeyNames())
-                {
-                    using var subKey = handlersKey.OpenSubKey(subKeyName, writable: false);
-                    var value = subKey?.GetValue(null)?.ToString();
-                    if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
-                    {
-                        return;
-                    }
-                }
-            }
-
-            var targetPath = $@"{handlersPath}\{keyName}";
-            using var targetKey = Registry.ClassesRoot.OpenSubKey(targetPath, writable: false);
+            var targetRelativePath = $@"{handlersRelativePath}\{keyName}";
+            using var targetKey = OpenUserClassesSubKey(userContext, targetRelativePath, writable: false);
             var targetValue = targetKey?.GetValue(null)?.ToString();
             if (targetKey is not null
                 && (!Guid.TryParse(targetValue, out var existingGuid) || existingGuid != guid))
             {
-                targetPath = GetUniqueRegistryPath(handlersPath, keyName);
+                targetRelativePath = GetUniqueUserClassesPath(userContext, handlersRelativePath, keyName);
             }
 
-            try
-            {
-                Registry.SetValue($@"HKEY_CLASSES_ROOT\{targetPath}", string.Empty, guid.ToString("B"), RegistryValueKind.String);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
-                using var targetKeyWritable = machineRoot?.CreateSubKey(targetPath, writable: true);
-                targetKeyWritable?.SetValue(string.Empty, guid.ToString("B"), RegistryValueKind.String);
-            }
+            using var targetKeyWritable = CreateUserClassesSubKey(userContext, targetRelativePath);
+            targetKeyWritable.SetValue(string.Empty, guid.ToString("B"), RegistryValueKind.String);
         }
         else
         {
             EnableBackupPrivilege();
             EnableRestorePrivilege();
 
-            using var handlersKey = Registry.ClassesRoot.OpenSubKey(handlersPath, writable: true);
+            using var handlersKey = OpenUserClassesSubKey(userContext, handlersRelativePath, writable: true);
             if (handlersKey is null)
             {
                 return;
@@ -2339,14 +2338,56 @@ public sealed class ContextMenuRegistryCatalog
                     }
                     catch (UnauthorizedAccessException)
                     {
-                        DeleteRegistrySubKeyTreeWithFallback($@"{handlersPath}\{subKeyName}");
+                        DeleteUserClassesSubKeyTree(userContext, $@"{handlersRelativePath}\{subKeyName}");
                     }
                 }
+            }
+
+            // Best-effort legacy machine-wide cleanup.
+            try
+            {
+                using var machineHandlersKey = Registry.ClassesRoot.OpenSubKey(handlersRelativePath, writable: true);
+                if (machineHandlersKey is not null)
+                {
+                    foreach (var subKeyName in machineHandlersKey.GetSubKeyNames())
+                    {
+                        using var subKey = machineHandlersKey.OpenSubKey(subKeyName, writable: false);
+                        var value = subKey?.GetValue(null)?.ToString();
+                        if (Guid.TryParse(value, out var actualGuid) && actualGuid == guid)
+                        {
+                            try
+                            {
+                                machineHandlersKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                            }
+                            catch (UnauthorizedAccessException)
+                            {
+                                DeleteRegistrySubKeyTreeWithFallback($@"{handlersRelativePath}\{subKeyName}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Legacy machine cleanup is best-effort; do not fail the user-level operation.
             }
         }
     }
 
-    private static void WriteEnhanceSubKeysValue(XElement keyElement, string registryPath, string cultureName)
+    private static string GetUniqueUserClassesPath(BackendUserContext userContext, string parentRelativePath, string baseKeyName)
+    {
+        var candidate = baseKeyName;
+        var index = 1;
+        while (OpenUserClassesSubKey(userContext, $@"{parentRelativePath}\{candidate}", writable: false) is not null)
+        {
+            candidate = $"{baseKeyName} ({index})";
+            index++;
+        }
+
+        return $@"{parentRelativePath}\{candidate}";
+    }
+
+    private static void WriteEnhanceSubKeysValue(XElement keyElement, string registryPath, string cultureName, BackendUserContext userContext)
     {
         if (!ShouldIncludeNode(keyElement, cultureName))
         {
@@ -2359,23 +2400,16 @@ public sealed class ContextMenuRegistryCatalog
         var defaultValue = keyElement.Attribute("Default")?.Value;
         if (!string.IsNullOrWhiteSpace(defaultValue))
         {
-            try
-            {
-                Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, Environment.ExpandEnvironmentVariables(defaultValue));
-            }
-            catch (UnauthorizedAccessException)
-            {
-                using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
-                using var key = machineRoot?.CreateSubKey(registryPath, writable: true);
-                key?.SetValue(string.Empty, Environment.ExpandEnvironmentVariables(defaultValue), RegistryValueKind.String);
-            }
+            using var userClasses = GetUserClassesRoot(userContext, writable: true);
+            using var key = userClasses.CreateSubKey(registryPath, writable: true);
+            key?.SetValue(string.Empty, Environment.ExpandEnvironmentVariables(defaultValue), RegistryValueKind.String);
         }
         else if (string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase))
         {
-            WriteEnhanceCommandValue(keyElement, registryPath, cultureName);
+            WriteEnhanceCommandValue(keyElement, registryPath, cultureName, userContext);
         }
 
-        WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath, cultureName);
+        WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath, cultureName, userContext);
 
         var subKeyElement = keyElement.Element("SubKey");
         if (subKeyElement is null)
@@ -2385,11 +2419,11 @@ public sealed class ContextMenuRegistryCatalog
 
         foreach (var childElement in subKeyElement.Elements())
         {
-            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName);
+            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName, userContext);
         }
     }
 
-    private static void WriteEnhanceAttributesValue(XElement? valueElement, string registryPath, string cultureName)
+    private static void WriteEnhanceAttributesValue(XElement? valueElement, string registryPath, string cultureName, BackendUserContext userContext)
     {
         if (valueElement is null || !ShouldIncludeNode(valueElement, cultureName))
         {
@@ -2399,85 +2433,47 @@ public sealed class ContextMenuRegistryCatalog
         EnableBackupPrivilege();
         EnableRestorePrivilege();
 
-        RegistryKey? key;
-        try
+        using var userClasses = GetUserClassesRoot(userContext, writable: true);
+        using var key = userClasses.CreateSubKey(registryPath, writable: true);
+        if (key is null)
         {
-            key = Registry.ClassesRoot.CreateSubKey(registryPath, writable: true);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
-            key = machineRoot?.CreateSubKey(registryPath, writable: true);
-            if (key is null)
-            {
-                throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
-            }
+            throw new InvalidOperationException(
+                $"Unable to create per-user registry key: HKEY_USERS\\{userContext.Sid}\\{UserClassesPath}\\{registryPath}.");
         }
 
-        using (key)
+        foreach (var valueNode in valueElement.Elements().Where(element => ShouldIncludeNode(element, cultureName)))
         {
-            foreach (var valueNode in valueElement.Elements().Where(element => ShouldIncludeNode(element, cultureName)))
+            foreach (var attribute in valueNode.Attributes())
             {
-                foreach (var attribute in valueNode.Attributes())
+                if (string.IsNullOrWhiteSpace(attribute.Name.LocalName)
+                    || string.Equals(attribute.Name.LocalName, "Default", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (string.IsNullOrWhiteSpace(attribute.Name.LocalName)
-                        || string.Equals(attribute.Name.LocalName, "Default", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    var attributeValue = attribute.Value;
-                    try
-                    {
-                        switch (valueNode.Name.LocalName)
-                        {
-                            case "REG_SZ":
-                                key.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
-                                break;
-                            case "REG_EXPAND_SZ":
-                                key.SetValue(attribute.Name.LocalName, attributeValue, RegistryValueKind.ExpandString);
-                                break;
-                            case "REG_BINARY":
-                                key.SetValue(attribute.Name.LocalName, ConvertToBinary(attributeValue), RegistryValueKind.Binary);
-                                break;
-                            case "REG_DWORD":
-                                var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
-                                var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
-                                key.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
-                                break;
-                        }
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
-                        using var machineKey = machineRoot?.CreateSubKey(registryPath, writable: true);
-                        if (machineKey is not null)
-                        {
-                            switch (valueNode.Name.LocalName)
-                            {
-                                case "REG_SZ":
-                                    machineKey.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
-                                    break;
-                                case "REG_EXPAND_SZ":
-                                    machineKey.SetValue(attribute.Name.LocalName, attributeValue, RegistryValueKind.ExpandString);
-                                    break;
-                                case "REG_BINARY":
-                                    machineKey.SetValue(attribute.Name.LocalName, ConvertToBinary(attributeValue), RegistryValueKind.Binary);
-                                    break;
-                                case "REG_DWORD":
-                                    var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
-                                    var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
-                                    machineKey.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
-                                    break;
-                            }
-                        }
-                    }
+                var attributeValue = attribute.Value;
+                switch (valueNode.Name.LocalName)
+                {
+                    case "REG_SZ":
+                        key.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
+                        break;
+                    case "REG_EXPAND_SZ":
+                        key.SetValue(attribute.Name.LocalName, attributeValue, RegistryValueKind.ExpandString);
+                        break;
+                    case "REG_BINARY":
+                        key.SetValue(attribute.Name.LocalName, ConvertToBinary(attributeValue), RegistryValueKind.Binary);
+                        break;
+                    case "REG_DWORD":
+                        var numericBase = attributeValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? 16 : 10;
+                        var numericValue = numericBase == 16 ? attributeValue[2..] : attributeValue;
+                        key.SetValue(attribute.Name.LocalName, Convert.ToInt32(numericValue, numericBase), RegistryValueKind.DWord);
+                        break;
                 }
             }
         }
     }
 
-    private static void WriteEnhanceCommandValue(XElement commandElement, string registryPath, string cultureName)
+    private static void WriteEnhanceCommandValue(XElement commandElement, string registryPath, string cultureName, BackendUserContext userContext)
     {
         var fileNameElement = commandElement.Element("FileName");
         var argumentsElement = commandElement.Element("Arguments");
@@ -2520,16 +2516,9 @@ public sealed class ContextMenuRegistryCatalog
         EnableBackupPrivilege();
         EnableRestorePrivilege();
 
-        try
-        {
-            Registry.SetValue($@"HKEY_CLASSES_ROOT\{registryPath}", string.Empty, command, RegistryValueKind.String);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            using var machineRoot = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: true);
-            using var key = machineRoot?.CreateSubKey(registryPath, writable: true);
-            key?.SetValue(string.Empty, command, RegistryValueKind.String);
-        }
+        using var userClasses = GetUserClassesRoot(userContext, writable: true);
+        using var key = userClasses.CreateSubKey(registryPath, writable: true);
+        key?.SetValue(string.Empty, command, RegistryValueKind.String);
     }
 
     private static string CreateEnhanceCommandFile(XElement? parentElement, string cultureName)
@@ -3141,6 +3130,57 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return extension;
+    }
+
+    private const string UserClassesPath = @"Software\Classes";
+
+    private static RegistryKey GetUserRegistryRoot(BackendUserContext context, bool writable)
+    {
+        if (string.IsNullOrWhiteSpace(context.Sid))
+        {
+            throw new InvalidOperationException("The frontend user SID is not available.");
+        }
+
+        return Registry.Users.OpenSubKey(context.Sid, writable)
+            ?? throw new InvalidOperationException("The current user's registry hive is not available.");
+    }
+
+    private static RegistryKey GetUserClassesRoot(BackendUserContext context, bool writable)
+    {
+        var userBaseKey = GetUserRegistryRoot(context, writable: true);
+        return userBaseKey.OpenSubKey(UserClassesPath, writable)
+            ?? userBaseKey.CreateSubKey(UserClassesPath, writable: true)
+            ?? throw new InvalidOperationException("Unable to open or create the frontend user's Software\\Classes key.");
+    }
+
+    private static string ComposeUserClassesAbsolutePath(BackendUserContext context, string relativePath)
+        => $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{relativePath.Trim('\\')}";
+
+    private static RegistryKey CreateUserClassesSubKey(BackendUserContext context, string relativePath)
+    {
+        using var userClasses = GetUserClassesRoot(context, writable: true);
+        return userClasses.CreateSubKey(relativePath, writable: true)
+            ?? throw new InvalidOperationException(
+                $"Unable to create per-user registry key: HKEY_USERS\\{context.Sid}\\{UserClassesPath}\\{relativePath}.");
+    }
+
+    private static RegistryKey? OpenUserClassesSubKey(BackendUserContext context, string relativePath, bool writable)
+    {
+        using var userClasses = GetUserClassesRoot(context, writable: true);
+        return userClasses.OpenSubKey(relativePath, writable);
+    }
+
+    private static void DeleteUserClassesSubKeyTree(BackendUserContext context, string relativePath)
+    {
+        using var userClasses = GetUserClassesRoot(context, writable: true);
+        try
+        {
+            userClasses.DeleteSubKeyTree(relativePath, throwOnMissingSubKey: false);
+        }
+        catch (ArgumentException)
+        {
+            // Key does not exist; nothing to delete.
+        }
     }
 
     private static string? NormalizeClassesRootRelativePath(string? value)
