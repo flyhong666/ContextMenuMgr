@@ -195,15 +195,38 @@ public sealed class SpecialMenuService
                     DeleteRegistryValue(Registry.LocalMachine, GuidBlockedPath, item.KeyName, _logger);
                     break;
                 case SpecialMenuKind.SendTo:
-                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), _logger);
+                {
+                    var result = SoftDeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), _logger);
+                    if (!result.Success)
+                    {
+                        await _logger.LogAsync(RuntimeLogLevel.Error, $"DeleteSpecialMenuFileSystemSoftDeleteFailed: Kind={item.Kind}, Path={item.Path}, Message={result.Message}", cancellationToken);
+                        return Failure(result.Message ?? "Soft delete failed.", operationId);
+                    }
+
+                    deletedPath = result.DeletedPath;
                     break;
+                }
                 case SpecialMenuKind.WinX:
-                    deletedPath = SoftDeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), _logger);
+                {
+                    var result = SoftDeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), _logger);
+                    if (!result.Success)
+                    {
+                        await _logger.LogAsync(RuntimeLogLevel.Error, $"DeleteSpecialMenuFileSystemSoftDeleteFailed: Kind={item.Kind}, Path={item.Path}, Message={result.Message}", cancellationToken);
+                        return Failure(result.Message ?? "Soft delete failed.", operationId);
+                    }
+
+                    deletedPath = result.DeletedPath;
                     break;
+                }
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
             await _logger.LogAsync($"Soft-deleted special menu item. Kind={item.Kind}, Id={item.Id}, SourcePath={item.RegistryPath ?? item.Path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(deletedPath))
+            {
+                metadata["DeletedPath"] = deletedPath;
+            }
 
             var deletedItem = item with { Metadata = metadata };
             return Success("Special menu item deleted.", deletedItem, operationId);
@@ -243,10 +266,10 @@ public sealed class SpecialMenuService
                     RestoreSoftDeletedRegistryTree(item.RegistryPath, logger: _logger);
                     break;
                 case SpecialMenuKind.SendTo:
-                    RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), _logger);
+                    RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), item.Metadata.GetValueOrDefault("DeletedPath"), _logger);
                     break;
                 case SpecialMenuKind.WinX:
-                    RestoreSoftDeletedFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), _logger);
+                    RestoreSoftDeletedFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), item.Metadata.GetValueOrDefault("DeletedPath"), _logger);
                     break;
             }
 
@@ -294,11 +317,33 @@ public sealed class SpecialMenuService
                     DeleteRegistryTree(item.RegistryPath + DeletedSuffix, logger: _logger);
                     break;
                 case SpecialMenuKind.SendTo:
-                    DeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
+                {
+                    var deletedPath = item.Metadata.GetValueOrDefault("DeletedPath");
+                    if (!string.IsNullOrWhiteSpace(deletedPath))
+                    {
+                        DeleteFileSystemItem(deletedPath, Path.Combine(GetSendToPath(RequireUserContext(userContext)), DeletedFolderName));
+                    }
+                    else
+                    {
+                        DeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
+                    }
+
                     break;
+                }
                 case SpecialMenuKind.WinX:
-                    DeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
+                {
+                    var deletedPath = item.Metadata.GetValueOrDefault("DeletedPath");
+                    if (!string.IsNullOrWhiteSpace(deletedPath))
+                    {
+                        DeleteFileSystemItem(deletedPath, Path.Combine(GetWinXPath(RequireUserContext(userContext)), DeletedFolderName));
+                    }
+                    else
+                    {
+                        DeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
+                    }
+
                     break;
+                }
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
@@ -375,72 +420,120 @@ public sealed class SpecialMenuService
         logger?.LogFireAndForget($"RestoreSoftDeletedRegistryTreeEnd: Path={path}, DeletedPath={deletedPath}, Sid={DiagnosticLogFormatter.FormatSid(context)}, Result=Success.");
     }
 
-    private static string? SoftDeleteFileSystemItem(string? path, string basePath, FileLogger? logger = null)
+    private sealed record FileSystemSoftDeleteResult(
+        bool Success,
+        bool SourceMissing,
+        string? DeletedPath,
+        string? Message);
+
+    private static bool IsPathUnderDeletedFolder(string? path, string basePath)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            return null;
+            return false;
+        }
+
+        var deletedFolder = Path.Combine(basePath, DeletedFolderName);
+        var fullPath = GetFullNormalizedPath(path);
+        var fullRoot = GetFullNormalizedPath(deletedFolder);
+        var rootWithSeparator = fullRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? fullRoot
+            : fullRoot + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(fullPath.TrimEnd(Path.DirectorySeparatorChar), fullRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static FileSystemSoftDeleteResult SoftDeleteFileSystemItem(string? path, string basePath, FileLogger? logger = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return new FileSystemSoftDeleteResult(false, false, null, "Path is null or empty.");
         }
 
         try
         {
             logger?.LogFireAndForget($"SoftDeleteFileSystemItemStart: Path={path}, BasePath={basePath}.");
+
+            if (IsPathUnderDeletedFolder(path, basePath))
+            {
+                logger?.LogFireAndForget($"SoftDeleteFileSystemItemFailed: Path={path}, BasePath={basePath}, Reason=AlreadyUnderDeletedFolder.");
+                return new FileSystemSoftDeleteResult(false, false, null, "The item is already in the deleted-items folder.");
+            }
+
+            if (!File.Exists(path) && !Directory.Exists(path))
+            {
+                logger?.LogFireAndForget($"SoftDeleteFileSystemItemSourceMissing: Path={path}, BasePath={basePath}.");
+                return new FileSystemSoftDeleteResult(true, true, null, "Source already missing.");
+            }
+
             var deletedFolder = Path.Combine(basePath, DeletedFolderName);
             Directory.CreateDirectory(deletedFolder);
 
             var fileName = Path.GetFileName(path);
-            var deletedPath = Path.Combine(deletedFolder, fileName);
+            string deletedPath;
 
             if (File.Exists(path))
             {
+                deletedPath = GetUniqueFilePath(Path.Combine(deletedFolder, fileName));
+                logger?.LogFireAndForget($"SoftDeleteFileSystemItemTargetChosen: Path={path}, DeletedPath={deletedPath}.");
                 File.Move(path, deletedPath, overwrite: false);
             }
             else if (Directory.Exists(path))
             {
-                Directory.Move(path, GetUniqueDirectoryPath(deletedPath));
+                deletedPath = GetUniqueDirectoryPath(Path.Combine(deletedFolder, fileName));
+                Directory.Move(path, deletedPath);
+            }
+            else
+            {
+                return new FileSystemSoftDeleteResult(false, false, null, "Source is not a file or directory.");
             }
 
             logger?.LogFireAndForget($"SoftDeleteFileSystemItemEnd: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Result=Success.");
-            return deletedPath;
+            return new FileSystemSoftDeleteResult(true, false, deletedPath, null);
         }
         catch (Exception ex)
         {
             logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"SoftDeleteFileSystemItemFailed: Path={path}, BasePath={basePath}, Exception={ex}");
-            return null;
+            return new FileSystemSoftDeleteResult(false, false, null, ex.Message);
         }
     }
 
-    private static void RestoreSoftDeletedFileSystemItem(string? path, string basePath, FileLogger? logger = null)
+    private static void RestoreSoftDeletedFileSystemItem(string? path, string basePath, string? deletedPathFromMetadata = null, FileLogger? logger = null)
+{
+    if (string.IsNullOrWhiteSpace(path))
     {
-        if (string.IsNullOrWhiteSpace(path))
+        return;
+    }
+
+    try
+    {
+        logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemStart: Path={path}, BasePath={basePath}, DeletedPathFromMetadata={deletedPathFromMetadata}.");
+        var deletedFolder = Path.Combine(basePath, DeletedFolderName);
+        var fileName = Path.GetFileName(path);
+
+        // Prefer the actual deleted path from metadata if available.
+        var deletedPath = !string.IsNullOrWhiteSpace(deletedPathFromMetadata)
+            ? deletedPathFromMetadata
+            : Path.Combine(deletedFolder, fileName);
+
+        if (!File.Exists(deletedPath) && !Directory.Exists(deletedPath))
         {
+            logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemSkipped: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Reason=MissingDeletedItem.");
             return;
         }
 
-        try
+        if (File.Exists(deletedPath))
         {
-            logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemStart: Path={path}, BasePath={basePath}.");
-            var deletedFolder = Path.Combine(basePath, DeletedFolderName);
-            var fileName = Path.GetFileName(path);
-            var deletedPath = Path.Combine(deletedFolder, fileName);
+            var targetPath = GetUniqueFilePath(path);
+            File.Move(deletedPath, targetPath, overwrite: false);
+        }
+        else if (Directory.Exists(deletedPath))
+        {
+            var targetPath = GetUniqueDirectoryPath(path);
+            Directory.Move(deletedPath, targetPath);
+        }
 
-            if (!File.Exists(deletedPath) && !Directory.Exists(deletedPath))
-            {
-                logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemSkipped: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Reason=MissingDeletedItem.");
-                return;
-            }
-
-            if (File.Exists(deletedPath))
-            {
-                var targetPath = Path.Combine(basePath, fileName);
-                File.Move(deletedPath, targetPath, overwrite: false);
-            }
-            else if (Directory.Exists(deletedPath))
-            {
-                var targetPath = Path.Combine(basePath, fileName);
-                Directory.Move(deletedPath, GetUniqueDirectoryPath(targetPath));
-            }
-            logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemEnd: Path={path}, BasePath={basePath}, DeletedPath={deletedPath}, Result=Success.");
+        logger?.LogFireAndForget($"RestoreSoftDeletedFileSystemItemEnd: OriginalPath={path}, BasePath={basePath}, DeletedPath={deletedPath}, Result=Success.");
         }
         catch (Exception ex)
         {
@@ -1155,7 +1248,8 @@ public sealed class SpecialMenuService
 
         Directory.CreateDirectory(sendToPath);
         return Directory.EnumerateFileSystemEntries(sendToPath)
-            .Where(static path => !string.Equals(Path.GetFileName(path), "desktop.ini", StringComparison.OrdinalIgnoreCase))
+            .Where(static path => !string.Equals(Path.GetFileName(path), "desktop.ini", StringComparison.OrdinalIgnoreCase)
+                                 && !string.Equals(Path.GetFileName(path), DeletedFolderName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(static path => DesktopIniStore.GetLocalizedFileName(path), StringComparer.OrdinalIgnoreCase)
             .ThenBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
             .Select(CreateSendToEntry)
@@ -1300,6 +1394,10 @@ public sealed class SpecialMenuService
         foreach (var groupPath in Directory.EnumerateDirectories(winXPath).OrderByDescending(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
         {
             var groupName = Path.GetFileName(groupPath);
+            if (string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
             result.Add(new SpecialMenuEntry
             {
                 Id = EncodeId(SpecialMenuKind.WinX, groupPath),
@@ -1326,6 +1424,10 @@ public sealed class SpecialMenuService
     private static SpecialMenuEntry CreateWinXGroup(WinXCreateGroupRequest request, BackendUserContext context)
     {
         var groupName = ValidatePlainDirectoryName(request.GroupName, "Win+X group name");
+        if (string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"'{DeletedFolderName}' is a reserved internal folder name and cannot be used as a Win+X group.");
+        }
         var groupPath = GetUniqueDirectoryPath(Path.Combine(GetWinXPath(context), groupName));
         EnsurePathUnder(groupPath, GetWinXPath(context));
         Directory.CreateDirectory(groupPath);
@@ -1340,6 +1442,10 @@ public sealed class SpecialMenuService
     {
         var winXPath = GetWinXPath(context);
         var groupName = ValidatePlainDirectoryName(request.GroupName, "Win+X group name");
+        if (string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"'{DeletedFolderName}' is a reserved internal folder name and cannot be used as a Win+X group.");
+        }
         var groupPath = Path.Combine(winXPath, groupName);
         EnsurePathUnder(groupPath, winXPath);
         if (!Directory.Exists(groupPath))
@@ -1359,7 +1465,15 @@ public sealed class SpecialMenuService
             request.IconPath,
             request.RunAsAdministrator);
         DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
-        WinXHasher.HashLnk(path);
+
+        var hashResult = WinXHasher.HashLnkWithResult(path);
+        if (!hashResult.Success)
+        {
+            throw new InvalidOperationException(
+                $"Win+X shortcut was created but could not be hashed, so Windows will not show it. " +
+                $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
+        }
+
         return CreateWinXEntryFromPath(path, groupName);
     }
 
@@ -1373,6 +1487,10 @@ public sealed class SpecialMenuService
         if (!string.IsNullOrWhiteSpace(request.GroupName) && !string.Equals(request.GroupName, groupName, StringComparison.OrdinalIgnoreCase))
         {
             var targetGroupName = ValidatePlainDirectoryName(request.GroupName, "Win+X group name");
+            if (string.Equals(targetGroupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"'{DeletedFolderName}' is a reserved internal folder name and cannot be used as a Win+X group.");
+            }
             var destinationGroupPath = Path.Combine(winXPath, targetGroupName);
             EnsurePathUnder(destinationGroupPath, winXPath);
             if (!Directory.Exists(destinationGroupPath))
@@ -1402,7 +1520,14 @@ public sealed class SpecialMenuService
             DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
         }
 
-        WinXHasher.HashLnk(path);
+        var hashResult = WinXHasher.HashLnkWithResult(path);
+        if (!hashResult.Success)
+        {
+            throw new InvalidOperationException(
+                $"Win+X shortcut was updated but could not be hashed, so Windows will not show it. " +
+                $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
+        }
+
         return CreateWinXEntryFromPath(path, groupName ?? string.Empty);
     }
 
