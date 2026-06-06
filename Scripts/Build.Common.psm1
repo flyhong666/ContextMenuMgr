@@ -702,7 +702,57 @@ function Publish-Application {
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.Service.dll") -Description "Backend service DLL"
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.TrayHost.exe") -Description "Tray host executable"
 
+    Assert-TrayHostLocalizationArtifacts -PublishDir $publishDir
+
     return $publishDir
+}
+
+function Test-BinaryContainsUtf8String {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Needle
+    )
+
+    $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $Path).Path)
+    $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+    return $text.Contains($Needle)
+}
+
+function Assert-TrayHostLocalizationArtifacts {
+    param([Parameter(Mandatory)] [string] $PublishDir)
+
+    $trayHostDll = Join-Path $PublishDir "ContextMenuManagerPlus.TrayHost.dll"
+    Ensure-FileExists -Path $trayHostDll -Description "TrayHost assembly for localization validation"
+
+    Write-Host "Verifying TrayHost localization artifacts in $PublishDir ..."
+
+    $expectedNeutral = "ContextMenuMgr.TrayHost.Resources.Strings.resources"
+    if (-not (Test-BinaryContainsUtf8String -Path $trayHostDll -Needle $expectedNeutral)) {
+        throw "TrayHost neutral resource '$expectedNeutral' was not found in ContextMenuManagerPlus.TrayHost.dll via binary scan."
+    }
+
+    Write-Host "  Neutral resource '$expectedNeutral' found via binary scan."
+
+    $satelliteCultures = @("zh-CN", "zh-TW")
+    foreach ($culture in $satelliteCultures) {
+        $satellitePath = Join-Path $PublishDir (Join-Path $culture "ContextMenuManagerPlus.TrayHost.resources.dll")
+        if (-not (Test-Path -LiteralPath $satellitePath -PathType Leaf)) {
+            Write-Warning "  TrayHost satellite resource '$culture' is missing: $satellitePath. Fallback dictionary will be used at runtime."
+            continue
+        }
+
+        Write-Host "  Satellite resource '$culture': present"
+
+        $expectedSat = "ContextMenuMgr.TrayHost.Resources.Strings.$culture.resources"
+        if (Test-BinaryContainsUtf8String -Path $satellitePath -Needle $expectedSat) {
+            Write-Host "    Contains: $expectedSat"
+        }
+        else {
+            Write-Warning "  Satellite '$culture' does not appear to contain '$expectedSat'. Fallback dictionary will be used at runtime."
+        }
+    }
+
+    Write-Host "TrayHost localization artifacts validation complete."
 }
 
 function New-PortableArchive {

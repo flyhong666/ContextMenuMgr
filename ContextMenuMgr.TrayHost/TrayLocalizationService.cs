@@ -15,6 +15,17 @@ internal sealed class TrayLocalizationService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly ResourceManager ResourceManager = new("ContextMenuMgr.TrayHost.Resources.Strings", Assembly.GetExecutingAssembly());
+
+    private static readonly IReadOnlyDictionary<string, string> EnglishFallback = new Dictionary<string, string>
+    {
+        ["Tray.Tooltip"] = "Context Menu Manager Plus",
+        ["Tray.ShowMainWindow"] = "Open",
+        ["Tray.ExitFull"] = "Exit and stop monitoring",
+        ["Tray.PendingApprovalTitle"] = "Pending review",
+        ["Tray.PendingApprovalMessage"] = "New context menu item detected: {0}",
+        ["Tray.BackendUnavailable"] = "Backend service is unavailable."
+    };
+
     private CultureInfo _culture;
 
     /// <summary>
@@ -31,13 +42,53 @@ internal sealed class TrayLocalizationService
     /// Executes translate.
     /// </summary>
     public string Translate(string key)
-        => ResourceManager.GetString(key, _culture) ?? key;
+    {
+        string? value;
+        try
+        {
+            value = ResourceManager.GetString(key, _culture);
+        }
+        catch (MissingManifestResourceException)
+        {
+            value = null;
+        }
+        catch (MissingSatelliteAssemblyException)
+        {
+            value = null;
+        }
+        catch (InvalidOperationException)
+        {
+            value = null;
+        }
+
+        if (!string.IsNullOrEmpty(value))
+        {
+            return value;
+        }
+
+        if (EnglishFallback.TryGetValue(key, out var fallback))
+        {
+            return fallback;
+        }
+
+        return key;
+    }
 
     /// <summary>
     /// Executes format.
     /// </summary>
     public string Format(string key, params object[] args)
-        => string.Format(_culture, Translate(key), args);
+    {
+        var value = Translate(key);
+        try
+        {
+            return string.Format(_culture, value, args);
+        }
+        catch (FormatException)
+        {
+            return value;
+        }
+    }
 
     /// <summary>
     /// Executes reload.
