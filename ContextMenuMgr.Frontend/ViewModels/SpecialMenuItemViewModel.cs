@@ -60,9 +60,9 @@ public partial class SpecialMenuItemViewModel : ObservableObject
 
     public bool CanDelete => Entry.CanDelete && !IsBusy && !IsDeleted;
 
-    public bool CanUndoDelete => Entry.CanDelete && !IsBusy && IsDeleted;
+    public bool CanUndoDelete => Entry.Kind != SpecialMenuKind.WinX && Entry.CanDelete && !IsBusy && IsDeleted;
 
-    public bool CanPermanentlyDelete => Entry.CanDelete && !IsBusy && IsDeleted;
+    public bool CanPermanentlyDelete => Entry.Kind != SpecialMenuKind.WinX && Entry.CanDelete && !IsBusy && IsDeleted;
 
     public bool CanEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect" && !IsBusy && !IsDeleted;
 
@@ -76,9 +76,9 @@ public partial class SpecialMenuItemViewModel : ObservableObject
 
     public bool ShowDelete => Entry.CanDelete && !IsDeleted;
 
-    public bool ShowUndoDelete => Entry.CanDelete && IsDeleted;
+    public bool ShowUndoDelete => Entry.Kind != SpecialMenuKind.WinX && Entry.CanDelete && IsDeleted;
 
-    public bool ShowPermanentDelete => Entry.CanDelete && IsDeleted;
+    public bool ShowPermanentDelete => Entry.Kind != SpecialMenuKind.WinX && Entry.CanDelete && IsDeleted;
 
     public bool ShowEdit => Entry.CanEdit && Entry.Metadata.GetValueOrDefault("EntryType") != "DefaultDropEffect" && !IsDeleted;
 

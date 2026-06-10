@@ -25,6 +25,10 @@ public sealed class SpecialMenuService
     private static readonly string DefaultWinXPath = Environment.ExpandEnvironmentVariables(@"%SystemDrive%\Users\Default\AppData\Local\Microsoft\Windows\WinX");
     private const string DeletedSuffix = ".deleted";
     private const string DeletedFolderName = ".deleted";
+    private const string BackupFolderName = ".backup";
+    private const string WinXGlobalRestoreDisabledMessage = "Win+X global restore is disabled to avoid deleting the entire user Win+X folder. Restore a single group instead.";
+    private const string WinXUndoDisabledMessage = "Win+X undo is currently disabled because Win+X items are deleted directly.";
+    private const string WinXPurgeDeletedDisabledMessage = "Win+X deleted-item purge is disabled because Win+X items are deleted directly.";
 
     private readonly FileLogger _logger;
 
@@ -36,6 +40,12 @@ public sealed class SpecialMenuService
     public Task<IReadOnlyList<SpecialMenuEntry>> GetSnapshotAsync(SpecialMenuKind kind, BackendUserContext? userContext, CancellationToken cancellationToken)
     {
         var requiresUserContext = kind is SpecialMenuKind.ShellNew or SpecialMenuKind.SendTo or SpecialMenuKind.WinX;
+        if (kind == SpecialMenuKind.WinX)
+        {
+            var context = RequireUserContext(userContext);
+            LogWinXOperation("Snapshot", context, GetWinXPath(context), GetWinXPath(context));
+        }
+
         IReadOnlyList<SpecialMenuEntry> items = kind switch
         {
             SpecialMenuKind.ShellNew => GetShellNewItems(RequireUserContext(userContext)),
@@ -57,6 +67,12 @@ public sealed class SpecialMenuService
         try
         {
             await _logger.LogAsync($"SpecialMenuSetEnabledStart: Kind={item.Kind}, Id={item.Id}, Enabled={enabled}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+            if (item.Kind == SpecialMenuKind.WinX)
+            {
+                var context = RequireUserContext(userContext);
+                LogWinXOperation("SetEnabled", context, item.Path ?? DecodeId(item.Id), GetWinXPath(context));
+            }
+
             SpecialMenuEntry updated;
             try
             {
@@ -109,6 +125,12 @@ public sealed class SpecialMenuService
         try
         {
             await _logger.LogAsync($"SpecialMenuCreateStart: Kind={request.SpecialKind}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, ShellNewExtension={request.ShellNewCreate?.Extension}, SendToName={request.SendToCreate?.DisplayName}, WinXGroup={request.WinXCreateGroup?.GroupName}, WinXEntry={request.WinXCreateEntry?.DisplayName}.", cancellationToken);
+            if (request.SpecialKind == SpecialMenuKind.WinX)
+            {
+                var context = RequireUserContext(userContext);
+                LogWinXOperation("Create", context, request.WinXCreateEntry?.TargetPath ?? request.WinXCreateGroup?.GroupName, GetWinXPath(context));
+            }
+
             var item = request.SpecialKind switch
             {
                 SpecialMenuKind.ShellNew when request.ShellNewCreate is not null => CreateShellNew(request.ShellNewCreate, RequireUserContext(userContext)),
@@ -138,6 +160,12 @@ public sealed class SpecialMenuService
         try
         {
             await _logger.LogAsync($"SpecialMenuUpdateStart: Kind={request.SpecialKind}, TargetId={request.ShellNewUpdate?.Id ?? request.SpecialItem?.Id}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, ChangedFields=ShellNew(DisplayName={request.ShellNewUpdate?.DisplayName is not null}, IconPath={request.ShellNewUpdate?.IconPath is not null}, Command={request.ShellNewUpdate?.Command is not null}, DataText={request.ShellNewUpdate?.DataText is not null}, BeforeSeparator={request.ShellNewUpdate?.BeforeSeparator is not null}).", cancellationToken);
+            if (request.SpecialKind == SpecialMenuKind.WinX)
+            {
+                var context = RequireUserContext(userContext);
+                LogWinXOperation("Update", context, request.WinXUpdateEntry?.Id, GetWinXPath(context));
+            }
+
             var item = request.SpecialKind switch
             {
                 SpecialMenuKind.ShellNew when request.ShellNewUpdate is not null => UpdateShellNew(request.ShellNewUpdate, RequireUserContext(userContext)),
@@ -208,15 +236,14 @@ public sealed class SpecialMenuService
                 }
                 case SpecialMenuKind.WinX:
                 {
-                    var result = SoftDeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), _logger);
-                    if (!result.Success)
-                    {
-                        await _logger.LogAsync(RuntimeLogLevel.Error, $"DeleteSpecialMenuFileSystemSoftDeleteFailed: Kind={item.Kind}, Path={item.Path}, Message={result.Message}", cancellationToken);
-                        return Failure(result.Message ?? "Soft delete failed.", operationId);
-                    }
-
-                    deletedPath = result.DeletedPath;
-                    break;
+                    var context = RequireUserContext(userContext);
+                    var winXPath = GetWinXPath(context);
+                    var path = item.Path ?? DecodeId(item.Id);
+                    LogWinXOperation("Delete", context, path, winXPath);
+                    DeleteWinXItem(path, winXPath);
+                    ShellChangeNotifier.NotifyAssociationsChanged();
+                    await _logger.LogAsync($"Deleted Win+X item directly. Kind={item.Kind}, Id={item.Id}, Path={path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+                    return Success("Special menu item deleted.", null, operationId);
                 }
             }
 
@@ -243,6 +270,11 @@ public sealed class SpecialMenuService
         try
         {
             await _logger.LogAsync($"SpecialMenuUndoDeleteStart: Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+            if (item.Kind == SpecialMenuKind.WinX)
+            {
+                return Failure(WinXUndoDisabledMessage, operationId);
+            }
+
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
@@ -268,9 +300,6 @@ public sealed class SpecialMenuService
                 case SpecialMenuKind.SendTo:
                     RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), item.Metadata.GetValueOrDefault("DeletedPath"), _logger);
                     break;
-                case SpecialMenuKind.WinX:
-                    RestoreSoftDeletedFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)), item.Metadata.GetValueOrDefault("DeletedPath"), _logger);
-                    break;
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
@@ -294,6 +323,11 @@ public sealed class SpecialMenuService
         try
         {
             await _logger.LogAsync($"SpecialMenuPurgeDeletedStart: Kind={item.Kind}, Id={item.Id}, RegistryPath={item.RegistryPath}, Path={item.Path}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+            if (item.Kind == SpecialMenuKind.WinX)
+            {
+                return Failure(WinXPurgeDeletedDisabledMessage, operationId);
+            }
+
             switch (item.Kind)
             {
                 case SpecialMenuKind.InternetExplorer:
@@ -326,20 +360,6 @@ public sealed class SpecialMenuService
                     else
                     {
                         DeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)));
-                    }
-
-                    break;
-                }
-                case SpecialMenuKind.WinX:
-                {
-                    var deletedPath = item.Metadata.GetValueOrDefault("DeletedPath");
-                    if (!string.IsNullOrWhiteSpace(deletedPath))
-                    {
-                        DeleteFileSystemItem(deletedPath, Path.Combine(GetWinXPath(RequireUserContext(userContext)), DeletedFolderName));
-                    }
-                    else
-                    {
-                        DeleteFileSystemItem(item.Path, GetWinXPath(RequireUserContext(userContext)));
                     }
 
                     break;
@@ -552,7 +572,9 @@ public sealed class SpecialMenuService
             }
             else if (request.WinXMove is not null)
             {
-                item = MoveWinX(request.WinXMove, RequireUserContext(userContext));
+                var context = RequireUserContext(userContext);
+                LogWinXOperation("Move", context, request.WinXMove.Id, GetWinXPath(context));
+                item = MoveWinX(request.WinXMove, context);
             }
             else
             {
@@ -582,16 +604,29 @@ public sealed class SpecialMenuService
             }
             else if (kind == SpecialMenuKind.WinX)
             {
-                var source = string.IsNullOrWhiteSpace(groupName) ? DefaultWinXPath : Path.Combine(DefaultWinXPath, groupName);
-                var winXPath = GetWinXPath(RequireUserContext(userContext));
-                var destination = string.IsNullOrWhiteSpace(groupName) ? winXPath : Path.Combine(winXPath, groupName);
+                if (string.IsNullOrWhiteSpace(groupName))
+                {
+                    await _logger.LogAsync(RuntimeLogLevel.Warning, $"RestoreDefaultsRejected: Kind={kind}, Reason=GlobalWinXRestoreDisabled, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+                    return Failure(WinXGlobalRestoreDisabledMessage, operationId);
+                }
+
+                var context = RequireUserContext(userContext);
+                var validatedGroupName = ValidateWinXGroupName(groupName);
+                var source = Path.Combine(DefaultWinXPath, validatedGroupName);
+                var winXPath = GetWinXPath(context);
+                var destination = Path.Combine(winXPath, validatedGroupName);
                 await _logger.LogAsync($"RestoreDefaultsStart: Kind={kind}, Source={source}, Destination={destination}, GroupName={groupName}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}.", cancellationToken);
+                LogWinXOperation("RestoreGroupDefaults", context, destination, winXPath);
                 EnsurePathUnder(destination, winXPath);
-                RestoreDirectory(source, destination);
+                RestoreWinXGroupWithBackup(source, destination, winXPath);
                 foreach (var lnkPath in Directory.GetFiles(destination, "*.lnk", SearchOption.AllDirectories))
                 {
                     await _logger.LogAsync($"WinXHashLnk: Path={lnkPath}.", cancellationToken);
-                    WinXHasher.HashLnk(lnkPath);
+                    var hashResult = WinXHasher.HashLnkWithResult(lnkPath);
+                    if (!hashResult.Success)
+                    {
+                        throw new InvalidOperationException($"Win+X shortcut could not be hashed after restore. Path={lnkPath}, Error={hashResult.Error}");
+                    }
                 }
             }
             else
@@ -1394,7 +1429,7 @@ public sealed class SpecialMenuService
         foreach (var groupPath in Directory.EnumerateDirectories(winXPath).OrderByDescending(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
         {
             var groupName = Path.GetFileName(groupPath);
-            if (string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
+            if (IsReservedWinXGroupName(groupName))
             {
                 continue;
             }
@@ -1423,11 +1458,7 @@ public sealed class SpecialMenuService
 
     private static SpecialMenuEntry CreateWinXGroup(WinXCreateGroupRequest request, BackendUserContext context)
     {
-        var groupName = ValidatePlainDirectoryName(request.GroupName, "Win+X group name");
-        if (string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"'{DeletedFolderName}' is a reserved internal folder name and cannot be used as a Win+X group.");
-        }
+        var groupName = ValidateWinXGroupName(request.GroupName);
         var groupPath = GetUniqueDirectoryPath(Path.Combine(GetWinXPath(context), groupName));
         EnsurePathUnder(groupPath, GetWinXPath(context));
         Directory.CreateDirectory(groupPath);
@@ -1441,11 +1472,7 @@ public sealed class SpecialMenuService
     private static SpecialMenuEntry CreateWinXEntry(WinXCreateEntryRequest request, BackendUserContext context)
     {
         var winXPath = GetWinXPath(context);
-        var groupName = ValidatePlainDirectoryName(request.GroupName, "Win+X group name");
-        if (string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"'{DeletedFolderName}' is a reserved internal folder name and cannot be used as a Win+X group.");
-        }
+        var groupName = ValidateWinXGroupName(request.GroupName);
         var groupPath = Path.Combine(winXPath, groupName);
         EnsurePathUnder(groupPath, winXPath);
         if (!Directory.Exists(groupPath))
@@ -1454,27 +1481,47 @@ public sealed class SpecialMenuService
         }
 
         var index = Directory.GetFiles(groupPath, "*.lnk").Length + 1;
-        var fileName = $"{index:00} - {RemoveIllegalChars(Path.GetFileNameWithoutExtension(request.TargetPath))}.lnk";
+        var nameSource = string.IsNullOrWhiteSpace(request.DisplayName)
+            ? Path.GetFileNameWithoutExtension(request.TargetPath)
+            : request.DisplayName;
+        var fileName = $"{index:00} - {RemoveIllegalChars(nameSource)}.lnk";
         var path = GetUniqueFilePath(Path.Combine(groupPath, fileName));
-        ShortcutFile.Write(
-            path,
-            request.TargetPath,
-            request.Arguments,
-            request.WorkingDirectory,
-            request.DisplayName,
-            request.IconPath,
-            request.RunAsAdministrator);
-        DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
-
-        var hashResult = WinXHasher.HashLnkWithResult(path);
-        if (!hashResult.Success)
+        try
         {
-            throw new InvalidOperationException(
-                $"Win+X shortcut was created but could not be hashed, so Windows will not show it. " +
-                $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
-        }
+            if (request.TargetPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) && File.Exists(request.TargetPath))
+            {
+                File.Copy(request.TargetPath, path, overwrite: false);
+                ShortcutFile.Update(path, description: request.DisplayName);
+            }
+            else
+            {
+                ShortcutFile.Write(
+                    path,
+                    request.TargetPath,
+                    request.Arguments,
+                    request.WorkingDirectory,
+                    request.DisplayName,
+                    request.IconPath,
+                    request.RunAsAdministrator);
+            }
 
-        return CreateWinXEntryFromPath(path, groupName);
+            DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
+
+            var hashResult = WinXHasher.HashLnkWithResult(path);
+            if (!hashResult.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Win+X shortcut was created but could not be hashed, so Windows will not show it. " +
+                    $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
+            }
+
+            return CreateWinXEntryFromPath(path, groupName);
+        }
+        catch
+        {
+            DeleteFileSystemItem(path, winXPath);
+            throw;
+        }
     }
 
     private static SpecialMenuEntry UpdateWinXEntry(WinXUpdateEntryRequest request, BackendUserContext context)
@@ -1486,11 +1533,7 @@ public sealed class SpecialMenuService
         var groupName = Path.GetFileName(Path.GetDirectoryName(path));
         if (!string.IsNullOrWhiteSpace(request.GroupName) && !string.Equals(request.GroupName, groupName, StringComparison.OrdinalIgnoreCase))
         {
-            var targetGroupName = ValidatePlainDirectoryName(request.GroupName, "Win+X group name");
-            if (string.Equals(targetGroupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException($"'{DeletedFolderName}' is a reserved internal folder name and cannot be used as a Win+X group.");
-            }
+            var targetGroupName = ValidateWinXGroupName(request.GroupName);
             var destinationGroupPath = Path.Combine(winXPath, targetGroupName);
             EnsurePathUnder(destinationGroupPath, winXPath);
             if (!Directory.Exists(destinationGroupPath))
@@ -1539,6 +1582,7 @@ public sealed class SpecialMenuService
         var groupPath = Path.GetDirectoryName(path) ?? throw new InvalidOperationException("Invalid Win+X item path.");
         EnsurePathUnder(groupPath, winXPath);
         var groupPaths = Directory.GetDirectories(winXPath)
+            .Where(static item => !IsReservedWinXGroupName(Path.GetFileName(item)))
             .OrderByDescending(static item => Path.GetFileName(item), StringComparer.OrdinalIgnoreCase)
             .ToList();
         var groupIndex = groupPaths.FindIndex(item => string.Equals(item, groupPath, StringComparison.OrdinalIgnoreCase));
@@ -1669,6 +1713,45 @@ public sealed class SpecialMenuService
         return RewriteWinXGroupOrder(targetGroupPath, targetDisplay, stagedPath, winXPath);
     }
 
+    private static void DeleteWinXItem(string? path, string winXPath)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new InvalidOperationException("Win+X item path is missing.");
+        }
+
+        EnsurePathUnder(path, winXPath);
+        if (IsSamePath(path, winXPath))
+        {
+            throw new UnauthorizedAccessException("Refusing to delete the Win+X root folder.");
+        }
+
+        var name = Path.GetFileName(path);
+        if (IsReservedWinXGroupName(name))
+        {
+            throw new UnauthorizedAccessException($"Refusing to delete internal Win+X folder '{name}'.");
+        }
+
+        if (File.Exists(path))
+        {
+            if (!string.Equals(Path.GetExtension(path), ".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Win+X direct delete only supports .lnk entries.");
+            }
+
+            DesktopIniStore.DeleteLocalizedFileName(path);
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+            return;
+        }
+
+        if (Directory.Exists(path))
+        {
+            ClearAttributesRecursive(path);
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
     private static string RewriteWinXGroupOrder(string groupPath, IReadOnlyList<string> displayPaths, string? trackedPath, string winXPath)
     {
         EnsurePathUnder(groupPath, winXPath);
@@ -1757,6 +1840,21 @@ public sealed class SpecialMenuService
         var withoutExtension = Path.GetFileNameWithoutExtension(fileName);
         return RemoveIllegalChars(StripWinXOrderPrefix(withoutExtension)) + ".lnk";
     }
+
+    private static string ValidateWinXGroupName(string value)
+    {
+        var groupName = ValidatePlainDirectoryName(value, "Win+X group name");
+        if (IsReservedWinXGroupName(groupName))
+        {
+            throw new InvalidOperationException($"'{groupName}' is a reserved internal folder name and cannot be used as a Win+X group.");
+        }
+
+        return groupName;
+    }
+
+    private static bool IsReservedWinXGroupName(string? groupName) =>
+        string.Equals(groupName, DeletedFolderName, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(groupName, BackupFolderName, StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<SpecialMenuEntry> GetDragDropItems()
     {
@@ -3284,6 +3382,54 @@ public sealed class SpecialMenuService
         CopyDirectory(source, destination);
     }
 
+    private static void RestoreWinXGroupWithBackup(string source, string destination, string winXPath)
+    {
+        if (!Directory.Exists(source))
+        {
+            throw new DirectoryNotFoundException(source);
+        }
+
+        EnsurePathUnder(destination, winXPath);
+        if (IsSamePath(destination, winXPath))
+        {
+            throw new UnauthorizedAccessException("Refusing to restore defaults over the Win+X root folder.");
+        }
+
+        var groupName = ValidateWinXGroupName(Path.GetFileName(destination));
+        var backupRoot = Path.Combine(winXPath, BackupFolderName);
+        EnsurePathUnder(backupRoot, winXPath);
+        Directory.CreateDirectory(backupRoot);
+
+        var backupPath = Path.Combine(backupRoot, $"{groupName}-{DateTime.Now:yyyyMMddHHmmssfff}");
+        var hasBackup = false;
+        try
+        {
+            if (Directory.Exists(destination))
+            {
+                ClearAttributesRecursive(destination);
+                Directory.Move(destination, backupPath);
+                hasBackup = true;
+            }
+
+            CopyDirectory(source, destination);
+        }
+        catch
+        {
+            if (Directory.Exists(destination))
+            {
+                ClearAttributesRecursive(destination);
+                Directory.Delete(destination, recursive: true);
+            }
+
+            if (hasBackup && Directory.Exists(backupPath))
+            {
+                Directory.Move(backupPath, destination);
+            }
+
+            throw;
+        }
+    }
+
     private static void CopyRegistryKey(RegistryKey source, RegistryKey target)
     {
         foreach (var name in source.GetValueNames())
@@ -3335,14 +3481,41 @@ public sealed class SpecialMenuService
         EnsurePathUnder(path, allowedRoot);
         if (Directory.Exists(path))
         {
-            File.SetAttributes(path, FileAttributes.Normal);
+            ClearAttributesRecursive(path);
             Directory.Delete(path, recursive: true);
         }
         else if (File.Exists(path))
         {
             DesktopIniStore.DeleteLocalizedFileName(path);
+            File.SetAttributes(path, FileAttributes.Normal);
             File.Delete(path);
         }
+    }
+
+    private static void ClearAttributesRecursive(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+        }
+
+        foreach (var directory in Directory.GetDirectories(path, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(directory, FileAttributes.Normal);
+        }
+
+        File.SetAttributes(path, FileAttributes.Normal);
     }
 
     private static void MoveRegistryKey(string sourcePath, string targetPath, BackendUserContext? context = null, FileLogger? logger = null)
@@ -3491,6 +3664,33 @@ public sealed class SpecialMenuService
 
     private static string GetFullNormalizedPath(string path) =>
         Path.GetFullPath(Environment.ExpandEnvironmentVariables(path));
+
+    private void LogWinXOperation(string operation, BackendUserContext context, string? targetPath, string winXPath)
+    {
+        var ensurePathUnderResult = "NotChecked";
+        if (!string.IsNullOrWhiteSpace(targetPath) && (Path.IsPathRooted(targetPath) || targetPath.Contains('\\', StringComparison.Ordinal) || targetPath.Contains('/', StringComparison.Ordinal)))
+        {
+            try
+            {
+                EnsurePathUnder(targetPath, winXPath);
+                ensurePathUnderResult = "UnderWinXRoot";
+            }
+            catch (Exception ex)
+            {
+                ensurePathUnderResult = ex.GetType().Name;
+            }
+        }
+
+        _logger.LogFireAndForget(
+            $"WinXOperation: Operation={operation}, Sid={context.Sid}, ProfilePath={context.ProfilePath}, LocalAppDataPath={context.LocalAppDataPath}, WinXPath={winXPath}, TargetPath={targetPath}, EnsurePathUnderResult={ensurePathUnderResult}, HasherMode=HardCodedPKEYs.");
+    }
+
+    private static bool IsSamePath(string path, string otherPath)
+    {
+        var fullPath = GetFullNormalizedPath(path).TrimEnd(Path.DirectorySeparatorChar);
+        var fullOtherPath = GetFullNormalizedPath(otherPath).TrimEnd(Path.DirectorySeparatorChar);
+        return string.Equals(fullPath, fullOtherPath, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void EnsurePathUnder(string path, string root)
     {

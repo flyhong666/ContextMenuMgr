@@ -153,7 +153,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     public bool ShowShellNewAclRepair => Kind == SpecialMenuKind.ShellNew;
 
-    public bool ShowRestoreDefaults => Kind is SpecialMenuKind.SendTo or SpecialMenuKind.WinX;
+    public bool ShowRestoreDefaults => Kind == SpecialMenuKind.SendTo;
 
     public bool ShowDropEffectSelector => Kind == SpecialMenuKind.DragDrop;
 
@@ -306,6 +306,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             if (Kind == SpecialMenuKind.WinX)
             {
                 _explorerRestartState.MarkRequired();
+                await RefreshAsync();
             }
         }
         catch (Exception ex)
@@ -448,7 +449,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RestoreDefaultsAsync()
     {
-        if (Kind is not (SpecialMenuKind.SendTo or SpecialMenuKind.WinX))
+        if (Kind != SpecialMenuKind.SendTo)
         {
             return;
         }

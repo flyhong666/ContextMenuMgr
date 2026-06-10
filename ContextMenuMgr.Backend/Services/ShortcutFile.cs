@@ -61,6 +61,50 @@ internal static class ShortcutFile
         }
     }
 
+    public static void Update(
+        string path,
+        string? targetPath = null,
+        string? arguments = null,
+        string? workingDirectory = null,
+        string? description = null,
+        string? iconLocation = null,
+        bool? runAsAdministrator = null)
+    {
+        dynamic shell = CreateShell();
+        dynamic shortcut = shell.CreateShortcut(path);
+        if (targetPath is not null)
+        {
+            shortcut.TargetPath = targetPath;
+        }
+
+        if (arguments is not null)
+        {
+            shortcut.Arguments = arguments;
+        }
+
+        if (workingDirectory is not null)
+        {
+            shortcut.WorkingDirectory = workingDirectory;
+        }
+
+        if (description is not null)
+        {
+            shortcut.Description = description;
+        }
+
+        if (iconLocation is not null)
+        {
+            shortcut.IconLocation = iconLocation;
+        }
+
+        shortcut.Save();
+
+        if (runAsAdministrator is not null)
+        {
+            SetRunAsAdministrator(path, runAsAdministrator.Value);
+        }
+    }
+
     public static bool IsRunAsAdministrator(string path)
     {
         var bytes = File.ReadAllBytes(path);

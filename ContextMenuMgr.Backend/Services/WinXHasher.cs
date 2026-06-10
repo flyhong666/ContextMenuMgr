@@ -21,6 +21,24 @@ internal sealed record WinXHashResult(
 
 internal static class WinXHasher
 {
+    private static readonly PropertyKey PkeyLinkTargetParsingPath = new()
+    {
+        GUID = new Guid("B9B4B3FC-2B51-4A42-B5D8-324146AFCF25"),
+        PID = 2
+    };
+
+    private static readonly PropertyKey PkeyLinkArguments = new()
+    {
+        GUID = new Guid("436F2667-14E2-4FEB-B30A-146C53B5B674"),
+        PID = 100
+    };
+
+    private static readonly PropertyKey PkeyWinXHash = new()
+    {
+        GUID = new Guid("FB8D2D7B-90D1-4E34-BF60-6EAC09922BBF"),
+        PID = 2
+    };
+
     private static readonly Dictionary<string, string> GeneralizePathMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["%ProgramFiles%"] = "{905e63b6-c1bf-494e-b29c-65b732d3d21a}",
@@ -30,35 +48,11 @@ internal static class WinXHasher
 
     public static void HashLnk(string lnkPath)
     {
-        SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out var item);
-        var item2 = (IShellItem2)item;
-
-        PSGetPropertyKeyFromName("System.Link.TargetParsingPath", out var propertyKey);
-        string? targetPath;
-        try { targetPath = item2.GetString(propertyKey); }
-        catch { targetPath = null; }
-
-        PSGetPropertyKeyFromName("System.Link.Arguments", out propertyKey);
-        string? arguments;
-        try { arguments = item2.GetString(propertyKey); }
-        catch { arguments = null; }
-
-        var blob = (GeneralizePath(targetPath) + arguments
-            + "do not prehash links.  this should only be done by the user.").ToLowerInvariant();
-        var input = Encoding.Unicode.GetBytes(blob);
-        var output = new byte[input.Length];
-        HashData(input, input.Length, output, output.Length);
-        var hash = BitConverter.ToUInt32(output, 0);
-
-        var storeId = typeof(IPropertyStore).GUID;
-        var store = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
-        PSGetPropertyKeyFromName("System.Winx.Hash", out propertyKey);
-        var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, uintVal = hash };
-        store.SetValue(ref propertyKey, ref propVariant);
-        store.Commit();
-
-        Marshal.ReleaseComObject(store);
-        Marshal.ReleaseComObject(item);
+        var result = HashLnkWithResult(lnkPath);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(result.Error ?? "Unable to write Win+X shortcut hash.");
+        }
     }
 
     public static WinXHashResult HashLnkWithResult(string lnkPath)
@@ -76,12 +70,10 @@ internal static class WinXHasher
             SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out item);
             var item2 = (IShellItem2)item;
 
-            PSGetPropertyKeyFromName("System.Link.TargetParsingPath", out var propertyKey);
-            try { targetPath = item2.GetString(propertyKey); }
+            try { targetPath = item2.GetString(PkeyLinkTargetParsingPath); }
             catch { targetPath = null; }
 
-            PSGetPropertyKeyFromName("System.Link.Arguments", out propertyKey);
-            try { arguments = item2.GetString(propertyKey); }
+            try { arguments = item2.GetString(PkeyLinkArguments); }
             catch { arguments = null; }
 
             generalizedTargetPath = GeneralizePath(targetPath);
@@ -94,8 +86,8 @@ internal static class WinXHasher
 
             var storeId = typeof(IPropertyStore).GUID;
             storeRef = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
-            PSGetPropertyKeyFromName("System.Winx.Hash", out propertyKey);
             var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, uintVal = hash.Value };
+            var propertyKey = PkeyWinXHash;
             storeRef.SetValue(ref propertyKey, ref propVariant);
             storeRef.Commit();
         }
@@ -134,18 +126,25 @@ internal static class WinXHasher
         error = null;
         try
         {
-            SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out var item);
+            IShellItem? item = null;
+            IPropertyStore? store = null;
+            SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out item);
             var item2 = (IShellItem2)item;
-            var storeId = typeof(IPropertyStore).GUID;
-            var store = item2.GetPropertyStore(GPS.DEFAULT, ref storeId);
-            PSGetPropertyKeyFromName("System.Winx.Hash", out var propertyKey);
-            var pv = new PropVariant();
             try
             {
+                var storeId = typeof(IPropertyStore).GUID;
+                store = item2.GetPropertyStore(GPS.DEFAULT, ref storeId);
+                var propertyKey = PkeyWinXHash;
+                var pv = new PropVariant();
                 store.GetValue(ref propertyKey, out pv);
                 if (pv.VarType == VarEnum.VT_UI4)
                 {
-                    hash = (uint)pv.ulVal;
+                    hash = pv.uintVal;
+                }
+                else if (pv.VarType == VarEnum.VT_EMPTY)
+                {
+                    error = "System.Winx.Hash readback returned VT_EMPTY.";
+                    return false;
                 }
                 else
                 {
@@ -155,8 +154,8 @@ internal static class WinXHasher
             }
             finally
             {
-                Marshal.ReleaseComObject(store);
-                Marshal.ReleaseComObject(item);
+                if (store is not null) Marshal.ReleaseComObject(store);
+                if (item is not null) Marshal.ReleaseComObject(item);
             }
 
             return true;
@@ -229,11 +228,6 @@ internal static class WinXHasher
         IBindCtx? pbc,
         [MarshalAs(UnmanagedType.LPStruct)] Guid riid,
         out IShellItem ppv);
-
-    [DllImport("propsys.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int PSGetPropertyKeyFromName(
-        [MarshalAs(UnmanagedType.LPWStr)] string pszCanonicalName,
-        out PropertyKey propkey);
 
     [ComImport]
     [Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]

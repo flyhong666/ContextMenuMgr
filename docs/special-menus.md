@@ -90,8 +90,9 @@ WinX 菜单来自用户 `LocalAppData` 下的 `Microsoft\Windows\WinX` 目录。
 | 分组 | 以 group 目录组织。 |
 | 排序 | 通过文件名前缀和分组位置处理，移动操作不是注册表改值。 |
 | `.lnk` | 条目是快捷方式，需要写目标、参数和工作目录。 |
-| hash | `WinXHasher.HashLnk` 用于生成 Explorer 接受的 WinX 快捷方式 hash。 |
-| 恢复默认 | 从默认 profile 相关位置恢复，和普通菜单导入注册表备份不同。 |
+| hash | `WinXHasher.HashLnk` 使用硬编码 PKEY 写入 Explorer 接受的 WinX 快捷方式 hash；新增、更新、移动后都必须重新 hash。 |
+| 删除 | 当前 WinX 删除是直接删除用户 WinX 目录下的 `.lnk` 或分组目录，不使用 `.deleted` 软删除；Undo/Purge 对 WinX 已禁用，直到有持久 manifest-based undo 模型。 |
+| 恢复默认 | 禁止恢复整个 WinX 根目录；只允许恢复单个 group，恢复前会把现有 group 移到 `.backup`，复制失败时回滚。`.deleted` 和 `.backup` 不作为普通 WinX group 枚举。 |
 
 WinX 修改需要用户上下文，因为不同用户有不同的 LocalAppData 和 WinX 配置。
 
