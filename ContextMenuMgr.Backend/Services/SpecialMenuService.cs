@@ -35,6 +35,7 @@ public sealed class SpecialMenuService
     public SpecialMenuService(FileLogger logger)
     {
         _logger = logger;
+        WinXHasher.FileLoggerHost.Attach(logger);
     }
 
     public Task<IReadOnlyList<SpecialMenuEntry>> GetSnapshotAsync(SpecialMenuKind kind, BackendUserContext? userContext, CancellationToken cancellationToken)
@@ -1469,12 +1470,20 @@ public sealed class SpecialMenuService
         return GetWinXItems(context).First(item => string.Equals(item.Path, groupPath, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static SpecialMenuEntry CreateWinXEntry(WinXCreateEntryRequest request, BackendUserContext context)
+    private SpecialMenuEntry CreateWinXEntry(WinXCreateEntryRequest request, BackendUserContext context)
     {
         var winXPath = GetWinXPath(context);
         var groupName = ValidateWinXGroupName(request.GroupName);
+        if (string.IsNullOrWhiteSpace(request.TargetPath))
+        {
+            throw new InvalidOperationException("Win+X target path cannot be empty.");
+        }
+
         var groupPath = Path.Combine(winXPath, groupName);
         EnsurePathUnder(groupPath, winXPath);
+        _logger.LogFireAndForget(
+            $"WinXCreateStart: Sid={context.Sid}, ProfilePath={context.ProfilePath}, LocalAppData={context.LocalAppDataPath}, " +
+            $"WinXPath={winXPath}, GroupName={groupName}, TargetPath={request.TargetPath}.");
         if (!Directory.Exists(groupPath))
         {
             throw new InvalidOperationException($"Win+X group '{request.GroupName}' does not exist.");
@@ -1486,16 +1495,25 @@ public sealed class SpecialMenuService
             : request.DisplayName;
         var fileName = $"{index:00} - {RemoveIllegalChars(nameSource)}.lnk";
         var path = GetUniqueFilePath(Path.Combine(groupPath, fileName));
+        EnsurePathUnder(path, winXPath);
+        if (IsSamePath(request.TargetPath, path))
+        {
+            throw new InvalidOperationException("Win+X target path cannot be the output shortcut path.");
+        }
+
+        _logger.LogFireAndForget($"WinXCreatePathChosen: GroupPath={groupPath}, LnkPath={path}.");
+        var stage = "WinXShortcutWriteStart";
         try
         {
+            _logger.LogFireAndForget($"{stage}: LnkPath={path}, TargetPath={request.TargetPath}.");
             if (request.TargetPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) && File.Exists(request.TargetPath))
             {
                 File.Copy(request.TargetPath, path, overwrite: false);
-                ShortcutFile.Update(path, description: request.DisplayName);
+                WinXShortcutFile.Update(path, description: request.DisplayName);
             }
             else
             {
-                ShortcutFile.Write(
+                WinXShortcutFile.Write(
                     path,
                     request.TargetPath,
                     request.Arguments,
@@ -1504,10 +1522,19 @@ public sealed class SpecialMenuService
                     request.IconPath,
                     request.RunAsAdministrator);
             }
+            _logger.LogFireAndForget($"WinXShortcutWriteEnd: LnkPath={path}.");
 
+            stage = "WinXDesktopIniWriteStart";
+            _logger.LogFireAndForget($"{stage}: LnkPath={path}, DisplayName={request.DisplayName}.");
             DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
+            _logger.LogFireAndForget($"WinXDesktopIniWriteEnd: LnkPath={path}.");
 
+            stage = "WinXHashStart";
+            _logger.LogFireAndForget($"{stage}: LnkPath={path}.");
             var hashResult = WinXHasher.HashLnkWithResult(path);
+            _logger.LogFireAndForget(
+                $"WinXHashEnd: LnkPath={path}, Success={hashResult.Success}, Error={hashResult.Error ?? "<none>"}, " +
+                $"VerificationWarning={hashResult.VerificationWarning ?? "<none>"}.");
             if (!hashResult.Success)
             {
                 throw new InvalidOperationException(
@@ -1515,10 +1542,16 @@ public sealed class SpecialMenuService
                     $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
             }
 
-            return CreateWinXEntryFromPath(path, groupName);
+            var item = CreateWinXEntryFromPath(path, groupName);
+            _logger.LogFireAndForget($"WinXCreateEnd: LnkPath={path}, Success=True.");
+            return item;
         }
-        catch
+        catch (Exception ex)
         {
+            var hresult = ex is COMException ? $", HResult=0x{ex.HResult:X8}" : string.Empty;
+            _logger.LogFireAndForget(
+                RuntimeLogLevel.Error,
+                $"WinXCreateFailed: Stage={stage}, LnkPath={path}{hresult}, Exception={ex}.");
             DeleteFileSystemItem(path, winXPath);
             throw;
         }
@@ -1529,7 +1562,6 @@ public sealed class SpecialMenuService
         var path = DecodeId(request.Id);
         var winXPath = GetWinXPath(context);
         EnsurePathUnder(path, winXPath);
-        var current = ShortcutFile.Read(path);
         var groupName = Path.GetFileName(Path.GetDirectoryName(path));
         if (!string.IsNullOrWhiteSpace(request.GroupName) && !string.Equals(request.GroupName, groupName, StringComparison.OrdinalIgnoreCase))
         {
@@ -1547,16 +1579,14 @@ public sealed class SpecialMenuService
             groupName = targetGroupName;
         }
 
-        ShortcutFile.Write(
+        WinXShortcutFile.Update(
             path,
-            request.TargetPath ?? current.TargetPath,
-            request.Arguments ?? current.Arguments,
-            request.WorkingDirectory ?? current.WorkingDirectory,
-            request.DisplayName ?? current.Description,
-            request.IconPath is not null
-                ? (string.IsNullOrEmpty(request.IconPath) ? null : request.IconPath)
-                : current.IconLocation,
-            request.RunAsAdministrator ?? current.RunAsAdministrator);
+            request.TargetPath,
+            request.Arguments,
+            request.WorkingDirectory,
+            request.DisplayName,
+            request.IconPath,
+            request.RunAsAdministrator);
 
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
         {
@@ -1637,7 +1667,7 @@ public sealed class SpecialMenuService
     private static SpecialMenuEntry CreateWinXEntryFromPath(string path, string groupName)
     {
         ShortcutInfo? shortcut = null;
-        try { shortcut = ShortcutFile.Read(path); }
+        try { shortcut = WinXShortcutFile.Read(path); }
         catch { }
 
         var localizedDisplayName = DesktopIniStore.GetLocalizedFileName(path, translate: true);

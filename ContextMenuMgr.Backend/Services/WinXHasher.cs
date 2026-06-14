@@ -5,6 +5,7 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using ComTypes = System.Runtime.InteropServices.ComTypes;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -21,6 +22,15 @@ internal sealed record WinXHashResult(
 
 internal static class WinXHasher
 {
+    private static readonly Dictionary<string, string> GeneralizePathMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["%ProgramFiles%"] = "{905e63b6-c1bf-494e-b29c-65b732d3d21a}",
+        [@"%SystemRoot%\System32"] = "{1ac14e77-02e7-4e5d-b744-2eb1ae5198b7}",
+        ["%SystemRoot%"] = "{f38bf404-1d43-42f2-9305-67de0b28fc23}"
+    };
+
+    // Hard-coded PropertyKeys. PSGetPropertyKeyFromName is unreliable on some
+    // Windows 10 systems for System.Winx.Hash, so we never depend on it.
     private static readonly PropertyKey PkeyLinkTargetParsingPath = new()
     {
         GUID = new Guid("B9B4B3FC-2B51-4A42-B5D8-324146AFCF25"),
@@ -39,12 +49,7 @@ internal static class WinXHasher
         PID = 2
     };
 
-    private static readonly Dictionary<string, string> GeneralizePathMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["%ProgramFiles%"] = "{905e63b6-c1bf-494e-b29c-65b732d3d21a}",
-        [@"%SystemRoot%\System32"] = "{1ac14e77-02e7-4e5d-b744-2eb1ae5198b7}",
-        ["%SystemRoot%"] = "{f38bf404-1d43-42f2-9305-67de0b28fc23}"
-    };
+    private static readonly string PropertyKeyMode = "HardCoded";
 
     public static void HashLnk(string lnkPath)
     {
@@ -67,6 +72,8 @@ internal static class WinXHasher
 
         try
         {
+            WinXLog($"WinXHashStart: Path={lnkPath}, PropertyKeyMode={PropertyKeyMode}.");
+
             SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out item);
             var item2 = (IShellItem2)item;
 
@@ -84,15 +91,20 @@ internal static class WinXHasher
             HashData(input, input.Length, output, output.Length);
             hash = BitConverter.ToUInt32(output, 0);
 
+            WinXLog($"WinXHashTarget: Path={lnkPath}, TargetPath={targetPath}, GeneralizedTargetPath={generalizedTargetPath}, Arguments={arguments}, ComputedHash={hash}.");
+
             var storeId = typeof(IPropertyStore).GUID;
             storeRef = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
             var propVariant = new PropVariant { VarType = VarEnum.VT_UI4, uintVal = hash.Value };
-            var propertyKey = PkeyWinXHash;
-            storeRef.SetValue(ref propertyKey, ref propVariant);
+            var winXHashKey = PkeyWinXHash;
+            storeRef.SetValue(ref winXHashKey, ref propVariant);
+            WinXLog($"WinXHashSetValue: Path={lnkPath}, Hash={hash}.");
             storeRef.Commit();
+            WinXLog($"WinXHashCommitSucceeded: Path={lnkPath}, Hash={hash}.");
         }
         catch (Exception ex)
         {
+            WinXLog(RuntimeLogLevel.Warning, $"WinXHashFailed: Path={lnkPath}, TargetPath={targetPath}, GeneralizedTargetPath={generalizedTargetPath}, Arguments={arguments}, Hash={hash}, Error={ex.Message}.");
             return new WinXHashResult(false, hash, targetPath, arguments, generalizedTargetPath, ex.Message);
         }
         finally
@@ -110,11 +122,13 @@ internal static class WinXHasher
                     VerificationSucceeded: true, ReadBackHash: readHash);
             }
 
+            WinXLog(RuntimeLogLevel.Warning, $"WinXHashVerifyWarning: Path={lnkPath}, Wrote={hash}, ReadBack={readHash}, Reason=HashMismatch.");
             return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null,
                 VerificationSucceeded: false, ReadBackHash: readHash,
                 VerificationWarning: $"Hash mismatch: wrote {hash}, read {readHash}.");
         }
 
+        WinXLog(RuntimeLogLevel.Warning, $"WinXHashVerifyWarning: Path={lnkPath}, Wrote={hash}, ReadBack=<failed>, Reason={readError}.");
         return new WinXHashResult(true, hash, targetPath, arguments, generalizedTargetPath, null,
             VerificationSucceeded: false,
             VerificationWarning: $"Readback verification did not confirm written hash: {readError}");
@@ -126,25 +140,18 @@ internal static class WinXHasher
         error = null;
         try
         {
-            IShellItem? item = null;
-            IPropertyStore? store = null;
-            SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out item);
+            SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out var item);
             var item2 = (IShellItem2)item;
+            var storeId = typeof(IPropertyStore).GUID;
+            var store = item2.GetPropertyStore(GPS.DEFAULT, ref storeId);
+            var winXHashKey = PkeyWinXHash;
+            var pv = new PropVariant();
             try
             {
-                var storeId = typeof(IPropertyStore).GUID;
-                store = item2.GetPropertyStore(GPS.DEFAULT, ref storeId);
-                var propertyKey = PkeyWinXHash;
-                var pv = new PropVariant();
-                store.GetValue(ref propertyKey, out pv);
+                store.GetValue(ref winXHashKey, out pv);
                 if (pv.VarType == VarEnum.VT_UI4)
                 {
-                    hash = pv.uintVal;
-                }
-                else if (pv.VarType == VarEnum.VT_EMPTY)
-                {
-                    error = "System.Winx.Hash readback returned VT_EMPTY.";
-                    return false;
+                    hash = (uint)pv.ulVal;
                 }
                 else
                 {
@@ -154,8 +161,8 @@ internal static class WinXHasher
             }
             finally
             {
-                if (store is not null) Marshal.ReleaseComObject(store);
-                if (item is not null) Marshal.ReleaseComObject(item);
+                Marshal.ReleaseComObject(store);
+                Marshal.ReleaseComObject(item);
             }
 
             return true;
@@ -218,6 +225,10 @@ internal static class WinXHasher
 
         return filePath;
     }
+
+    private static void WinXLog(string message) => FileLoggerHost.Log(message);
+
+    private static void WinXLog(RuntimeLogLevel level, string message) => FileLoggerHost.Log(level, message);
 
     [DllImport("shlwapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     private static extern int HashData(byte[] pbData, int cbData, byte[] pbHash, int cbHash);
@@ -330,5 +341,52 @@ internal static class WinXHasher
     {
         DEFAULT = 0x00000000,
         READWRITE = 0x00000002
+    }
+
+    // Lightweight file logger bridge for diagnostic WinX hash events. The
+    // service-side FileLogger instance is resolved at runtime so this static
+    // helper stays decoupled from the host composition root.
+    internal static class FileLoggerHost
+    {
+        private static FileLogger? _logger;
+        private static readonly object Sync = new();
+
+        public static void Attach(FileLogger logger)
+        {
+            lock (Sync)
+            {
+                _logger = logger;
+            }
+        }
+
+        public static void Log(string message)
+        {
+            var logger = Current();
+            if (logger is null)
+            {
+                return;
+            }
+
+            logger.LogFireAndForget(message);
+        }
+
+        public static void Log(RuntimeLogLevel level, string message)
+        {
+            var logger = Current();
+            if (logger is null)
+            {
+                return;
+            }
+
+            logger.LogFireAndForget(level, message);
+        }
+
+        private static FileLogger? Current()
+        {
+            lock (Sync)
+            {
+                return _logger;
+            }
+        }
     }
 }

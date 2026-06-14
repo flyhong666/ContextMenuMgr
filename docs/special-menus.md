@@ -96,6 +96,16 @@ WinX 菜单来自用户 `LocalAppData` 下的 `Microsoft\Windows\WinX` 目录。
 
 WinX 修改需要用户上下文，因为不同用户有不同的 LocalAppData 和 WinX 配置。
 
+WinX 快捷方式的创建、更新和读取由后端 `WinXShortcutFile` 使用原生
+`IShellLinkW` / `IPersistFile` 完成。每次操作在短生命周期 STA 线程中显式初始化
+COM，不调用 `IShellLink.Resolve`，也不使用 `WScript.Shell`。SendTo 当前仍保留原有
+`ShortcutFile` 路径，以限制改动范围。
+
+创建 WinX 条目时，`backend.log` 会记录 `WinXCreateStart`、
+`WinXShortcutWriteStart/End`、`WinXDesktopIniWriteStart/End`、
+`WinXHashStart/End` 和 `WinXCreateEnd`。若创建失败，`WinXCreateFailed` 会记录失败
+阶段；COM 异常同时记录 HRESULT。
+
 ## 7. SpecialMenu 的用户上下文要求
 
 | SpecialMenu | 需要 SID | 需要 ProfilePath | 需要 LocalAppData/RoamingAppData | 原因 |

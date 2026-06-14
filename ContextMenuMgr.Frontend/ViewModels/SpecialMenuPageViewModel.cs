@@ -269,6 +269,12 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                 }
             }
         }
+        catch (OperationCanceledException) when (Kind == SpecialMenuKind.WinX)
+        {
+            await FrontendMessageBox.ShowErrorAsync(
+                "Win+X create timed out. Check backend logs for WinXCreate stage logs.",
+                Title);
+        }
         catch (Exception ex)
         {
             await FrontendMessageBox.ShowErrorAsync(ex.Message, Title);
