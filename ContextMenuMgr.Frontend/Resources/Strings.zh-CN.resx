@@ -1133,6 +1133,12 @@
   <data name="WinXPageDescription" xml:space="preserve">
     <value>管理 Win+X 分组和带 hash 的快捷方式。</value>
   </data>
+  <data name="WinXCompatibilityNotice" xml:space="preserve">
+    <value>新版 Windows 可能会拒绝新添加的自定义 Win+X 项目。</value>
+  </data>
+  <data name="WinXCompatibilityNoticeToolTip" xml:space="preserve">
+    <value>如果新添加的项目在此页面可见，但重启资源管理器后仍未出现在实际 Win+X 菜单中，这是新版 Windows 的系统限制。应用已经创建快捷方式并写入 hash，但 Windows 仍可能拒绝显示。请不要为此向作者提交 Issue，作者无法绕过此 Windows 限制。</value>
+  </data>
   <data name="DragDropPageTitle" xml:space="preserve">
     <value>右键拖拽</value>
   </data>

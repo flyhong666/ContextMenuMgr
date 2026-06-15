@@ -52,6 +52,8 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         RestoreDefaultsText = _localization.Translate("RestoreDefault");
         LockNewMenuText = _localization.Translate("LockNewMenu");
         LockNewMenuDescription = _localization.Translate("LockNewMenuDescription");
+        WinXCompatibilityNoticeText = _localization.Translate("WinXCompatibilityNotice");
+        WinXCompatibilityNoticeToolTip = _localization.Translate("WinXCompatibilityNoticeToolTip");
         RepairShellNewAclText = _localization.Translate("RepairShellNewAcl");
         RepairShellNewAclConfirmationText = _localization.Translate("RepairShellNewAclConfirmation");
         DeleteText = _localization.Translate("Delete");
@@ -111,6 +113,12 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     public partial string LockNewMenuDescription { get; set; }
 
     [ObservableProperty]
+    public partial string WinXCompatibilityNoticeText { get; set; }
+
+    [ObservableProperty]
+    public partial string WinXCompatibilityNoticeToolTip { get; set; }
+
+    [ObservableProperty]
     public partial string RepairShellNewAclText { get; set; }
 
     [ObservableProperty]
@@ -158,6 +166,8 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     public bool ShowDropEffectSelector => Kind == SpecialMenuKind.DragDrop;
 
     public bool ShowWinXTree => Kind == SpecialMenuKind.WinX;
+
+    public bool ShowWinXCompatibilityNotice => Kind == SpecialMenuKind.WinX;
 
     public string LoadingItemsText => _localization.Translate("LoadingItemsText");
 
@@ -1012,6 +1022,8 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         RestoreDefaultsText = _localization.Translate("RestoreDefault");
         LockNewMenuText = _localization.Translate("LockNewMenu");
         LockNewMenuDescription = _localization.Translate("LockNewMenuDescription");
+        WinXCompatibilityNoticeText = _localization.Translate("WinXCompatibilityNotice");
+        WinXCompatibilityNoticeToolTip = _localization.Translate("WinXCompatibilityNoticeToolTip");
         RepairShellNewAclText = _localization.Translate("RepairShellNewAcl");
         RepairShellNewAclConfirmationText = _localization.Translate("RepairShellNewAclConfirmation");
         DeleteText = _localization.Translate("Delete");

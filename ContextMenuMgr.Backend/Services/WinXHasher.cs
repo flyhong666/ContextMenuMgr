@@ -60,10 +60,15 @@ internal static class WinXHasher
         }
     }
 
-    public static WinXHashResult HashLnkWithResult(string lnkPath)
+    public static WinXHashResult HashLnkWithResult(
+        string lnkPath,
+        string? fallbackTargetPath = null,
+        string? fallbackArguments = null)
     {
         string? targetPath = null;
         string? arguments = null;
+        string? propertyStoreTargetPath = null;
+        string? propertyStoreArguments = null;
         string? generalizedTargetPath = null;
         uint? hash = null;
 
@@ -77,11 +82,42 @@ internal static class WinXHasher
             SHCreateItemFromParsingName(lnkPath, null, typeof(IShellItem2).GUID, out item);
             var item2 = (IShellItem2)item;
 
-            try { targetPath = item2.GetString(PkeyLinkTargetParsingPath); }
-            catch { targetPath = null; }
+            try { propertyStoreTargetPath = item2.GetString(PkeyLinkTargetParsingPath); }
+            catch { propertyStoreTargetPath = null; }
 
-            try { arguments = item2.GetString(PkeyLinkArguments); }
-            catch { arguments = null; }
+            try { propertyStoreArguments = item2.GetString(PkeyLinkArguments); }
+            catch { propertyStoreArguments = null; }
+
+            ShortcutInfo? shortcutFallback = null;
+            if (string.IsNullOrWhiteSpace(propertyStoreTargetPath)
+                && string.IsNullOrWhiteSpace(fallbackTargetPath))
+            {
+                try { shortcutFallback = WinXShortcutFile.Read(lnkPath); }
+                catch { shortcutFallback = null; }
+            }
+
+            targetPath = !string.IsNullOrWhiteSpace(propertyStoreTargetPath)
+                ? propertyStoreTargetPath
+                : !string.IsNullOrWhiteSpace(fallbackTargetPath)
+                    ? fallbackTargetPath
+                    : shortcutFallback?.TargetPath;
+            arguments = propertyStoreArguments
+                ?? fallbackArguments
+                ?? shortcutFallback?.Arguments
+                ?? string.Empty;
+
+            WinXLog(
+                $"WinXHashTargetRead: Path={lnkPath}, PropertyStoreTarget={FormatLogValue(propertyStoreTargetPath)}, " +
+                $"FallbackTarget={FormatLogValue(fallbackTargetPath)}, FinalTarget={FormatLogValue(targetPath)}, " +
+                $"WasTargetPathFromPropertyStore={!string.IsNullOrWhiteSpace(propertyStoreTargetPath)}, " +
+                $"PropertyStoreArguments={FormatLogValue(propertyStoreArguments)}, FallbackArguments={FormatLogValue(fallbackArguments)}, " +
+                $"FinalArguments={FormatLogValue(arguments)}.");
+            if (string.IsNullOrWhiteSpace(targetPath))
+            {
+                const string error = "Unable to compute Win+X hash because shortcut target path could not be read.";
+                WinXLog(RuntimeLogLevel.Warning, $"WinXHashFailed: Path={lnkPath}, Error={error}");
+                return new WinXHashResult(false, null, targetPath, arguments, null, error);
+            }
 
             generalizedTargetPath = GeneralizePath(targetPath);
             var blob = (generalizedTargetPath + arguments
@@ -91,7 +127,9 @@ internal static class WinXHasher
             HashData(input, input.Length, output, output.Length);
             hash = BitConverter.ToUInt32(output, 0);
 
-            WinXLog($"WinXHashTarget: Path={lnkPath}, TargetPath={targetPath}, GeneralizedTargetPath={generalizedTargetPath}, Arguments={arguments}, ComputedHash={hash}.");
+            WinXLog(
+                $"WinXHashInput: Path={lnkPath}, GeneralizedTarget={generalizedTargetPath}, Arguments={FormatLogValue(arguments)}, " +
+                $"BlobLength={blob.Length}, Hash={hash}.");
 
             var storeId = typeof(IPropertyStore).GUID;
             storeRef = item2.GetPropertyStore(GPS.READWRITE, ref storeId);
@@ -225,6 +263,9 @@ internal static class WinXHasher
 
         return filePath;
     }
+
+    private static string FormatLogValue(string? value) =>
+        value is null ? "<null>" : string.IsNullOrEmpty(value) ? "<empty>" : value;
 
     private static void WinXLog(string message) => FileLoggerHost.Log(message);
 

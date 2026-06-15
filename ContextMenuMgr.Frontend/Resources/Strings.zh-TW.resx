@@ -1133,6 +1133,12 @@
   <data name="WinXPageDescription" xml:space="preserve">
     <value>管理 Win+X 分組和帶 hash 的捷徑。</value>
   </data>
+  <data name="WinXCompatibilityNotice" xml:space="preserve">
+    <value>新版 Windows 可能會拒絕新加入的自訂 Win+X 項目。</value>
+  </data>
+  <data name="WinXCompatibilityNoticeToolTip" xml:space="preserve">
+    <value>如果新加入的項目在此頁面可見，但重新啟動檔案總管後仍未出現在實際 Win+X 選單中，這是新版 Windows 的系統限制。應用程式已建立捷徑並寫入 hash，但 Windows 仍可能拒絕顯示。請不要為此向作者提交 Issue，作者無法繞過此 Windows 限制。</value>
+  </data>
   <data name="DragDropPageTitle" xml:space="preserve">
     <value>右鍵拖曳</value>
   </data>

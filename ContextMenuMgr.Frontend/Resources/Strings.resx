@@ -1133,6 +1133,12 @@ Continue anyway? (Not recommended)</value>
   <data name="WinXPageDescription" xml:space="preserve">
     <value>Manage Win+X groups and hashed shortcuts.</value>
   </data>
+  <data name="WinXCompatibilityNotice" xml:space="preserve">
+    <value>Newer Windows versions may reject newly added custom Win+X items.</value>
+  </data>
+  <data name="WinXCompatibilityNoticeToolTip" xml:space="preserve">
+    <value>If a newly added item appears here but not in the actual Win+X menu after restarting Explorer, it is a restriction of newer Windows versions. The application has already created and hashed the shortcut, but Windows may still reject it. Please do not report this as an application issue; the author cannot bypass this Windows restriction.</value>
+  </data>
   <data name="DragDropPageTitle" xml:space="preserve">
     <value>Right Drag</value>
   </data>

@@ -1529,9 +1529,27 @@ public sealed class SpecialMenuService
             DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
             _logger.LogFireAndForget($"WinXDesktopIniWriteEnd: LnkPath={path}.");
 
+            ShortcutInfo? finalShortcut = null;
+            try { finalShortcut = WinXShortcutFile.Read(path); }
+            catch (Exception ex)
+            {
+                _logger.LogFireAndForget(
+                    RuntimeLogLevel.Warning,
+                    $"WinXCreateShortcutReadWarning: LnkPath={path}, Error={ex.Message}.");
+            }
+
+            var intendedTarget = finalShortcut?.TargetPath;
+            if (string.IsNullOrWhiteSpace(intendedTarget)
+                && !request.TargetPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                intendedTarget = request.TargetPath;
+            }
+            var intendedArguments = finalShortcut?.Arguments ?? request.Arguments ?? string.Empty;
+
             stage = "WinXHashStart";
-            _logger.LogFireAndForget($"{stage}: LnkPath={path}.");
-            var hashResult = WinXHasher.HashLnkWithResult(path);
+            _logger.LogFireAndForget(
+                $"{stage}: LnkPath={path}, FallbackTarget={intendedTarget ?? "<null>"}, FallbackArguments={intendedArguments}.");
+            var hashResult = WinXHasher.HashLnkWithResult(path, intendedTarget, intendedArguments);
             _logger.LogFireAndForget(
                 $"WinXHashEnd: LnkPath={path}, Success={hashResult.Success}, Error={hashResult.Error ?? "<none>"}, " +
                 $"VerificationWarning={hashResult.VerificationWarning ?? "<none>"}.");
@@ -1562,6 +1580,7 @@ public sealed class SpecialMenuService
         var path = DecodeId(request.Id);
         var winXPath = GetWinXPath(context);
         EnsurePathUnder(path, winXPath);
+        var hashAffectingFieldsChanged = request.TargetPath is not null || request.Arguments is not null;
         var groupName = Path.GetFileName(Path.GetDirectoryName(path));
         if (!string.IsNullOrWhiteSpace(request.GroupName) && !string.Equals(request.GroupName, groupName, StringComparison.OrdinalIgnoreCase))
         {
@@ -1593,12 +1612,36 @@ public sealed class SpecialMenuService
             DesktopIniStore.SetLocalizedFileName(path, request.DisplayName);
         }
 
-        var hashResult = WinXHasher.HashLnkWithResult(path);
-        if (!hashResult.Success)
+        if (hashAffectingFieldsChanged)
         {
-            throw new InvalidOperationException(
-                $"Win+X shortcut was updated but could not be hashed, so Windows will not show it. " +
-                $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
+            ShortcutInfo? finalShortcut = null;
+            try { finalShortcut = WinXShortcutFile.Read(path); }
+            catch (Exception ex)
+            {
+                WinXHasher.FileLoggerHost.Log(
+                    RuntimeLogLevel.Warning,
+                    $"WinXUpdateShortcutReadWarning: Path={path}, Error={ex.Message}.");
+            }
+
+            var finalTarget = finalShortcut?.TargetPath ?? request.TargetPath;
+            var finalArguments = finalShortcut?.Arguments ?? request.Arguments ?? string.Empty;
+            WinXHasher.FileLoggerHost.Log(
+                $"WinXUpdateHashStart: Path={path}, FallbackTarget={finalTarget ?? "<null>"}, FallbackArguments={finalArguments}.");
+            var hashResult = WinXHasher.HashLnkWithResult(path, finalTarget, finalArguments);
+            if (!hashResult.Success)
+            {
+                WinXHasher.FileLoggerHost.Log(
+                    RuntimeLogLevel.Warning,
+                    $"WinXUpdateHashFailed: Path={path}, Target={finalTarget ?? "<null>"}, Arguments={finalArguments}, Error={hashResult.Error}.");
+                throw new InvalidOperationException(
+                    $"Win+X shortcut was updated but could not be hashed, so Windows will not show it. " +
+                    $"Target={hashResult.TargetPath}, GeneralizedTarget={hashResult.GeneralizedTargetPath}, Arguments={hashResult.Arguments}, Error={hashResult.Error}");
+            }
+        }
+        else
+        {
+            WinXHasher.FileLoggerHost.Log(
+                $"WinXUpdateHashSkipped: Path={path}, Reason=TargetAndArgumentsUnchanged.");
         }
 
         return CreateWinXEntryFromPath(path, groupName ?? string.Empty);
@@ -1815,7 +1858,6 @@ public sealed class SpecialMenuService
             var targetPath = GetUniqueFilePath(Path.Combine(groupPath, $"{order:00} - {item.Suffix}"));
             File.Move(item.TempPath, targetPath);
             TrySetLocalizedFileName(targetPath, item.LocalizedName);
-            WinXHasher.HashLnk(targetPath);
             if (string.Equals(item.TempPath, trackedTemp, StringComparison.OrdinalIgnoreCase))
             {
                 trackedResult = targetPath;

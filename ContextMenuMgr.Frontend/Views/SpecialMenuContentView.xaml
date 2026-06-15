@@ -22,6 +22,26 @@
                     Opacity="0.72"
                     Text="{Binding Description}"
                     TextWrapping="Wrap" />
+                <Border
+                    Margin="0,10,0,0"
+                    Padding="10,8"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    BorderBrush="{DynamicResource ControlStrokeColorSecondaryBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    ToolTip="{Binding WinXCompatibilityNoticeToolTip}"
+                    Visibility="{Binding ShowWinXCompatibilityNotice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon
+                            Margin="0,0,8,0"
+                            Symbol="Info24" />
+                        <ui:TextBlock
+                            VerticalAlignment="Center"
+                            Opacity="0.82"
+                            Text="{Binding WinXCompatibilityNoticeText}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
                 <StackPanel Margin="0,12,0,0">
                     <StackPanel
                         VerticalAlignment="Bottom"
