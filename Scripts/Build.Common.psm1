@@ -17,6 +17,105 @@ function Invoke-External {
     }
 }
 
+function ConvertTo-CommandLineArgument {
+    param([Parameter(Mandatory)] [string] $Argument)
+
+    if ($Argument.Length -eq 0) {
+        return '""'
+    }
+
+    if ($Argument.IndexOfAny([char[]] @(' ', "`t", "`n", "`v", '"')) -lt 0) {
+        return $Argument
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    [void] $builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $Argument.ToCharArray()) {
+        if ($character -eq '\') {
+            $backslashes++
+            continue
+        }
+
+        if ($character -eq '"') {
+            [void] $builder.Append([char] '\', ($backslashes * 2) + 1)
+            [void] $builder.Append('"')
+            $backslashes = 0
+            continue
+        }
+
+        if ($backslashes -gt 0) {
+            [void] $builder.Append([char] '\', $backslashes)
+            $backslashes = 0
+        }
+
+        [void] $builder.Append($character)
+    }
+
+    if ($backslashes -gt 0) {
+        [void] $builder.Append([char] '\', $backslashes * 2)
+    }
+
+    [void] $builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-ExternalWithNormalizedEnvironment {
+    param(
+        [Parameter(Mandatory)] [string] $FilePath,
+        [Parameter()] [string[]] $Arguments = @(),
+        [Parameter()] [string] $ErrorMessage = "External command failed."
+    )
+
+    Write-Host ">> $FilePath $($Arguments -join ' ')" -ForegroundColor DarkGray
+
+    $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $processInfo.FileName = $FilePath
+    $processInfo.UseShellExecute = $false
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+    $pathValue = $processInfo.EnvironmentVariables["Path"]
+    if ([string]::IsNullOrEmpty($pathValue)) {
+        $pathValue = $processInfo.EnvironmentVariables["PATH"]
+    }
+
+    $processInfo.EnvironmentVariables.Remove("PATH")
+    $processInfo.EnvironmentVariables.Remove("Path")
+    if (-not [string]::IsNullOrEmpty($pathValue)) {
+        $processInfo.EnvironmentVariables["Path"] = $pathValue
+    }
+
+    if ($null -ne $processInfo.ArgumentList) {
+        foreach ($argument in $Arguments) {
+            [void] $processInfo.ArgumentList.Add($argument)
+        }
+    }
+    else {
+        $processInfo.Arguments = (($Arguments | ForEach-Object { ConvertTo-CommandLineArgument -Argument $_ }) -join ' ')
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $processInfo
+    [void] $process.Start()
+    $standardOutput = $process.StandardOutput.ReadToEndAsync()
+    $standardError = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+
+    $output = $standardOutput.GetAwaiter().GetResult()
+    $errorOutput = $standardError.GetAwaiter().GetResult()
+    if (-not [string]::IsNullOrWhiteSpace($output)) {
+        $output -split "`r?`n" | Where-Object { $_ -ne "" } | ForEach-Object { Write-Host $_ }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($errorOutput)) {
+        $errorOutput -split "`r?`n" | Where-Object { $_ -ne "" } | ForEach-Object { Write-Host $_ }
+    }
+
+    if ($process.ExitCode -ne 0) {
+        throw "$ErrorMessage (ExitCode=$($process.ExitCode)): $FilePath $($Arguments -join ' ')"
+    }
+}
+
 function Get-MsBuildPropertyValue {
     param(
         [Parameter(Mandatory)] [string] $ProjectPath,
@@ -251,6 +350,62 @@ function Resolve-MSBuildPath {
     throw "Unable to locate MSBuild.exe. Install Visual Studio Build Tools with the C++ workload."
 }
 
+function Get-MSBuildInstallationRoot {
+    param([Parameter(Mandatory)] [string] $MSBuildPath)
+
+    $directory = (Get-Item -LiteralPath $MSBuildPath).Directory
+    while ($null -ne $directory) {
+        if ([string]::Equals($directory.Name, "MSBuild", [System.StringComparison]::OrdinalIgnoreCase) -and
+            $null -ne $directory.Parent) {
+            return $directory.Parent.FullName
+        }
+
+        $directory = $directory.Parent
+    }
+
+    throw "Unable to determine Visual Studio installation root from MSBuild path '$MSBuildPath'."
+}
+
+function Assert-NativeProbeHostToolchain {
+    param(
+        [Parameter(Mandatory)] [string] $MSBuildPath,
+        [Parameter(Mandatory)] [string] $Label,
+        [Parameter(Mandatory)] [string] $MSBuildPlatform
+    )
+
+    $targetDirectory = switch ($MSBuildPlatform) {
+        "Win32" { "x86" }
+        "x64" { "x64" }
+        "ARM64" { "arm64" }
+        default { throw "Unsupported ProbeHost MSBuild platform '$MSBuildPlatform'." }
+    }
+
+    $installRoot = Get-MSBuildInstallationRoot -MSBuildPath $MSBuildPath
+    $msvcToolsRoot = Join-Path $installRoot "VC\Tools\MSVC"
+    if (-not (Test-Path -LiteralPath $msvcToolsRoot -PathType Container)) {
+        throw "Unable to locate MSVC tools under '$msvcToolsRoot'. Install Visual Studio Build Tools with the C++ workload."
+    }
+
+    $toolsetDirectories = @(Get-ChildItem -LiteralPath $msvcToolsRoot -Directory | Sort-Object Name -Descending)
+    foreach ($toolsetDirectory in $toolsetDirectories) {
+        foreach ($hostDirectory in @("Hostx64", "HostX64", "Hostx86", "HostX86", "HostArm64", "HostARM64")) {
+            $compilerPath = Join-Path $toolsetDirectory.FullName (Join-Path "bin" (Join-Path $hostDirectory (Join-Path $targetDirectory "cl.exe")))
+            if (Test-Path -LiteralPath $compilerPath -PathType Leaf) {
+                return
+            }
+        }
+    }
+
+    $requiredComponent = if ($MSBuildPlatform -eq "ARM64") {
+        "the Visual Studio C++ ARM64 build tools"
+    }
+    else {
+        "the Visual Studio C++ $Label build tools"
+    }
+
+    throw "Native ProbeHost $Label build tools are missing. Install $requiredComponent and the Windows SDK, then rerun the release build."
+}
+
 function Get-RuntimeIdentifier {
     param([Parameter(Mandatory)] [string] $Platform)
 
@@ -406,8 +561,9 @@ function Invoke-NativeProbeHostBuild {
     $msbuildIntermediateDirectory = Add-TrailingDirectorySeparator -Path $resolvedIntermediateDirectory
     New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
     New-Item -ItemType Directory -Path $resolvedIntermediateDirectory -Force | Out-Null
+    Assert-NativeProbeHostToolchain -MSBuildPath $MSBuildPath -Label $Label -MSBuildPlatform $platform
 
-    Invoke-External `
+    Invoke-ExternalWithNormalizedEnvironment `
         -FilePath $MSBuildPath `
         -Arguments @(
             $NativeProbeHostProject,

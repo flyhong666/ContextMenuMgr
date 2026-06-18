@@ -125,6 +125,8 @@ artifacts\probehost-native\<Configuration>\obj\arm64\
 
 当前 Release 脚本使用 MSBuild 构建 `ContextMenuMgr.ProbeHost.vcxproj`，按 `Win32`、`x64`、`ARM64` 平台生成单个 `ContextMenuMgr.ProbeHost.exe`，再复制到 `ProbeHost\<arch>`。不再对 ProbeHost 运行 `dotnet publish`，也不会发布 `.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录内的 `ContextMenuMgr.Contracts.dll`。
 
+构建脚本在调用 native MSBuild 前会先检查目标架构的 `cl.exe` 是否存在，并用规范化后的进程环境启动 MSBuild，避免当前 shell 同时带有 `Path` / `PATH` 两个环境变量时触发 C++ ToolTask 的 `Item has already been added` 异常。缺少 ARM64 C++ build tools 时，发布构建会在 ProbeHost arm64 阶段直接报出缺失工具链；需要通过 Visual Studio Installer 安装 C++ ARM64 build tools 和 Windows SDK 后再重试。
+
 Release 构建同样按发布目标和 architecture label 隔离 native ProbeHost 中间目录。例如 `installer\self-contained\win-x64` 的 native obj 位于：
 
 ```text
@@ -176,6 +178,8 @@ resolve-metadata
 | Inno Setup 找不到 | `Scripts/Build.Common.psm1` 的 `Get-InnoSetupCompilerPath` 搜索路径。 |
 | ProbeHost 缺失 | `ContextMenuMgr.Frontend.csproj` 的 native MSBuild 目标和发布目录内容。 |
 | ProbeHost 架构错 | `Scripts/Verify-ProbeHostArchitecture.ps1` 输出和 `ProbeHost\<arch>` 目录。 |
+| ARM64 installer 在 ProbeHost 阶段失败 | 安装 Visual Studio C++ ARM64 build tools 和 Windows SDK；脚本会在调用 MSBuild 前检查 `arm64\cl.exe`。 |
+| C++ ToolTask 报 `Key in dictionary: 'Path' Key being added: 'PATH'` | 使用当前构建脚本重试；native MSBuild 调用会传入规范化后的 PATH 环境。 |
 | artifacts 目录污染 | 清理 `build\publish-runs`、`build\publish`、`build\dist` 后重试。 |
 | framework-dependent 包运行时缺失 | 检查目标机器 .NET runtime 或安装包 dependency installer 设置。 |
 | portable 目标参数错误 | 当前只支持 `-Kind portable -Platform anycpu -DistributionMode framework-dependent`。 |
