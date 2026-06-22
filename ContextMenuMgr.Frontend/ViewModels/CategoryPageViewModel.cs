@@ -102,13 +102,36 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
     public string EmptyItemsText => _localization.Translate("EmptyItemsText");
 
-    public bool IsListLoading => _placeholderDebug.ForceLoadingState || _workspace.IsLoading;
+    public bool IsListLoading =>
+        _placeholderDebug.ForceLoadingState
+        || _workspace.IsLoading
+        || _workspace.IsServiceBootstrapInProgress;
+
+    public bool HasListLoadFailure => !IsListLoading && _workspace.HasMenuLoadFailure;
+
+    public string ListPlaceholderText
+    {
+        get
+        {
+            if (IsListLoading)
+            {
+                return LoadingItemsText;
+            }
+
+            if (HasListLoadFailure)
+            {
+                return _workspace.MenuLoadFailureText;
+            }
+
+            return EmptyItemsText;
+        }
+    }
 
     public bool IsListEmpty
     {
         get
         {
-            if (IsListLoading)
+            if (IsListLoading || HasListLoadFailure)
             {
                 return false;
             }
@@ -122,7 +145,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool ShowListPlaceholder => IsListLoading || IsListEmpty;
+    public bool ShowListPlaceholder => IsListLoading || HasListLoadFailure || IsListEmpty;
 
     [RelayCommand]
     private Task DeleteOrUndoAsync(ContextMenuItemViewModel? item)
@@ -290,6 +313,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CancelText));
         OnPropertyChanged(nameof(LoadingItemsText));
         OnPropertyChanged(nameof(EmptyItemsText));
+        OnPropertyChanged(nameof(ListPlaceholderText));
     }
 
     private void OnSettingsChanged(object? sender, EventArgs e)
@@ -300,7 +324,10 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
     private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ContextMenuWorkspaceService.IsLoading))
+        if (e.PropertyName is nameof(ContextMenuWorkspaceService.IsLoading)
+            or nameof(ContextMenuWorkspaceService.IsServiceBootstrapInProgress)
+            or nameof(ContextMenuWorkspaceService.MenuLoadFailureText)
+            or nameof(ContextMenuWorkspaceService.HasMenuLoadFailure))
         {
             RefreshListPlaceholderState();
         }
@@ -397,8 +424,10 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     private void RefreshListPlaceholderState()
     {
         OnPropertyChanged(nameof(IsListLoading));
+        OnPropertyChanged(nameof(HasListLoadFailure));
         OnPropertyChanged(nameof(IsListEmpty));
         OnPropertyChanged(nameof(ShowListPlaceholder));
+        OnPropertyChanged(nameof(ListPlaceholderText));
     }
 
     /// <summary>

@@ -1373,6 +1373,12 @@
   <data name="LoadingItemsText" xml:space="preserve">
     <value>正在載入中……</value>
   </data>
+  <data name="MenuLoadCancelledText" xml:space="preserve">
+    <value>因拒絕提高權限，無法載入選單項目。</value>
+  </data>
+  <data name="MenuLoadServiceUnavailableText" xml:space="preserve">
+    <value>後端服務無法使用，無法載入選單項目。</value>
+  </data>
   <data name="EmptyItemsText" xml:space="preserve">
     <value>這裡空空如也(；′⌒`)</value>
   </data>

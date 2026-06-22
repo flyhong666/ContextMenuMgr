@@ -441,6 +441,13 @@
                         Width="32"
                         Height="32"
                         HorizontalAlignment="Center"
+                        Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                        Symbol="Info24"
+                        Visibility="{Binding HasListLoadFailure, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:SymbolIcon
+                        Width="32"
+                        Height="32"
+                        HorizontalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Symbol="FolderOpen24"
                         Visibility="{Binding IsListEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -449,18 +456,10 @@
                         HorizontalAlignment="Center"
                         FontSize="15"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Opacity="0.86">
-                        <ui:TextBlock.Style>
-                            <Style TargetType="ui:TextBlock">
-                                <Setter Property="Text" Value="{Binding EmptyItemsText}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsListLoading}" Value="True">
-                                        <Setter Property="Text" Value="{Binding LoadingItemsText}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ui:TextBlock.Style>
-                    </ui:TextBlock>
+                        Opacity="0.86"
+                        Text="{Binding ListPlaceholderText}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </Grid>

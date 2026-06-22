@@ -1373,6 +1373,12 @@ Continue anyway? (Not recommended)</value>
   <data name="LoadingItemsText" xml:space="preserve">
     <value>Loading...</value>
   </data>
+  <data name="MenuLoadCancelledText" xml:space="preserve">
+    <value>Menu items could not be loaded because elevation was denied.</value>
+  </data>
+  <data name="MenuLoadServiceUnavailableText" xml:space="preserve">
+    <value>The backend service is unavailable, so menu items could not be loaded.</value>
+  </data>
   <data name="EmptyItemsText" xml:space="preserve">
     <value>Nothing here yet (；′⌒`)</value>
   </data>

@@ -75,6 +75,14 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     [ObservableProperty]
     public partial bool IsLoading { get; private set; }
 
+    [ObservableProperty]
+    public partial bool IsServiceBootstrapInProgress { get; private set; }
+
+    [ObservableProperty]
+    public partial string MenuLoadFailureText { get; private set; } = string.Empty;
+
+    public bool HasMenuLoadFailure => !string.IsNullOrWhiteSpace(MenuLoadFailureText);
+
     /// <summary>
     /// Gets or sets the service Attention Text.
     /// </summary>
@@ -166,6 +174,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     {
         _uiStateActive = true;
         IsLoading = true;
+        ClearMenuLoadFailure();
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -183,6 +192,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                     ? ServiceAttentionState.Unavailable
                     : ServiceAttentionState.Missing);
             ConnectionStatus = _localization.Format("BackendUnavailableStatus", ex.Message);
+            SetMenuLoadFailure(MenuLoadFailureState.ServiceUnavailable);
         }
         finally
         {
@@ -635,6 +645,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     {
         if (await CanReachBackendAsync())
         {
+            ClearMenuLoadFailure();
             UpdateServiceAttention(ServiceAttentionState.None);
             await EnsureTrayHostAsync();
             return true;
@@ -663,6 +674,8 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         UpdateServiceAttention(ServiceAttentionState.Installing);
         ConnectionStatus = _localization.Translate("ServiceBootstrapInProgress");
         BackendServiceBootstrapResult result;
+        IsServiceBootstrapInProgress = true;
+        ClearMenuLoadFailure();
         try
         {
             result = await _backendServiceManager.InstallOrRepairServiceAsync(CancellationToken.None);
@@ -674,10 +687,15 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                     ? ServiceAttentionState.Unavailable
                     : ServiceAttentionState.Missing);
             ConnectionStatus = _localization.Format("ServiceInstallFailedDetailed", ex.Message);
+            SetMenuLoadFailure(MenuLoadFailureState.ServiceUnavailable);
             await FrontendMessageBox.ShowErrorAsync(
                 _localization.Format("ServiceInstallFailedDetailed", ex.Message),
                 _localization.Translate("WindowTitle"));
             return false;
+        }
+        finally
+        {
+            IsServiceBootstrapInProgress = false;
         }
 
         if (!result.Success)
@@ -689,6 +707,9 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             ConnectionStatus = result.Cancelled
                 ? _localization.Translate("ServiceOperationCancelled")
                 : _localization.Format("ServiceInstallFailedDetailed", result.Detail);
+            SetMenuLoadFailure(result.Cancelled
+                ? MenuLoadFailureState.Cancelled
+                : MenuLoadFailureState.ServiceUnavailable);
 
             if (!result.Cancelled)
             {
@@ -708,8 +729,13 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
 
         if (ready)
         {
+            ClearMenuLoadFailure();
             _trayHostEnsured = false;
             await EnsureTrayHostAsync();
+        }
+        else
+        {
+            SetMenuLoadFailure(MenuLoadFailureState.ServiceUnavailable);
         }
 
         return ready;
@@ -964,6 +990,26 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         _ => string.Empty
     };
 
+    private void ClearMenuLoadFailure()
+    {
+        MenuLoadFailureText = string.Empty;
+    }
+
+    private void SetMenuLoadFailure(MenuLoadFailureState state)
+    {
+        MenuLoadFailureText = state switch
+        {
+            MenuLoadFailureState.Cancelled => _localization.Translate("MenuLoadCancelledText"),
+            MenuLoadFailureState.ServiceUnavailable => _localization.Translate("MenuLoadServiceUnavailableText"),
+            _ => string.Empty
+        };
+    }
+
+    partial void OnMenuLoadFailureTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasMenuLoadFailure));
+    }
+
     private void OnBackendNotificationReceived(object? sender, BackendNotification notification)
     {
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
@@ -1020,5 +1066,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         Missing,
         Unavailable,
         Installing
+    }
+
+    private enum MenuLoadFailureState
+    {
+        None,
+        Cancelled,
+        ServiceUnavailable
     }
 }
