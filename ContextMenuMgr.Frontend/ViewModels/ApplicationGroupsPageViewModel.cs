@@ -33,8 +33,10 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
         }
         _localization.LanguageChanged += OnLanguageChanged;
         _navigationFilterService.FilterRequested += OnNavigationFilterRequested;
-        RebuildGroups();
-        ApplyPendingNavigationRequest();
+        if (!ApplyPendingNavigationRequest())
+        {
+            RebuildGroups();
+        }
     }
 
     public ObservableCollection<ApplicationGroupViewModel> Groups { get; } = [];
@@ -61,7 +63,6 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
     {
         if (_applyingNavigationFilter)
         {
-            RebuildGroups();
             return;
         }
 
@@ -224,25 +225,29 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
             return;
         }
 
-        ApplyNavigationRequest(e.ItemId, e.FilterText);
-        _navigationFilterService.ConsumePendingRequest(e.TargetPageType);
-    }
-
-    private void ApplyPendingNavigationRequest()
-    {
-        var pending = _navigationFilterService.ConsumePendingRequest(
-            typeof(ContextMenuMgr.Frontend.Views.Pages.ApplicationGroupsPage));
-        if (pending is not null)
+        if (ApplyNavigationRequest(e.ItemId, e.FilterText))
         {
-            ApplyNavigationRequest(pending.ItemId, pending.FilterText);
+            _navigationFilterService.ConsumePendingRequest(e.TargetPageType);
         }
     }
 
-    private void ApplyNavigationRequest(string? itemId, string? fallbackFilterText)
+    private bool ApplyPendingNavigationRequest()
+    {
+        var pending = _navigationFilterService.ConsumePendingRequest(
+            typeof(ContextMenuMgr.Frontend.Views.Pages.ApplicationGroupsPage));
+        if (pending is null)
+        {
+            return false;
+        }
+
+        return ApplyNavigationRequest(pending.ItemId, pending.FilterText);
+    }
+
+    private bool ApplyNavigationRequest(string? itemId, string? fallbackFilterText)
     {
         if (string.IsNullOrWhiteSpace(itemId))
         {
-            return;
+            return false;
         }
 
         var targetItem = _workspace.Items.FirstOrDefault(item =>
@@ -262,7 +267,7 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
                 : fallbackFilterText);
 
             RebuildGroups();
-            return;
+            return true;
         }
 
         var groupIdentity = GetGroupIdentity(targetItem);
@@ -280,6 +285,7 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
             + $"ItemId={targetItem.Id}, "
             + $"DisplayName='{SanitizeLogText(targetItem.DisplayName)}', "
             + $"GroupIdentity='{SanitizeLogText(groupIdentity)}'.");
+        return true;
     }
 
     [RelayCommand]

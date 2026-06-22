@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
+using ContextMenuMgr.Frontend.Views.Pages;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
 
@@ -240,19 +241,19 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
     private void OnGlobalSearchFilterRequested(object? sender, GlobalSearchFilterRequestedEventArgs e)
     {
-        if (e.Category != Category)
+        if (e.Category != Category || e.TargetPageType != GetTargetPageType(Category))
         {
             return;
         }
 
         ApplyGlobalSearchFilter(e.FilterText, e.ItemId);
-        _globalSearchFilterService.ConsumePendingRequest(Category);
+        _globalSearchFilterService.ConsumePendingRequest(e.TargetPageType);
     }
 
     private void ApplyPendingGlobalSearchFilter()
     {
-        var pending = _globalSearchFilterService.ConsumePendingRequest(Category);
-        if (pending is not null)
+        var pending = _globalSearchFilterService.ConsumePendingRequest(GetTargetPageType(Category));
+        if (pending is not null && pending.Category == Category)
         {
             ApplyGlobalSearchFilter(pending.FilterText, pending.ItemId);
         }
@@ -328,6 +329,21 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     {
         return ContextMenuSearchMatcher.MatchesClassicItem(item, SearchText);
     }
+
+    private static Type GetTargetPageType(ContextMenuCategory category) => category switch
+    {
+        ContextMenuCategory.File => typeof(FileContextMenuPage),
+        ContextMenuCategory.AllFileSystemObjects => typeof(AllObjectsContextMenuPage),
+        ContextMenuCategory.Folder => typeof(FolderContextMenuPage),
+        ContextMenuCategory.Directory => typeof(DirectoryContextMenuPage),
+        ContextMenuCategory.DirectoryBackground => typeof(BackgroundContextMenuPage),
+        ContextMenuCategory.DesktopBackground => typeof(DesktopContextMenuPage),
+        ContextMenuCategory.Drive => typeof(DriveContextMenuPage),
+        ContextMenuCategory.Library => typeof(LibraryContextMenuPage),
+        ContextMenuCategory.Computer => typeof(ComputerContextMenuPage),
+        ContextMenuCategory.RecycleBin => typeof(RecycleBinContextMenuPage),
+        _ => typeof(FileContextMenuPage)
+    };
 
     private static string SanitizeLogText(string? text)
     {
