@@ -34,7 +34,7 @@ public partial class CategoryPageView : Page
             typeof(ApplicationGroupsPage),
             item.Category,
             isWindows11: false,
-            filterText: string.Empty,
+            filterText: item.DisplayName,
             item.Id);
         navigationService.Navigate(typeof(ApplicationGroupsPage));
     }

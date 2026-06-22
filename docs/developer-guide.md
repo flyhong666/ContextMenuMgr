@@ -250,7 +250,7 @@ Restart Explorer 通过 pipe 命令 `RestartExplorer` 进入后端。`NamedPipeB
 
 传统菜单项的用户备注保存在 `FrontendSettings.ContextMenuItemNotes`，以稳定 item id 为键，不写入注册表。`ApplicationGroupsPageViewModel` 只使用已加载的传统菜单 workspace 项，依次按已解析文件路径、命令中的 exe/dll、CLSID、注册表路径 fallback 分组；Win11 modern menu 不参与分组。“全部禁用”复用 `ContextMenuWorkspaceService.SetEnabledAsync`，仅处理当前启用且可切换的项。
 
-`CategoryPageView` 中的传统菜单项可以携带稳定 item id 跳转到 `ApplicationGroupsPage`。跳转请求复用 `GlobalSearchNavigationFilterService` 的 pending request 机制；应用分组页清空自身筛选并重建本地分组。`MainWindow` 完成 WPF-UI 共享导航滚动容器 reset 后，再通过 `INavigationScrollTarget` 把实际 `ScrollViewer` 交给页面定位目标卡片。该定位过程只使用前端已加载数据，不触发新的后端、注册表或文件系统查询。
+`CategoryPageView` 中的传统菜单项可以携带稳定 item id 跳转到 `ApplicationGroupsPage`。跳转请求复用 `GlobalSearchNavigationFilterService` 的 pending request 机制；应用分组页按 item id 找到目标传统菜单项，进入导航精确筛选模式，只渲染目标项所属的一个分组，并且该分组内只包含目标项本身。搜索框显示目标项的可读名称；用户手动修改搜索框或点击清除筛选后，页面退出精确筛选并恢复普通分组搜索。该定位过程只使用前端已加载数据，不触发新的后端、注册表、文件系统查询或导航后滚动定位。
 
 ## 13. Deep Analysis 与 ProbeHost
 

@@ -10,6 +10,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <StackPanel>
@@ -17,7 +18,26 @@
             <ui:TextBlock Margin="0,6,0,0" Opacity="0.72" Text="{Binding Description}" TextWrapping="Wrap" />
         </StackPanel>
         <TextBox Grid.Row="1" Margin="0,18,0,14" Padding="10,7" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{Binding SearchLabel}" />
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding Groups}">
+        <Border Grid.Row="2"
+                Margin="0,0,0,14"
+                Padding="12,8"
+                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                CornerRadius="6"
+                Visibility="{Binding IsNavigationFilterActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <DockPanel LastChildFill="True">
+                <ui:Button DockPanel.Dock="Right"
+                           Margin="12,0,0,0"
+                           Appearance="Secondary"
+                           Command="{Binding ClearNavigationFilterCommand}"
+                           Content="{Binding ClearFilterText}" />
+                <ui:TextBlock VerticalAlignment="Center"
+                              FontSize="12"
+                              Opacity="0.78"
+                              Text="{Binding NavigationFilterBannerText}"
+                              TextWrapping="Wrap" />
+            </DockPanel>
+        </Border>
+        <ItemsControl Grid.Row="3" ItemsSource="{Binding Groups}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Border Margin="0,0,0,12" Padding="16" Style="{StaticResource CardBorderStyle}">

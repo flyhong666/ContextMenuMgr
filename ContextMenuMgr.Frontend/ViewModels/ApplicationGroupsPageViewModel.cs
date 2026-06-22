@@ -16,6 +16,7 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly LocalizationService _localization;
     private readonly GlobalSearchNavigationFilterService _navigationFilterService;
+    private bool _applyingNavigationFilter;
 
     public ApplicationGroupsPageViewModel(
         ContextMenuWorkspaceService workspace,
@@ -41,25 +42,64 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
     public string Title => _localization.Translate("ApplicationGroupsPageTitle");
     public string Description => _localization.Translate("ApplicationGroupsPageDescription");
     public string SearchLabel => _localization.Translate("SearchLabel");
+    public string NavigationFilterBannerText => _localization.Translate("ApplicationGroupFilterActive");
+    public string ClearFilterText => _localization.Translate("ClearApplicationGroupFilter");
 
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string? ScrollTargetItemId { get; private set; }
+    public partial string? NavigationFocusItemId { get; private set; }
 
-    partial void OnSearchTextChanged(string value) => RebuildGroups();
+    [ObservableProperty]
+    public partial string? NavigationFocusGroupIdentity { get; private set; }
 
-    public void AcknowledgeScrollTarget(string itemId)
+    [ObservableProperty]
+    public partial bool IsNavigationFilterActive { get; private set; }
+
+    partial void OnSearchTextChanged(string value)
     {
-        if (string.Equals(ScrollTargetItemId, itemId, StringComparison.OrdinalIgnoreCase))
+        if (_applyingNavigationFilter)
         {
-            ScrollTargetItemId = null;
+            RebuildGroups();
+            return;
         }
+
+        ClearNavigationFilterState();
+        RebuildGroups();
     }
 
     private void RebuildGroups()
     {
+        if (IsNavigationFilterActive
+            && !string.IsNullOrWhiteSpace(NavigationFocusItemId)
+            && !string.IsNullOrWhiteSpace(NavigationFocusGroupIdentity))
+        {
+            var targetItem = _workspace.Items
+                .FirstOrDefault(item => !item.IsWindows11ContextMenu
+                    && IsClassicCategory(item.Category)
+                    && string.Equals(item.Id, NavigationFocusItemId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(GetGroupIdentity(item), NavigationFocusGroupIdentity, StringComparison.OrdinalIgnoreCase));
+
+            if (targetItem is not null)
+            {
+                Groups.Clear();
+                Groups.Add(new ApplicationGroupViewModel(
+                    NavigationFocusGroupIdentity,
+                    [targetItem],
+                    _workspace,
+                    _localization));
+                return;
+            }
+
+            FrontendDebugLog.Warning(
+                nameof(ApplicationGroupsPageViewModel),
+                "ApplicationGroupNavigationFilterTargetMissing: "
+                + $"ItemId={NavigationFocusItemId}, "
+                + $"GroupIdentity={NavigationFocusGroupIdentity}.");
+            ClearNavigationFilterState();
+        }
+
         var groups = _workspace.Items
             .Where(static item => !item.IsWindows11ContextMenu && IsClassicCategory(item.Category))
             .GroupBy(GetGroupIdentity, StringComparer.OrdinalIgnoreCase)
@@ -155,6 +195,14 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
             or nameof(ContextMenuItemViewModel.IsEnabled)
             or nameof(ContextMenuItemViewModel.DisplayName))
         {
+            if (sender is ContextMenuItemViewModel item
+                && e.PropertyName == nameof(ContextMenuItemViewModel.DisplayName)
+                && IsNavigationFilterActive
+                && string.Equals(item.Id, NavigationFocusItemId, StringComparison.OrdinalIgnoreCase))
+            {
+                SetSearchTextFromNavigationFilter(item.DisplayName);
+            }
+
             RebuildGroups();
         }
     }
@@ -164,6 +212,8 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Description));
         OnPropertyChanged(nameof(SearchLabel));
+        OnPropertyChanged(nameof(NavigationFilterBannerText));
+        OnPropertyChanged(nameof(ClearFilterText));
         RebuildGroups();
     }
 
@@ -174,7 +224,7 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
             return;
         }
 
-        ApplyNavigationRequest(e.ItemId);
+        ApplyNavigationRequest(e.ItemId, e.FilterText);
         _navigationFilterService.ConsumePendingRequest(e.TargetPageType);
     }
 
@@ -184,20 +234,87 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
             typeof(ContextMenuMgr.Frontend.Views.Pages.ApplicationGroupsPage));
         if (pending is not null)
         {
-            ApplyNavigationRequest(pending.ItemId);
+            ApplyNavigationRequest(pending.ItemId, pending.FilterText);
         }
     }
 
-    private void ApplyNavigationRequest(string? itemId)
+    private void ApplyNavigationRequest(string? itemId, string? fallbackFilterText)
     {
         if (string.IsNullOrWhiteSpace(itemId))
         {
             return;
         }
 
+        var targetItem = _workspace.Items.FirstOrDefault(item =>
+            !item.IsWindows11ContextMenu
+            && IsClassicCategory(item.Category)
+            && string.Equals(item.Id, itemId, StringComparison.OrdinalIgnoreCase));
+
+        if (targetItem is null)
+        {
+            FrontendDebugLog.Warning(
+                nameof(ApplicationGroupsPageViewModel),
+                $"ApplicationGroupNavigationFilterItemNotFound: ItemId={itemId}.");
+
+            ClearNavigationFilterState();
+            SetSearchTextFromNavigationFilter(string.IsNullOrWhiteSpace(fallbackFilterText)
+                ? itemId
+                : fallbackFilterText);
+
+            RebuildGroups();
+            return;
+        }
+
+        var groupIdentity = GetGroupIdentity(targetItem);
+        NavigationFocusItemId = targetItem.Id;
+        NavigationFocusGroupIdentity = groupIdentity;
+        IsNavigationFilterActive = true;
+
+        SetSearchTextFromNavigationFilter(targetItem.DisplayName);
+
+        RebuildGroups();
+
+        FrontendDebugLog.Info(
+            nameof(ApplicationGroupsPageViewModel),
+            "ApplicationGroupNavigationFilterApplied: "
+            + $"ItemId={targetItem.Id}, "
+            + $"DisplayName='{SanitizeLogText(targetItem.DisplayName)}', "
+            + $"GroupIdentity='{SanitizeLogText(groupIdentity)}'.");
+    }
+
+    [RelayCommand]
+    private void ClearNavigationFilter()
+    {
+        ClearNavigationFilterState();
         SearchText = string.Empty;
         RebuildGroups();
-        ScrollTargetItemId = itemId;
+    }
+
+    private void SetSearchTextFromNavigationFilter(string text)
+    {
+        _applyingNavigationFilter = true;
+        try
+        {
+            SearchText = text;
+        }
+        finally
+        {
+            _applyingNavigationFilter = false;
+        }
+    }
+
+    private void ClearNavigationFilterState()
+    {
+        NavigationFocusItemId = null;
+        NavigationFocusGroupIdentity = null;
+        IsNavigationFilterActive = false;
+    }
+
+    private static string SanitizeLogText(string? text)
+    {
+        return (text ?? string.Empty)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
     public void Dispose()

@@ -1402,6 +1402,8 @@
   <data name="DetailsEditUserNote" xml:space="preserve"><value>編輯備註</value></data>
   <data name="UserNoteLabel" xml:space="preserve"><value>本機備註</value></data>
   <data name="UserNoteDisplayFormat" xml:space="preserve"><value>備註：{0}</value></data>
+  <data name="ApplicationGroupFilterActive" xml:space="preserve"><value>正在顯示所選項目的應用程式群組。</value></data>
+  <data name="ClearApplicationGroupFilter" xml:space="preserve"><value>清除篩選</value></data>
   <data name="ApplicationGroupCountFormat" xml:space="preserve"><value>{0} 個項目</value></data>
   <data name="ApplicationGroupDisableAll" xml:space="preserve"><value>全部停用</value></data>
   <data name="ApplicationGroupDisabling" xml:space="preserve"><value>正在停用…</value></data>

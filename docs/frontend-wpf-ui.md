@@ -175,6 +175,8 @@ SpecialMenuPageView    : Page         // 导航页 wrapper
 
 需要在导航后定位共享外层滚动区域的页面应实现 `INavigationScrollTarget`。内容真正呈现后，`ModernFrame` 先 reset 外层 `ContentScrollHost`，再把该 `ScrollViewer` 传给当前内容或其可视树中的定位目标。定位回调执行完毕后才触发 `ModernFrame.NavigationCompleted`，`ModernNavigationView` 会转发该事件；需要等待页面就位的功能应订阅事件，不要使用固定 `Task.Delay`。`MainWindow` 不再查找 WPF-UI `NavigationViewContentPresenter`。
 
+`ApplicationGroupsPage` 不再使用导航后滚动定位。分类页跳转到应用分组页时，页面通过 `GlobalSearchNavigationFilterService` 携带的 item id 进入精确筛选模式，只显示目标项所属分组和目标项本身。这样避免首次进入时全量渲染后再调用 `UpdateLayout` / 查找可视树。
+
 边界规则：
 
 ```text
