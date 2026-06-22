@@ -4,7 +4,7 @@
 
 如果需要从零排查一个不明确问题，先阅读 [AI 与维护者接手 Playbook](./ai-maintainer-playbook.md)，按模板判定链路和证据。
 
-主要日志位于 `%ProgramData%\ContextMenuMgr\Logs`：
+主要日志位于 `RuntimePaths.LogsDirectory`。Installer 包为 `%ProgramData%\ContextMenuMgr\Logs`；Portable 包为应用目录下的 `Data\Logs`：
 
 | 日志 | 用途 |
 | --- | --- |
@@ -14,7 +14,7 @@
 | `trayhost.log` | 托盘进程、通知、打开前端、后端断开。 |
 | ProbeHost stderr / result diagnostics | Deep Analysis 结果窗口和 `frontend-debug.log` 中的 ProbeHost 输出摘要。 |
 
-`RuntimePaths` 当前使用 `%ProgramData%\ContextMenuMgr` 作为根目录，`frontend-settings.json`、`context-menu-state.json` 和 `DeletedBackups` 也在该根目录下。旧版本可能使用 `%LOCALAPPDATA%\ContextMenuMgr` 或 `%ProgramData%\ContextMenuMgr\Data` 下的 legacy 路径，当前代码保留迁移/兼容路径常量；排查历史安装时可以同时检查这些旧位置。
+`RuntimePaths` 通过应用目录中的 `ContextMenuMgr.package.json` 明确识别包类型，缺失或无效时按 Installer 处理。Installer 根目录为 `%ProgramData%\ContextMenuMgr`；Portable 根目录为 `<应用目录>\Data`。`frontend-settings.json`、`context-menu-state.json`、`backend-protection-settings.json`、`DeletedBackups` 和 `Logs` 都从该根目录派生。旧版本可能使用 `%LOCALAPPDATA%\ContextMenuMgr`、`%ProgramData%\ContextMenuMgr` 或 `%ProgramData%\ContextMenuMgr\Data`，当前代码保留 copy-only 迁移/兼容路径常量；排查历史安装时可以同时检查这些旧位置。
 
 ## 1. 前端无法连接后端
 
@@ -188,7 +188,7 @@
 | 可能原因 | 设置文件未加载、`FrontendThemeService` 未在启动早期应用、WPF-UI `ApplicationThemeManager` 调用顺序问题。 |
 | 优先查看的代码 | `FrontendSettingsService.cs`、`FrontendThemeService.cs`、`App.Services.xaml.cs`、`SettingsPageViewModel.cs`。 |
 | 优先查看的日志 | `frontend-debug.log`。 |
-| 常见修复方向 | 检查 `%ProgramData%\ContextMenuMgr\frontend-settings.json`；确认主题服务在窗口显示前应用设置。 |
+| 常见修复方向 | 检查 `RuntimePaths.SettingsPath` 当前指向的 `frontend-settings.json`；确认主题服务在窗口显示前应用设置。 |
 
 ## 18. 图标 / 显示名 / DLL 路径解析不准确
 

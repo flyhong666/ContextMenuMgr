@@ -112,7 +112,7 @@ Recycle Bin 页面额外投影一个虚拟传统项 `special:recyclebin:pintohom
 
 ## 7. 删除、恢复与备份
 
-删除不总是“立即永久删除”。`RegistryBackupService` 在删除前通过 `reg.exe export` 导出注册表备份，备份文件保存在 `RuntimePaths.DeletedBackupsDirectory`，也就是 `%ProgramData%\ContextMenuMgr\DeletedBackups`。
+删除不总是“立即永久删除”。`RegistryBackupService` 在删除前通过 `reg.exe export` 导出注册表备份，备份文件保存在 `RuntimePaths.DeletedBackupsDirectory`。Installer 包下这是 `%ProgramData%\ContextMenuMgr\DeletedBackups`；Portable 包下这是 `<应用目录>\Data\DeletedBackups`。
 
 | 操作 | 说明 |
 | --- | --- |
@@ -125,7 +125,7 @@ Recycle Bin 页面额外投影一个虚拟传统项 `special:recyclebin:pintohom
 
 ## 8. 状态库
 
-`ContextMenuStateStore` 保存项目自己的状态，路径为 `%ProgramData%\ContextMenuMgr\context-menu-state.json`。它用于记录待审核、删除、备份、外部变化和一致性信息。
+`ContextMenuStateStore` 保存项目自己的状态，路径为 `RuntimePaths.StateDatabasePath`。它用于记录待审核、删除、备份、外部变化和一致性信息。
 
 状态库不是注册表本身。真实注册表可能被第三方安装器、系统更新或用户手工修改，短时间内会与状态库不一致。snapshot 构建会尽量合并并标记不一致，但不要在代码里假设状态库一定代表当前系统真实状态。
 

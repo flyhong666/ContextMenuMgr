@@ -23,9 +23,7 @@ public sealed class FileLogger
     {
         _logPath = logPath;
         _fallbackLogPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "ContextMenuMgr",
-            "Logs",
+            RuntimePaths.LogsDirectory,
             "backend-fallback.log");
 
         EnsureDirectoryExists(_logPath);

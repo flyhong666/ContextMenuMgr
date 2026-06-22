@@ -502,9 +502,13 @@ public sealed class BackendServiceManager : IBackendServiceManager
         return $"{arguments} --user-sid \"{sid}\"";
     }
 
+    private static string EscapePowerShellSingleQuotedString(string value)
+        => value.Replace("'", "''");
+
     private static string BuildInstallScript(string backendExePath, string resultFilePath)
     {
         var quotedBackendPath = $"\"{backendExePath}\" --service";
+        var dataDirectory = EscapePowerShellSingleQuotedString(RuntimePaths.DataDirectory);
 
         return
             "$ErrorActionPreference = 'Stop'\n" +
@@ -512,7 +516,7 @@ public sealed class BackendServiceManager : IBackendServiceManager
             $"$displayName = '{ServiceMetadata.DisplayName}'\n" +
             $"$binaryPath = '{quotedBackendPath.Replace("'", "''")}'\n" +
             $"$resultFile = '{resultFilePath.Replace("'", "''")}'\n" +
-            "$dataDir = Join-Path $env:ProgramData 'ContextMenuMgr\\Data'\n" +
+            $"$dataDir = '{dataDirectory}'\n" +
             $"$markerFile = Join-Path $dataDir '{ServiceMetadata.KeepFrontendOnStopMarkerFileName}'\n" +
             "\n" +
             "function Write-Result($success, $code, $detail) {\n" +
@@ -632,11 +636,13 @@ public sealed class BackendServiceManager : IBackendServiceManager
 
     private static string BuildUninstallScript(string resultFilePath)
     {
+        var dataDirectory = EscapePowerShellSingleQuotedString(RuntimePaths.DataDirectory);
+
         return
             "$ErrorActionPreference = 'Stop'\n" +
             $"$serviceName = '{ServiceMetadata.ServiceName}'\n" +
             $"$resultFile = '{resultFilePath.Replace("'", "''")}'\n" +
-            $"$dataDir = Join-Path $env:ProgramData 'ContextMenuMgr\\Data'\n" +
+            $"$dataDir = '{dataDirectory}'\n" +
             $"$markerFile = Join-Path $dataDir '{ServiceMetadata.KeepFrontendOnStopMarkerFileName}'\n" +
             "\n" +
             "function Write-Result($success, $code, $detail) {\n" +
@@ -672,14 +678,23 @@ public sealed class BackendServiceManager : IBackendServiceManager
 
     private static string BuildStopScript(string resultFilePath)
     {
+        var dataDirectory = EscapePowerShellSingleQuotedString(RuntimePaths.DataDirectory);
+
         return
             "$ErrorActionPreference = 'Stop'\n" +
             $"$serviceName = '{ServiceMetadata.ServiceName}'\n" +
             $"$resultFile = '{resultFilePath.Replace("'", "''")}'\n" +
+            $"$dataDir = '{dataDirectory}'\n" +
+            $"$markerFile = Join-Path $dataDir '{ServiceMetadata.KeepFrontendOnStopMarkerFileName}'\n" +
             "\n" +
             "function Write-Result($success, $code, $detail) {\n" +
             "    $payload = @{ Success = $success; Code = $code; Detail = $detail }\n" +
             "    $payload | ConvertTo-Json -Compress | Set-Content -Path $resultFile -Encoding UTF8\n" +
+            "}\n" +
+            "\n" +
+            "function Ensure-KeepFrontendMarker() {\n" +
+            "    New-Item -Path $dataDir -ItemType Directory -Force | Out-Null\n" +
+            "    Set-Content -Path $markerFile -Value '1' -Encoding ASCII\n" +
             "}\n" +
             "\n" +
             "function Wait-ForServiceStatus($name, $desiredStatus, $timeoutSeconds) {\n" +
@@ -712,6 +727,7 @@ public sealed class BackendServiceManager : IBackendServiceManager
             "        exit 0\n" +
             "    }\n" +
             "\n" +
+            "    Ensure-KeepFrontendMarker\n" +
             "    Stop-Service -Name $serviceName -Force -ErrorAction Stop\n" +
             "\n" +
             "    if (-not (Wait-ForServiceStatus $serviceName 'Stopped' 10)) {\n" +
@@ -721,10 +737,12 @@ public sealed class BackendServiceManager : IBackendServiceManager
             "        exit 2\n" +
             "    }\n" +
             "\n" +
+            "    if (Test-Path $markerFile) { Remove-Item -Path $markerFile -Force -ErrorAction SilentlyContinue }\n" +
             "    Write-Result $true 'STOPPED' 'Stopped'\n" +
             "    exit 0\n" +
             "}\n" +
             "catch {\n" +
+            "    if (Test-Path $markerFile) { Remove-Item -Path $markerFile -Force -ErrorAction SilentlyContinue }\n" +
             "    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue\n" +
             "    $status = if ($null -eq $service) { 'Missing' } else { $service.Status.ToString() }\n" +
             "    Write-Result $false 'SERVICE_STOP_ERROR' ($_.Exception.Message + ' | Status=' + $status)\n" +

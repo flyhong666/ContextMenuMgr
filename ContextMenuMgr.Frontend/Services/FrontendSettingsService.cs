@@ -374,13 +374,25 @@ public sealed class FrontendSettingsService
     {
         try
         {
-            if (File.Exists(_settingsPath) || !File.Exists(RuntimePaths.LegacyFrontendSettingsPath))
+            if (File.Exists(_settingsPath))
+            {
+                return;
+            }
+
+            var sourcePath = File.Exists(RuntimePaths.LegacyFrontendSettingsPath)
+                ? RuntimePaths.LegacyFrontendSettingsPath
+                : RuntimePaths.PackageKind == RuntimePackageKind.Portable && File.Exists(RuntimePaths.LegacyProgramDataSettingsPath)
+                    ? RuntimePaths.LegacyProgramDataSettingsPath
+                    : null;
+
+            if (string.IsNullOrWhiteSpace(sourcePath)
+                || string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(_settingsPath), StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
-            File.Copy(RuntimePaths.LegacyFrontendSettingsPath, _settingsPath, overwrite: false);
+            File.Copy(sourcePath, _settingsPath, overwrite: false);
         }
         catch
         {

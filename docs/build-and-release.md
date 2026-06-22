@@ -107,6 +107,8 @@ artifacts\probehost-native\<Configuration>\obj\arm64\
 | portable | 当前支持 `framework-dependent` + `anycpu` 的 portable zip。 |
 | `artifacts.txt` | `build.ps1` 在 `build/dist` 下写入产物清单。 |
 
+发布目录必须包含 `ContextMenuMgr.package.json` 运行时包类型标记。Installer 发布目录写入 `{ "packageKind": "Installer" }`，Portable 发布目录写入 `{ "packageKind": "Portable" }`。运行时代码只读取 `AppContext.BaseDirectory` 下的该文件；缺失或无效时按 Installer 处理，不根据路径猜测包类型。
+
 `Build-Target.ps1` 对 installer 目标要求平台是 `win-x64`、`win-x86` 或 `win-arm64`；portable 当前只支持 `framework-dependent anycpu`。
 
 ## 6. ProbeHost 多架构
@@ -151,6 +153,8 @@ Deep Analysis 菜单项图标编码使用 Windows 内置 WIC，native ProbeHost 
 安装包脚本位于 `Installer/build_Installer.iss`。构建脚本会定位 `ISCC.exe`，优先检查仓库内 `Installer\Inno Setup 6\ISCC.exe`，然后检查 Program Files 和 PATH。
 
 `Invoke-InstallerBuildTarget` 会向 Inno Setup 传入应用版本、AppId、发布目录、输出目录、架构选项和是否启用 .NET dependency installer。framework-dependent 安装包会把 `MyUseDotNetDependencyInstaller` 设为 `1`。
+
+self-contained installer 目标还会从同一个 installer publish 输出生成 portable zip。因为 installer publish 输出带 Installer 标记，脚本必须先复制到 staging 目录，再把 staging 中的 `ContextMenuMgr.package.json` 覆盖为 Portable，最后压缩该 staging 目录；不要直接压缩 installer publish 目录作为 portable 包。
 
 ## 8. GitHub Actions
 

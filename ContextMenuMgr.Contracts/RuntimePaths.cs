@@ -7,12 +7,22 @@ namespace ContextMenuMgr.Contracts;
 /// </summary>
 public static class RuntimePaths
 {
+    private static readonly string ProgramDataRootDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "ContextMenuMgr");
+
+    private static readonly string PortableRootDirectory = Path.Combine(
+        AppContext.BaseDirectory,
+        "Data");
+
+    public static RuntimePackageKind PackageKind => RuntimePackageManifest.Current.PackageKind;
+
     /// <summary>
     /// Gets the root Directory.
     /// </summary>
-    public static string RootDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "ContextMenuMgr");
+    public static string RootDirectory { get; } = PackageKind == RuntimePackageKind.Portable
+        ? PortableRootDirectory
+        : ProgramDataRootDirectory;
 
     public static string LogsDirectory => Path.Combine(RootDirectory, "Logs");
 
@@ -32,6 +42,10 @@ public static class RuntimePaths
 
     public static string DataDirectory => RootDirectory;
 
+    public static string BackendProtectionSettingsPath => Path.Combine(DataDirectory, "backend-protection-settings.json");
+
+    public static string GeneratedProgramsDirectory => Path.Combine(DataDirectory, "Programs");
+
     /// <summary>
     /// Gets the legacy Frontend Settings Path.
     /// </summary>
@@ -39,6 +53,36 @@ public static class RuntimePaths
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ContextMenuMgr",
         "frontend-settings.json");
+
+    public static string LegacyProgramDataRootDirectory => ProgramDataRootDirectory;
+
+    public static string LegacyProgramDataSettingsPath => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "frontend-settings.json");
+
+    public static string LegacyProgramDataStateDatabasePath => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "context-menu-state.json");
+
+    public static string LegacyProgramDataBackendProtectionSettingsPath => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "backend-protection-settings.json");
+
+    public static string LegacyProgramDataLogsDirectory => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "Logs");
+
+    public static string LegacyProgramDataDeletedBackupsDirectory => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "DeletedBackups");
+
+    public static string LegacyProgramDataGeneratedProgramsDirectory => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "Programs");
+
+    public static string LegacyProgramDataDataDirectory => Path.Combine(
+        LegacyProgramDataRootDirectory,
+        "Data");
 
     /// <summary>
     /// Gets the legacy Frontend Logs Directory.
@@ -52,15 +96,13 @@ public static class RuntimePaths
     /// Gets the legacy State Database Path.
     /// </summary>
     public static string LegacyStateDatabasePath { get; } = Path.Combine(
-        RootDirectory,
-        "Data",
+        LegacyProgramDataDataDirectory,
         "context-menu-state.json");
 
     /// <summary>
     /// Gets the legacy Backend Protection Settings Path.
     /// </summary>
     public static string LegacyBackendProtectionSettingsPath { get; } = Path.Combine(
-        RootDirectory,
-        "Data",
+        LegacyProgramDataDataDirectory,
         "backend-protection-settings.json");
 }

@@ -726,7 +726,8 @@ function Publish-Application {
         [Parameter(Mandatory)] [string] $PublishRoot,
         [Parameter(Mandatory)] [string] $NuGetConfig,
         [Parameter(Mandatory)] [string] $PublishGroup,
-        [Parameter(Mandatory)] [string] $Version
+        [Parameter(Mandatory)] [string] $Version,
+        [Parameter(Mandatory)] [ValidateSet("Installer", "Portable")] [string] $PackageKind
     )
 
     $distributionOptions = Get-DistributionModeOptions -DistributionMode $DistributionMode
@@ -859,6 +860,7 @@ function Publish-Application {
     Ensure-FileExists -Path (Join-Path $publishDir "ContextMenuManagerPlus.TrayHost.exe") -Description "Tray host executable"
 
     Assert-TrayHostLocalizationArtifacts -PublishDir $publishDir
+    Write-PackageManifest -PublishDir $publishDir -PackageKind $PackageKind
 
     return $publishDir
 }
@@ -909,6 +911,33 @@ function Assert-TrayHostLocalizationArtifacts {
     }
 
     Write-Host "TrayHost localization artifacts validation complete."
+}
+
+function Write-PackageManifest {
+    param(
+        [Parameter(Mandatory)] [string] $PublishDir,
+        [Parameter(Mandatory)] [ValidateSet("Installer", "Portable")] [string] $PackageKind
+    )
+
+    New-Item -ItemType Directory -Path $PublishDir -Force | Out-Null
+    $manifestPath = Join-Path $PublishDir "ContextMenuMgr.package.json"
+    $payload = [ordered] @{ packageKind = $PackageKind }
+    $payload | ConvertTo-Json -Compress | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+    Ensure-FileExists -Path $manifestPath -Description "Runtime package manifest"
+    Write-Host "Runtime package manifest: $manifestPath ($PackageKind)"
+}
+
+function Copy-PublishDirectory {
+    param(
+        [Parameter(Mandatory)] [string] $SourceDir,
+        [Parameter(Mandatory)] [string] $DestinationDir
+    )
+
+    Remove-DirectoryIfExists -Path $DestinationDir
+    New-Item -ItemType Directory -Path $DestinationDir -Force | Out-Null
+    Get-ChildItem -LiteralPath $SourceDir -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $DestinationDir -Recurse -Force
+    }
 }
 
 function New-PortableArchive {
@@ -975,7 +1004,8 @@ function Invoke-InstallerBuildTarget {
         -PublishRoot $PublishRoot `
         -NuGetConfig $NuGetConfig `
         -PublishGroup "installer" `
-        -Version $Version
+        -Version $Version `
+        -PackageKind "Installer"
 
     $installerOptions = Get-InstallerArchitectureOptions -Platform $Platform
     $setupBaseName = "$ArtifactProductName-$Version-$platformLabel-$($distributionOptions.InstallerSuffix)-Setup"
@@ -1000,8 +1030,12 @@ function Invoke-InstallerBuildTarget {
     $artifacts.Add($installerPath) | Out-Null
 
     if ($DistributionMode -eq "self-contained") {
+        $portablePublishDir = Join-Path $PublishRoot (Join-Path "_portable-staging" (Join-Path $DistributionMode $Platform))
+        Copy-PublishDirectory -SourceDir $publishDir -DestinationDir $portablePublishDir
+        Write-PackageManifest -PublishDir $portablePublishDir -PackageKind "Portable"
+
         $portableArchive = New-PortableArchive `
-            -PublishDir $publishDir `
+            -PublishDir $portablePublishDir `
             -DistRoot $DistRoot `
             -ArtifactProductName $ArtifactProductName `
             -Version $Version `
@@ -1038,7 +1072,8 @@ function Invoke-PortableFrameworkDependentBuildTarget {
         -PublishRoot $PublishRoot `
         -NuGetConfig $NuGetConfig `
         -PublishGroup "portable" `
-        -Version $Version
+        -Version $Version `
+        -PackageKind "Portable"
 
     return New-PortableArchive `
         -PublishDir $publishDir `

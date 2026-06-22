@@ -2671,10 +2671,7 @@ public sealed class ContextMenuRegistryCatalog
             return string.Empty;
         }
 
-        var generatedDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "ContextMenuMgr",
-            "Programs");
+        var generatedDir = RuntimePaths.GeneratedProgramsDirectory;
         Directory.CreateDirectory(generatedDir);
 
         foreach (var createFileElement in parentElement.Elements("CreateFile").Where(element => ShouldIncludeNode(element, cultureName)))

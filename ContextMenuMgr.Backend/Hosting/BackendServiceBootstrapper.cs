@@ -22,11 +22,7 @@ internal static class BackendServiceBootstrapper
     private static readonly string KeepFrontendOnStopMarkerPath = Path.Combine(
         DataDirectory,
         ServiceMetadata.KeepFrontendOnStopMarkerFileName);
-    private static readonly string BootstrapLogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "ContextMenuMgr",
-        "Logs",
-        "bootstrap.log");
+    private static readonly string BootstrapLogPath = Path.Combine(RuntimePaths.LogsDirectory, "bootstrap.log");
 
     /// <summary>
     /// Tries to execute an elevated backend bootstrap command.
@@ -192,7 +188,7 @@ internal static class BackendServiceBootstrapper
                     return (
                         false,
                         "SERVICE_START_TIMEOUT",
-                        $"Service did not report Running within 15 seconds. InitialStatus={initialStatus}, FinalStatus={finalStatus}, ServiceName={ServiceMetadata.ServiceName}, ServiceExePath={serviceExePath}, Exception={ex.Message}. Check %ProgramData%\\ContextMenuMgr\\Logs\\bootstrap.log, backend.log, and service-startup.log.");
+                        $"Service did not report Running within 15 seconds. InitialStatus={initialStatus}, FinalStatus={finalStatus}, ServiceName={ServiceMetadata.ServiceName}, ServiceExePath={serviceExePath}, Exception={ex.Message}. Check {RuntimePaths.LogsDirectory}\\bootstrap.log, backend.log, and service-startup.log.");
                 }
                 catch (Exception ex)
                 {
@@ -235,7 +231,7 @@ internal static class BackendServiceBootstrapper
             return (
                 false,
                 "BACKEND_PIPE_NOT_READY",
-                $"Service is running but backend pipe did not become ready in 20 seconds. Status={finalStatus}. ServiceName={ServiceMetadata.ServiceName}. Check %ProgramData%\\ContextMenuMgr\\Logs\\bootstrap.log, backend.log, and service-startup.log.");
+                $"Service is running but backend pipe did not become ready in 20 seconds. Status={finalStatus}. ServiceName={ServiceMetadata.ServiceName}. Check {RuntimePaths.LogsDirectory}\\bootstrap.log, backend.log, and service-startup.log.");
         }
 
         TryDeleteKeepFrontendMarker();

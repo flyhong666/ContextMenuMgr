@@ -469,7 +469,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         try
         {
             TryDeleteFile(RuntimePaths.StateDatabasePath);
-            TryDeleteFile(Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"));
+            TryDeleteFile(RuntimePaths.BackendProtectionSettingsPath);
             TryDeleteDirectory(RuntimePaths.DeletedBackupsDirectory);
             Directory.CreateDirectory(RuntimePaths.DeletedBackupsDirectory);
 

@@ -59,13 +59,15 @@ public sealed class BackendRuntime : IDisposable
         logger.LogFireAndForget(
             aclRepairResult.Success ? RuntimeLogLevel.Information : RuntimeLogLevel.Warning,
             $"RuntimeDataAclRepairStartup: Success={aclRepairResult.Success}, Code={aclRepairResult.Code}, Detail={aclRepairResult.Detail}");
+        logger.LogFireAndForget(
+            $"RuntimePackage: PackageKind={RuntimePaths.PackageKind}, RootDirectory={RuntimePaths.RootDirectory}, LogsDirectory={RuntimePaths.LogsDirectory}, DataDirectory={RuntimePaths.DataDirectory}");
 
         BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuStateStore.");
         var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath, logger);
         BackendEmergencyLogger.Log("CreateDefault: ContextMenuStateStore created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating BackendProtectionSettingsStore.");
-        var protectionSettingsStore = new BackendProtectionSettingsStore(Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"), logger);
+        var protectionSettingsStore = new BackendProtectionSettingsStore(RuntimePaths.BackendProtectionSettingsPath, logger);
         BackendEmergencyLogger.Log("CreateDefault: BackendProtectionSettingsStore created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating RegistryBackupService.");
@@ -126,8 +128,17 @@ public sealed class BackendRuntime : IDisposable
 
     private static void TryMigrateLegacyRuntimeFiles()
     {
+        TryCopyIfMissing(RuntimePaths.LegacyProgramDataStateDatabasePath, RuntimePaths.StateDatabasePath);
         TryCopyIfMissing(RuntimePaths.LegacyStateDatabasePath, RuntimePaths.StateDatabasePath);
-        TryCopyIfMissing(RuntimePaths.LegacyBackendProtectionSettingsPath, Path.Combine(RuntimePaths.DataDirectory, "backend-protection-settings.json"));
+        TryCopyIfMissing(RuntimePaths.LegacyProgramDataBackendProtectionSettingsPath, RuntimePaths.BackendProtectionSettingsPath);
+        TryCopyIfMissing(RuntimePaths.LegacyBackendProtectionSettingsPath, RuntimePaths.BackendProtectionSettingsPath);
+
+        if (RuntimePaths.PackageKind == RuntimePackageKind.Portable)
+        {
+            TryCopyDirectoryContentsIfMissing(RuntimePaths.LegacyProgramDataDeletedBackupsDirectory, RuntimePaths.DeletedBackupsDirectory);
+            TryCopyDirectoryContentsIfMissing(RuntimePaths.LegacyProgramDataLogsDirectory, RuntimePaths.LogsDirectory);
+            TryCopyDirectoryContentsIfMissing(RuntimePaths.LegacyProgramDataGeneratedProgramsDirectory, RuntimePaths.GeneratedProgramsDirectory);
+        }
     }
 
     private static string TryGetCurrentIdentityName()
@@ -146,13 +157,43 @@ public sealed class BackendRuntime : IDisposable
     {
         try
         {
-            if (!File.Exists(sourcePath) || File.Exists(destinationPath))
+            if (string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(destinationPath), StringComparison.OrdinalIgnoreCase)
+                || !File.Exists(sourcePath)
+                || File.Exists(destinationPath))
             {
                 return;
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
             File.Copy(sourcePath, destinationPath, overwrite: false);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void TryCopyDirectoryContentsIfMissing(string sourceDirectory, string destinationDirectory)
+    {
+        try
+        {
+            if (string.Equals(Path.GetFullPath(sourceDirectory), Path.GetFullPath(destinationDirectory), StringComparison.OrdinalIgnoreCase)
+                || !Directory.Exists(sourceDirectory))
+            {
+                return;
+            }
+
+            foreach (var sourcePath in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+            {
+                var relativePath = Path.GetRelativePath(sourceDirectory, sourcePath);
+                var destinationPath = Path.Combine(destinationDirectory, relativePath);
+                if (File.Exists(destinationPath))
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                File.Copy(sourcePath, destinationPath, overwrite: false);
+            }
         }
         catch
         {
