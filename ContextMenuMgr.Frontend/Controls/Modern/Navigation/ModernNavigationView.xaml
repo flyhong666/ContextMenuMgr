@@ -251,6 +251,7 @@
             <frame:ModernFrame
                 x:Name="PART_Frame"
                 Grid.Row="1"
+                ContentScrollHostMode="Auto"
                 Margin="{Binding FrameMargin, ElementName=Root}" />
             <ContentPresenter
                 Grid.RowSpan="2"
