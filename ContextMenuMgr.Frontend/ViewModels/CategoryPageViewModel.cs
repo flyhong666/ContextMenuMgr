@@ -365,6 +365,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
             or nameof(ContextMenuItemViewModel.RegistryPath)
             or nameof(ContextMenuItemViewModel.Subtitle)
             or nameof(ContextMenuItemViewModel.Notes)
+            or nameof(ContextMenuItemViewModel.UserNote)
             or nameof(ContextMenuItemViewModel.IsEnabled)
             or nameof(ContextMenuItemViewModel.IsWindows11ContextMenu)
             or nameof(ContextMenuItemViewModel.IsDeleted)

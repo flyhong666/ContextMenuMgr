@@ -41,6 +41,36 @@ public sealed class FrontendSettingsService
 
     public string? LastSaveError { get; private set; }
 
+    public string GetContextMenuItemNote(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return string.Empty;
+        }
+
+        return Current.ContextMenuItemNotes.TryGetValue(itemId, out var note) ? note : string.Empty;
+    }
+
+    public void UpdateContextMenuItemNote(string itemId, string? note)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return;
+        }
+
+        var normalizedNote = note?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(normalizedNote))
+        {
+            Current.ContextMenuItemNotes.Remove(itemId);
+        }
+        else
+        {
+            Current.ContextMenuItemNotes[itemId] = normalizedNote;
+        }
+
+        Save();
+    }
+
     /// <summary>
     /// Updates language.
     /// </summary>
@@ -206,7 +236,11 @@ public sealed class FrontendSettingsService
             }
 
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<FrontendSettings>(json, JsonOptions) ?? new FrontendSettings();
+            var settings = JsonSerializer.Deserialize<FrontendSettings>(json, JsonOptions) ?? new FrontendSettings();
+            settings.ContextMenuItemNotes = settings.ContextMenuItemNotes is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(settings.ContextMenuItemNotes, StringComparer.OrdinalIgnoreCase);
+            return settings;
         }
         catch
         {

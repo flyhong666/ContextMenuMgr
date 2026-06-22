@@ -143,6 +143,11 @@ public sealed class RecycleBinContextMenuPage : CategoryPageView
     }
 }
 
+public sealed class ApplicationGroupsPage : ApplicationGroupsPageView
+{
+    public ApplicationGroupsPage(ApplicationGroupsPageViewModel viewModel) => DataContext = viewModel;
+}
+
 /// <summary>
 /// Represents the file Types Page.
 /// </summary>

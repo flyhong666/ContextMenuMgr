@@ -805,7 +805,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             }
             else
             {
-                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService));
+                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService, _settingsService));
             }
         }
 
@@ -902,7 +902,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             return;
         }
 
-        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService));
+        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService, _settingsService));
     }
 
     private void RemoveItem(string itemId)

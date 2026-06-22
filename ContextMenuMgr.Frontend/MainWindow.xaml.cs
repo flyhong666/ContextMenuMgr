@@ -5,9 +5,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using ContextMenuMgr.Frontend.Services;
 using ContextMenuMgr.Frontend.ViewModels;
+using ContextMenuMgr.Frontend.Views;
 using ContextMenuMgr.Frontend.Views.Pages;
 using Microsoft.Extensions.DependencyInjection;
 using Wpf.Ui;
@@ -21,6 +21,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly UpdateCheckService _updateCheckService;
     private readonly MainWindowPlacementService _windowPlacementService;
+    private Wpf.Ui.Controls.NavigationViewContentPresenter? _navigationContentPresenter;
 #if DEBUG
     private readonly IServiceProvider _serviceProvider;
     private DebugToolsWindow? _debugToolsWindow;
@@ -51,7 +52,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         RootInfoBarClose.Click += (_, _) => infoBarService.CloseInfoBar();
         RootNavigation.SetServiceProvider(serviceProvider);
         navigationService.SetNavigationControl(RootNavigation);
-        RootNavigation.Navigated += OnRootNavigationNavigated;
         DataContext = viewModel;
 
         ApplyWindowIcon();
@@ -220,6 +220,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        AttachNavigationContentPresenter();
         var targetPageType = _pendingPageType ?? typeof(FileContextMenuPage);
         RootNavigation.Navigate(targetPageType);
         _updateCheckService.StartInitialCheck();
@@ -227,26 +228,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        if (_navigationContentPresenter is not null)
+        {
+            _navigationContentPresenter.ContentRendered -= OnNavigationContentRendered;
+        }
+
         _windowPlacementService.SavePlacement(this);
     }
 
-    private void OnRootNavigationNavigated(
-        Wpf.Ui.Controls.NavigationView sender,
-        Wpf.Ui.Controls.NavigatedEventArgs args)
+    private void AttachNavigationContentPresenter()
     {
-        QueueNavigationScrollReset();
+        var presenter = FindDescendant<Wpf.Ui.Controls.NavigationViewContentPresenter>(RootNavigation);
+        if (ReferenceEquals(_navigationContentPresenter, presenter))
+        {
+            return;
+        }
+
+        if (_navigationContentPresenter is not null)
+        {
+            _navigationContentPresenter.ContentRendered -= OnNavigationContentRendered;
+        }
+
+        _navigationContentPresenter = presenter;
+        if (_navigationContentPresenter is not null)
+        {
+            _navigationContentPresenter.ContentRendered += OnNavigationContentRendered;
+        }
     }
 
-    private void QueueNavigationScrollReset()
+    private void OnNavigationContentRendered(object? sender, EventArgs e)
     {
-        _ = Dispatcher.BeginInvoke(
-            new Action(ResetNavigationFrameScrollOffset),
-            DispatcherPriority.Loaded);
+        ResetNavigationFrameScrollOffset();
     }
 
     private void ResetNavigationFrameScrollOffset()
     {
-        var frame = FindDescendant<Wpf.Ui.Controls.NavigationViewContentPresenter>(RootNavigation);
+        var frame = _navigationContentPresenter;
         if (frame is null)
         {
             return;
@@ -262,6 +279,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         navigationScrollViewer?.ScrollToHome();
         navigationScrollViewer?.ScrollToLeftEnd();
+        if (navigationScrollViewer is not null)
+        {
+            FindDescendantImplementing<INavigationScrollTarget>(frame)
+                ?.ApplyNavigationScrollPosition(navigationScrollViewer);
+        }
     }
 
     private static T? FindDescendant<T>(DependencyObject root, Predicate<T>? predicate = null)
@@ -277,6 +299,26 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
 
             var descendant = FindDescendant(child, predicate);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
+    private static T? FindDescendantImplementing<T>(DependencyObject root) where T : class
+    {
+        if (root is T match)
+        {
+            return match;
+        }
+
+        var childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < childCount; index++)
+        {
+            var descendant = FindDescendantImplementing<T>(VisualTreeHelper.GetChild(root, index));
             if (descendant is not null)
             {
                 return descendant;

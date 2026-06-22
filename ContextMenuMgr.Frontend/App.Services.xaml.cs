@@ -64,6 +64,8 @@ public partial class App
         services.AddSingleton<LibraryContextMenuPageViewModel>();
         services.AddSingleton<ComputerContextMenuPageViewModel>();
         services.AddSingleton<RecycleBinContextMenuPageViewModel>();
+        services.AddSingleton<ApplicationGroupsPageViewModel>();
+        services.AddSingleton<Windows11ContextMenuPageViewModel>();
         services.AddSingleton<FileTypesPageViewModel>();
         services.AddSingleton<FileTypeMenuAnalysisPageViewModel>();
         services.AddSingleton<ShellNewPageViewModel>();
@@ -83,6 +85,8 @@ public partial class App
         services.AddSingleton<LibraryContextMenuPage>();
         services.AddSingleton<ComputerContextMenuPage>();
         services.AddSingleton<RecycleBinContextMenuPage>();
+        services.AddSingleton<ApplicationGroupsPage>();
+        services.AddSingleton<Windows11ContextMenuPage>();
         services.AddSingleton<FileTypesPage>();
         services.AddSingleton<FileTypeMenuAnalysisPage>();
         services.AddSingleton<ShellNewPage>();
@@ -91,12 +95,6 @@ public partial class App
         services.AddSingleton<OtherRulesPage>();
         services.AddSingleton<ApprovalsPage>();
         services.AddSingleton<SettingsPage>();
-
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
-        {
-            services.AddSingleton<Windows11ContextMenuPageViewModel>();
-            services.AddSingleton<Windows11ContextMenuPage>();
-        }
 
         return services.BuildServiceProvider();
     }

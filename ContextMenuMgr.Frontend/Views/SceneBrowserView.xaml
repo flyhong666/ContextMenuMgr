@@ -182,6 +182,7 @@
                                                     Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <ui:TextBlock
                                                         FontSize="11"
+                                                        VerticalAlignment="Center"
                                                         Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                                         Text="{Binding DetectedChangeBadgeText}" />
                                                 </Border>

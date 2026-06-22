@@ -96,6 +96,8 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public string RecycleBinCategoryName => _localization.Translate("RecycleBinCategoryName");
 
+    public string ApplicationGroupsPageTitle => _localization.Translate("ApplicationGroupsPageTitle");
+
     public string FileTypesPageTitle => _localization.Translate("FileTypesPageTitle");
 
     public string MenuAnalysisTitle => _localization.Translate("MenuAnalysisTitle");
@@ -283,6 +285,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LibraryCategoryName));
         OnPropertyChanged(nameof(ComputerCategoryName));
         OnPropertyChanged(nameof(RecycleBinCategoryName));
+        OnPropertyChanged(nameof(ApplicationGroupsPageTitle));
         OnPropertyChanged(nameof(FileTypesPageTitle));
         OnPropertyChanged(nameof(MenuAnalysisTitle));
         OnPropertyChanged(nameof(ShellNewPageTitle));

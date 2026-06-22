@@ -345,6 +345,10 @@
                                 Icon="{ui:SymbolIcon Symbol=Delete24}"
                                 TargetPageType="{x:Type pages:RecycleBinContextMenuPage}" />
                             <ui:NavigationViewItem
+                                Content="{Binding ApplicationGroupsPageTitle}"
+                                Icon="{ui:SymbolIcon Symbol=AppsListDetail24}"
+                                TargetPageType="{x:Type pages:ApplicationGroupsPage}" />
+                            <ui:NavigationViewItem
                                 Content="{Binding FileTypesPageTitle}"
                                 Icon="{ui:SymbolIcon Symbol=DocumentText24}"
                                 TargetPageType="{x:Type pages:FileTypesPage}" />

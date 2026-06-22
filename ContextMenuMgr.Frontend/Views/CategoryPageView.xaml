@@ -163,6 +163,7 @@
                                                     CornerRadius="4"
                                                     Visibility="{Binding HasDetectedChange, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <ui:TextBlock
+                                                        VerticalAlignment="Center"
                                                         FontSize="11"
                                                         Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                                         Text="{Binding DetectedChangeBadgeText}" />
@@ -192,6 +193,12 @@
                                         Text="{Binding InlineCommandText}"
                                         TextWrapping="Wrap"
                                         Visibility="{Binding ShowInlineCommandText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,8,0,0"
+                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                        Text="{Binding UserNoteDisplay}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasUserNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <ui:TextBlock
                                         Margin="0,8,0,0"
                                         Opacity="0.78"
@@ -237,6 +244,14 @@
                                     Grid.Column="1"
                                     Margin="12,0,0,0"
                                     HorizontalAlignment="Right">
+                                    <ui:Button
+                                        MinWidth="88"
+                                        Margin="0,0,0,8"
+                                        Padding="12,5"
+                                        Appearance="Secondary"
+                                        Click="OpenApplicationGroup_Click"
+                                        Content="{Binding ViewApplicationGroupText}"
+                                        Icon="{ui:SymbolIcon Symbol=AppsListDetail24}" />
                                     <ui:ToggleSwitch
                                         MinWidth="72"
                                         Margin="0,0,0,8"
@@ -309,8 +324,13 @@
                                                     behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
                                                     Header="{Binding DetailsTitle}"
                                                     Visibility="{Binding HasDetailsActions, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <MenuItem
-                                                        Command="{Binding ChangeTextCommand}"
+                                                <MenuItem
+                                                    Command="{Binding EditUserNoteCommand}"
+                                                    Header="{Binding DetailsEditUserNoteLabel}"
+                                                    StaysOpenOnClick="True"
+                                                    Visibility="{Binding CanEditUserNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                <MenuItem
+                                                    Command="{Binding ChangeTextCommand}"
                                                         Header="{Binding DetailsChangeTextLabel}"
                                                         StaysOpenOnClick="True"
                                                         Visibility="{Binding CanEditText, Converter={StaticResource BooleanToVisibilityConverter}}" />

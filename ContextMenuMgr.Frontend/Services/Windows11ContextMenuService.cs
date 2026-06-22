@@ -39,7 +39,7 @@ public sealed class Windows11ContextMenuService
     /// Gets a value indicating whether this instance is supported.
     /// </summary>
     public bool IsSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
-                               && Registry.ClassesRoot.OpenSubKey(@"PackagedCom\Package") is not null;
+                               && HasPackagedComRegistryRoot();
 
     /// <summary>
     /// Gets packaged com Packages.
@@ -102,6 +102,11 @@ public sealed class Windows11ContextMenuService
     /// </summary>
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
+        if (!IsSupported)
+        {
+            return;
+        }
+
         try
         {
             var entries = await _backendClient.GetWin11ContextMenuSnapshotAsync(cancellationToken);
@@ -124,6 +129,11 @@ public sealed class Windows11ContextMenuService
     /// </summary>
     public async Task EnsureLoadedAsync(CancellationToken cancellationToken)
     {
+        if (!IsSupported)
+        {
+            return;
+        }
+
         if (CurrentItems.Count == 0)
         {
             await RefreshAsync(cancellationToken);
@@ -162,6 +172,19 @@ public sealed class Windows11ContextMenuService
     private void OnItemsChanged()
     {
         ItemsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static bool HasPackagedComRegistryRoot()
+    {
+        try
+        {
+            using var key = Registry.ClassesRoot.OpenSubKey(@"PackagedCom\Package");
+            return key is not null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string NormalizeGuid(string guidText) =>

@@ -16,6 +16,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localization;
     private readonly ContextMenuItemActionsService _actionsService;
     private readonly ContextMenuDeepAnalysisService? _deepAnalysisService;
+    private readonly FrontendSettingsService? _settingsService;
     private readonly Func<ContextMenuItemViewModel, bool, Task<bool>>? _setEnabledAsync;
     private readonly Func<ContextMenuItemViewModel, ContextMenuShellAttribute, bool, Task<bool>>? _setShellAttributeAsync;
     private readonly Func<ContextMenuItemViewModel, string, Task<bool>>? _setDisplayTextAsync;
@@ -40,11 +41,13 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         Func<ContextMenuItemViewModel, string, Task<bool>>? setDisplayTextAsync = null,
         Func<ContextMenuItemViewModel, Task<bool>>? acknowledgeItemStateAsync = null,
         Func<ContextMenuItemViewModel, string, Task<bool>>? setCommandTextAsync = null,
-        ContextMenuDeepAnalysisService? deepAnalysisService = null)
+        ContextMenuDeepAnalysisService? deepAnalysisService = null,
+        FrontendSettingsService? settingsService = null)
     {
         _iconPreviewService = iconPreviewService;
         _localization = localization;
         _actionsService = actionsService;
+        _settingsService = settingsService;
         _deepAnalysisService = deepAnalysisService;
         _setEnabledAsync = setEnabledAsync;
         _setShellAttributeAsync = setShellAttributeAsync;
@@ -52,6 +55,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         _setCommandTextAsync = setCommandTextAsync;
         _acknowledgeItemStateAsync = acknowledgeItemStateAsync;
         Entry = entry;
+        UserNote = _settingsService?.GetContextMenuItemNote(entry.Id) ?? string.Empty;
         ApplyEntry(entry);
         _localization.LanguageChanged += OnLanguageChanged;
     }
@@ -78,6 +82,17 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     public string RegistryPath => Entry.RegistryPath;
 
     public string Notes => Entry.Notes ?? string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUserNote))]
+    [NotifyPropertyChangedFor(nameof(UserNoteDisplay))]
+    public partial string UserNote { get; private set; }
+
+    public bool HasUserNote => !string.IsNullOrWhiteSpace(UserNote);
+
+    public string UserNoteDisplay => HasUserNote
+        ? _localization.Format("UserNoteDisplayFormat", UserNote)
+        : string.Empty;
 
     public bool ShowNotes => !string.IsNullOrWhiteSpace(Entry.Notes);
 
@@ -125,9 +140,11 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         && !string.IsNullOrWhiteSpace(Entry.EditableText)
         && !string.Equals(KeyName, "open", StringComparison.OrdinalIgnoreCase);
 
-    public bool HasDetailsActions => CanEditText || CanEditCommandText || ShowReadOnlyCommandText || HasFileLocation || HasRegistryLocation || HasClsidLocation || CanSearchOnline;
+    public bool HasDetailsActions => CanEditUserNote || CanEditText || CanEditCommandText || ShowReadOnlyCommandText || HasFileLocation || HasRegistryLocation || HasClsidLocation || CanSearchOnline;
 
     public bool CanSearchOnline => !string.IsNullOrWhiteSpace(DisplayName) || !string.IsNullOrWhiteSpace(KeyName);
+
+    public bool CanEditUserNote => _settingsService is not null && !IsWindows11ContextMenu;
 
     public bool CanDeepAnalyzeMenuItem => _deepAnalysisService is not null
         && ContextMenuDeepAnalysisCapability.CanDeepAnalyze(Entry)
@@ -414,6 +431,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public string DetailsTitle => _localization.Translate("DetailsTitle");
 
+    public string ViewApplicationGroupText => _localization.Translate("ApplicationGroupsPageTitle");
+
     public string OnlyWithShiftLabel => _localization.Translate("OnlyWithShiftLabel");
 
     public string OnlyInExplorerLabel => _localization.Translate("OnlyInExplorerLabel");
@@ -427,6 +446,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     public string DetailsSearchOnline => _localization.Translate("DetailsSearchOnline");
 
     public string DetailsChangeTextLabel => _localization.Translate("DetailsChangeText");
+
+    public string DetailsEditUserNoteLabel => _localization.Translate("DetailsEditUserNote");
 
     public string DetailsChangeCommandLabel => _localization.Translate("DetailsChangeCommand");
 
@@ -748,6 +769,35 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private async Task EditUserNoteAsync()
+    {
+        if (IsWindows11ContextMenu)
+        {
+            return;
+        }
+
+        var note = await TextInputDialog.ShowAsync(
+            _localization.Translate("DetailsEditUserNote"),
+            _localization.Translate("UserNoteLabel"),
+            UserNote,
+            width: 620,
+            height: 300,
+            multiline: true);
+        if (note is null)
+        {
+            return;
+        }
+
+        if (_settingsService is null)
+        {
+            return;
+        }
+
+        _settingsService.UpdateContextMenuItemNote(Id, note);
+        UserNote = note.Trim();
+    }
+
+    [RelayCommand]
     private Task OpenFilePropertiesAsync() => _actionsService.OpenFilePropertiesAsync(this);
 
     [RelayCommand]
@@ -837,12 +887,15 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MoreActionsText));
         OnPropertyChanged(nameof(OtherAttributesTitle));
         OnPropertyChanged(nameof(DetailsTitle));
+        OnPropertyChanged(nameof(ViewApplicationGroupText));
         OnPropertyChanged(nameof(OnlyWithShiftLabel));
         OnPropertyChanged(nameof(OnlyInExplorerLabel));
         OnPropertyChanged(nameof(NoWorkingDirectoryLabel));
         OnPropertyChanged(nameof(NeverDefaultLabel));
         OnPropertyChanged(nameof(ShowAsDisabledIfHiddenLabel));
         OnPropertyChanged(nameof(DetailsChangeTextLabel));
+        OnPropertyChanged(nameof(DetailsEditUserNoteLabel));
+        OnPropertyChanged(nameof(UserNoteDisplay));
         OnPropertyChanged(nameof(DetailsChangeCommandLabel));
         OnPropertyChanged(nameof(DetailsSearchOnline));
         OnPropertyChanged(nameof(DetailsCommandTextLabel));

@@ -91,6 +91,8 @@ Win11 新菜单的 snapshot 和开关都依赖用户上下文：
 | `ContextMenuSearchMatcher` | 全局搜索和页面筛选共用匹配逻辑。 |
 | `GlobalSearchNavigationFilterService` | 搜索结果跳转到 Win11 页面后设置页面筛选文本和目标项。 |
 
+`Windows11ContextMenuPageViewModel` 和导航 Page 在 DI 中始终注册，避免 Win10 或其它不支持环境被意外导航到该页面时因服务解析失败而崩溃。正常导航项仍由 `ShellViewModel.IsWindows11ContextMenuSupported` 隐藏；`Windows11ContextMenuService.RefreshAsync` / `EnsureLoadedAsync` 在不支持时直接返回，`IsSupported` 的注册表探测必须及时释放 `RegistryKey`。
+
 Win11 页面筛选是前端内存筛选。只有刷新 snapshot 或执行开关操作时才需要访问后端。
 
 ## 7. 常见坑

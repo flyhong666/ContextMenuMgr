@@ -5,6 +5,8 @@
 /// </summary>
 public sealed class FrontendSettings
 {
+    public Dictionary<string, string> ContextMenuItemNotes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Gets or sets the language.
     /// </summary>

@@ -26,7 +26,8 @@ public static class ContextMenuSearchMatcher
                 item.Entry.HandlerClsid,
                 item.Entry.FilePath,
                 item.Entry.CommandText,
-                item.Notes
+                item.Notes,
+                item.UserNote
             },
             item.DisplayName,
             item.KeyName,
@@ -41,13 +42,14 @@ public static class ContextMenuSearchMatcher
 
     public static bool MatchesClassicEntry(ContextMenuEntry entry, string? categoryName, string? stateLabel, string? query)
     {
-        return TryScoreClassicEntry(entry, categoryName, stateLabel, query, out _);
+        return TryScoreClassicEntry(entry, categoryName, stateLabel, null, query, out _);
     }
 
     public static bool TryScoreClassicEntry(
         ContextMenuEntry entry,
         string? categoryName,
         string? stateLabel,
+        string? userNote,
         string? query,
         out int score)
     {
@@ -65,6 +67,7 @@ public static class ContextMenuSearchMatcher
                 entry.FilePath,
                 entry.CommandText,
                 entry.Notes,
+                userNote,
                 categoryName,
                 stateLabel
             },
@@ -164,6 +167,18 @@ public static class ContextMenuSearchMatcher
                 .Select(static field => field!.Trim()));
     }
 
+    public static bool MatchesFields(string? query, params string?[] fields)
+    {
+        var trimmedQuery = query?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedQuery))
+        {
+            return true;
+        }
+
+        var tokens = Tokenize(trimmedQuery);
+        return tokens.Count > 0 && tokens.All(token => AnyFieldContains(fields, token));
+    }
+
     private static bool TryScore(
         string? query,
         IReadOnlyList<string?> fields,
@@ -258,16 +273,11 @@ public static class ContextMenuSearchMatcher
 
     private static string NormalizePunctuation(string value)
     {
-        var chars = value.ToCharArray();
-        for (var index = 0; index < chars.Length; index++)
-        {
-            if (char.IsPunctuation(chars[index]) || char.IsSeparator(chars[index]) || char.IsSymbol(chars[index]))
-            {
-                chars[index] = ' ';
-            }
-        }
-
-        return new string(chars);
+        return new string(value
+            .Where(static character => !char.IsPunctuation(character)
+                                       && !char.IsSeparator(character)
+                                       && !char.IsSymbol(character))
+            .ToArray());
     }
 
     private static string GetShellPathTail(string? registryPath)

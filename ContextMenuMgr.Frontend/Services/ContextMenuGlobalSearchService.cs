@@ -95,14 +95,16 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
 
     private static int ScoreClassic(Candidate candidate, string query)
     {
-        return ContextMenuSearchMatcher.TryScoreClassicEntry(
+        var score = ContextMenuSearchMatcher.TryScoreClassicEntry(
             candidate.Entry!,
             candidate.Result.ScopeLabel,
             candidate.Result.StateLabel,
+            candidate.UserNote,
             query,
-            out var score)
-            ? score
+            out var matchedScore)
+            ? matchedScore
             : 0;
+        return score;
     }
 
     private static int ScoreWindows11(Candidate candidate, string query)
@@ -158,7 +160,8 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
             or nameof(ContextMenuItemViewModel.IsEnabled)
             or nameof(ContextMenuItemViewModel.IsDeleted)
             or nameof(ContextMenuItemViewModel.IsWindows11ContextMenu)
-            or nameof(ContextMenuItemViewModel.IconSource))
+            or nameof(ContextMenuItemViewModel.IconSource)
+            or nameof(ContextMenuItemViewModel.UserNote))
         {
             RebuildCandidates();
         }
@@ -232,6 +235,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
                 item.Entry.HandlerClsid,
                 item.Entry.FilePath,
                 item.Notes,
+                item.UserNote,
                 categoryName,
                 item.StateLabel
             ])
@@ -239,7 +243,8 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
 
         return new Candidate(GlobalSearchScope.Classic, result)
         {
-            Entry = item.Entry
+            Entry = item.Entry,
+            UserNote = item.UserNote
         };
     }
 
@@ -420,6 +425,8 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
         public string? PublisherName { get; init; }
 
         public string? ContextTypesText { get; init; }
+
+        public string? UserNote { get; init; }
     }
 
     private sealed record ScoredCandidate(Candidate Candidate, int Score);
