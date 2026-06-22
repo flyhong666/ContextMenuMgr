@@ -183,9 +183,10 @@
                         Height="36"
                         Margin="0,4"
                         Click="PaneToggleButton_OnClick"
-                        Content="☰"
                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                        Visibility="{Binding IsPaneToggleVisible, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        Visibility="{Binding IsPaneToggleVisible, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:SymbolIcon Symbol="Navigation24" />
+                    </Button>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock
                             FontSize="14"
@@ -267,8 +268,9 @@
                     Height="36"
                     Margin="0,0,8,0"
                     Click="BackButton_OnClick"
-                    Content="←"
-                    IsEnabled="{Binding IsBackEnabled, ElementName=Root}" />
+                    IsEnabled="{Binding IsBackEnabled, ElementName=Root}">
+                    <ui:SymbolIcon Symbol="ArrowLeft24" />
+                </Button>
                 <ContentPresenter Grid.Column="1" VerticalAlignment="Center" Content="{Binding Header, ElementName=Root}" />
             </Grid>
             <frame:ModernFrame

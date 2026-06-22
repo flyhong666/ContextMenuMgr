@@ -95,6 +95,7 @@ public sealed class ModernFrame : Control
 
     public event EventHandler<ModernFrameNavigatingEventArgs>? Navigating;
     public event EventHandler<ModernFrameNavigationEventArgs>? Navigated;
+    public event EventHandler<ModernFrameNavigationEventArgs>? NavigationCompleted;
 
     public void SetPageProvider(INavigationViewPageProvider pageProvider) => _pageProvider = pageProvider;
 
@@ -116,8 +117,16 @@ public sealed class ModernFrame : Control
         return element;
     }
 
-    public bool Navigate(Type pageType, object? dataContext = null) =>
-        Navigate(CreatePage(pageType, dataContext), null);
+    public bool Navigate(Type pageType, object? dataContext = null)
+    {
+        if (CurrentContent is { } current
+            && (current.GetType() == pageType || pageType.IsInstanceOfType(current)))
+        {
+            return false;
+        }
+
+        return Navigate(CreatePage(pageType, dataContext), null);
+    }
 
     public bool Navigate(FrameworkElement content, ModernNavigationTransitionInfo? transitionInfo = null, bool addToJournal = true) =>
         NavigateCore(content, null, transitionInfo, addToJournal, ModernFrameNavigationMode.New);
@@ -165,6 +174,11 @@ public sealed class ModernFrame : Control
         ModernFrameNavigationMode mode)
     {
         EnsureTemplateParts();
+        if (ReferenceEquals(CurrentContent, content))
+        {
+            return false;
+        }
+
         var effectiveTransition = transitionInfo ?? DefaultTransitionInfo;
         var navigatingArgs = new ModernFrameNavigatingEventArgs(content, parameter, mode, effectiveTransition);
         Navigating?.Invoke(this, navigatingArgs);
@@ -186,6 +200,7 @@ public sealed class ModernFrame : Control
         CurrentContent = content;
         _hostedContent = CreateHostedContent(content);
         _usingScrollHost = ShouldUseScrollHost(content);
+        var navigationArgs = new ModernFrameNavigationEventArgs(content, parameter, mode, effectiveTransition);
 
         if (oldHost is null || !ShouldAnimate(effectiveTransition))
         {
@@ -194,7 +209,7 @@ public sealed class ModernFrame : Control
             AttachCurrentHost(_hostedContent);
             ResetScrollIfNeeded(mode);
             Normalize(_usingScrollHost ? _scrollHost! : _directPresenter!);
-            QueueNavigationCompleted(navigationVersion);
+            QueueNavigationCompleted(navigationVersion, navigationArgs);
         }
         else
         {
@@ -209,59 +224,102 @@ public sealed class ModernFrame : Control
             activeHost.Opacity = 0;
             _exitStoryboard = effectiveTransition?.CreateExitStoryboard(_oldPresenter, mode == ModernFrameNavigationMode.Back, TransitionDuration);
             _enterStoryboard = effectiveTransition?.CreateEnterStoryboard(activeHost, mode == ModernFrameNavigationMode.Back, TransitionDuration);
-            BeginExitAnimation(activeHost, navigationVersion);
+            BeginExitAnimation(activeHost, navigationVersion, navigationArgs);
         }
 
-        Navigated?.Invoke(this, new ModernFrameNavigationEventArgs(content, parameter, mode, effectiveTransition));
+        Navigated?.Invoke(this, navigationArgs);
         return true;
     }
 
-    private void BeginExitAnimation(FrameworkElement activeHost, int navigationVersion)
+    private void BeginExitAnimation(
+        FrameworkElement activeHost,
+        int navigationVersion,
+        ModernFrameNavigationEventArgs navigationArgs)
     {
+        activeHost.Visibility = Visibility.Visible;
         if (_exitStoryboard is null)
         {
             ClearOldPresenter();
-            BeginEnterAnimation(activeHost, navigationVersion);
+            BeginEnterAnimation(activeHost, navigationVersion, navigationArgs);
             return;
         }
 
         _exitStoryboard.Completed += (_, _) =>
         {
+            if (navigationVersion != _navigationVersion)
+            {
+                return;
+            }
+
+            _exitStoryboard?.Remove(_oldPresenter);
             _exitStoryboard = null;
             ClearOldPresenter();
-            BeginEnterAnimation(activeHost, navigationVersion);
+            BeginEnterAnimation(activeHost, navigationVersion, navigationArgs);
         };
+
         _pendingAnimation = Dispatcher.BeginInvoke(() =>
         {
             _pendingAnimation = null;
-            _exitStoryboard?.Begin(_oldPresenter, true);
+            try
+            {
+                _exitStoryboard?.Begin(_oldPresenter, true);
+            }
+            catch (Exception)
+            {
+                _exitStoryboard = null;
+                ClearOldPresenter();
+                BeginEnterAnimation(activeHost, navigationVersion, navigationArgs);
+            }
         }, DispatcherPriority.ApplicationIdle);
     }
 
-    private void BeginEnterAnimation(FrameworkElement activeHost, int navigationVersion)
+    private void BeginEnterAnimation(
+        FrameworkElement activeHost,
+        int navigationVersion,
+        ModernFrameNavigationEventArgs navigationArgs)
     {
         activeHost.Visibility = Visibility.Visible;
+        activeHost.IsHitTestVisible = false;
         if (_enterStoryboard is null)
         {
-            CompleteTransition(activeHost, navigationVersion);
+            CompleteTransition(activeHost, navigationVersion, navigationArgs);
             return;
         }
 
-        _enterStoryboard.Completed += (_, _) => CompleteTransition(activeHost, navigationVersion);
+        _enterStoryboard.Completed += (_, _) =>
+            CompleteTransition(activeHost, navigationVersion, navigationArgs);
         _pendingAnimation = Dispatcher.BeginInvoke(() =>
         {
             _pendingAnimation = null;
-            _enterStoryboard?.Begin(activeHost, true);
+            try
+            {
+                _enterStoryboard?.Begin(activeHost, true);
+            }
+            catch (Exception)
+            {
+                CompleteTransition(activeHost, navigationVersion, navigationArgs);
+            }
         }, DispatcherPriority.ApplicationIdle);
     }
 
-    private void CompleteTransition(FrameworkElement activeHost, int navigationVersion)
+    private void CompleteTransition(
+        FrameworkElement activeHost,
+        int navigationVersion,
+        ModernFrameNavigationEventArgs navigationArgs)
     {
+        if (navigationVersion != _navigationVersion)
+        {
+            return;
+        }
+
+        _exitStoryboard?.Remove(_oldPresenter);
+        _exitStoryboard = null;
         _enterStoryboard?.Remove(activeHost);
         _enterStoryboard = null;
+        ClearOldPresenter();
         activeHost.IsHitTestVisible = true;
         Normalize(activeHost);
-        QueueNavigationCompleted(navigationVersion);
+        QueueNavigationCompleted(navigationVersion, navigationArgs);
     }
 
     private void StopTransition()
@@ -343,7 +401,9 @@ public sealed class ModernFrame : Control
         _scrollHost.ScrollToLeftEnd();
     }
 
-    private void QueueNavigationCompleted(int navigationVersion) =>
+    private void QueueNavigationCompleted(
+        int navigationVersion,
+        ModernFrameNavigationEventArgs navigationArgs) =>
         Dispatcher.BeginInvoke(() =>
         {
             if (navigationVersion != _navigationVersion)
@@ -360,6 +420,8 @@ public sealed class ModernFrame : Control
             {
                 target.ApplyNavigationScrollPosition(_scrollHost!);
             }
+
+            NavigationCompleted?.Invoke(this, navigationArgs);
         }, DispatcherPriority.Loaded);
 
     private bool ShouldUseScrollHost(FrameworkElement content) => ContentScrollHostMode switch

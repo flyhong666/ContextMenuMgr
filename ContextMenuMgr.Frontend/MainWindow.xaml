@@ -295,7 +295,8 @@
                 IsPaneOpen="True"
                 IsPaneToggleVisible="False"
                 OpenPaneLength="257"
-                PaneDisplayMode="Left">
+                PaneDisplayMode="Left"
+                TransitionDuration="140">
                 <modernNavigation:ModernNavigationView.MenuItems>
                     <ui:NavigationViewItem
                         Content="{Binding LegacyContextMenuItemsName}"

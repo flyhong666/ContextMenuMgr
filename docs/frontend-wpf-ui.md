@@ -139,7 +139,9 @@ Icon | Title | GlobalSearchBox | HeaderActions | WindowButtons
 
 `ModernNavigationView` 位于 `Controls/Modern/Navigation`，递归适配 `NavigationViewItem.MenuItems` / `MenuItemsSource`，保留嵌套展开、`Visibility`、`InfoBadge`、图标和原始 Binding。页面只由 `Controls/Modern/Frame/ModernFrame` 承载；页面创建顺序是 `IServiceProvider`、`INavigationViewPageProvider`、`Activator.CreateInstance`。不要把导航菜单改成 ViewModel 集合，也不要绕过 `INavigationService`。
 
-`ModernFrame` 使用旧内容和新内容双 Presenter 播放导航过渡，支持 Entrance、Fade、SlideLeft、SlideRight、SlideBottom 和 Suppress；后退导航使用反向动画。`ModernNavigationView.Transition` / `TransitionDuration` 必须映射到本地 Frame，pane 开合使用独立的 EaseOut 宽度动画。动画被快速导航打断时必须清理旧 Storyboard、旧 PageHost 和过期的导航完成回调。
+`ModernFrame` 使用旧内容和新内容双 Presenter 播放导航过渡，支持 Entrance、Fade、SlideLeft、SlideRight、SlideBottom 和 Suppress；后退导航使用反向动画。转场沿用 neo 的分阶段时序：旧内容退出并清理后，新内容再进入，避免两个页面叠加位移；主窗口通过较短的 `TransitionDuration` 保持响应速度。`ModernNavigationView.Transition` / `TransitionDuration` 必须映射到本地 Frame，pane 开合使用独立的 EaseOut 宽度动画。动画被快速导航打断时必须清理旧 Storyboard、旧 PageHost 和过期的导航完成回调。
+
+重复点击当前导航项或再次 `Navigate` 到当前页面时，应在创建 Page 之前短路，不产生动画或 journal 记录。带可导航子项的父级条目默认是分组：点击父级只展开/折叠，页面导航由子项负责。
 
 ### 6.1 导航页用 Page，可嵌入内容用 UserControl
 
@@ -171,7 +173,7 @@ SpecialMenuPageView    : Page         // 导航页 wrapper
 - 滚轮位于可继续滚动的页面内层 `ScrollViewer`、打开的 ComboBox 或 Popup 时，外层必须让渡输入；内层到达边界后才允许外层接管；
 - 避免触碰页面内部自己的 `ListBox`、`ListView`、`ScrollViewer`。
 
-需要在导航后定位共享外层滚动区域的页面应实现 `INavigationScrollTarget`。内容真正呈现后，`ModernFrame` 先 reset 外层 `ContentScrollHost`，再把该 `ScrollViewer` 传给当前内容或其可视树中的定位目标。`MainWindow` 不再查找 WPF-UI `NavigationViewContentPresenter`。
+需要在导航后定位共享外层滚动区域的页面应实现 `INavigationScrollTarget`。内容真正呈现后，`ModernFrame` 先 reset 外层 `ContentScrollHost`，再把该 `ScrollViewer` 传给当前内容或其可视树中的定位目标。定位回调执行完毕后才触发 `ModernFrame.NavigationCompleted`，`ModernNavigationView` 会转发该事件；需要等待页面就位的功能应订阅事件，不要使用固定 `Task.Delay`。`MainWindow` 不再查找 WPF-UI `NavigationViewContentPresenter`。
 
 边界规则：
 

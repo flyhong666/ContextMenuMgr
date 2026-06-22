@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using ContextMenuMgr.Frontend.Controls.Modern.Frame;
 using ContextMenuMgr.Frontend.Controls.Modern.Scrolling;
 using Wpf.Ui.Abstractions;
 using Wpf.Ui.Animations;
@@ -76,6 +77,7 @@ public partial class ModernNavigationView : UserControl, INavigationView
         SetCurrentValue(ActualPaneLengthProperty, GetTargetPaneLength());
         PART_Frame.TransitionDuration = TimeSpan.FromMilliseconds(TransitionDuration);
         PART_Frame.DefaultTransitionInfo = CreateTransitionInfo(Transition);
+        PART_Frame.NavigationCompleted += OnFrameNavigationCompleted;
     }
 
     public ObservableCollection<ModernNavigationEntry> MenuEntries { get; } = [];
@@ -129,6 +131,7 @@ public partial class ModernNavigationView : UserControl, INavigationView
     public event TypedEventHandler<NavigationView, RoutedEventArgs>? BackRequested;
     public event TypedEventHandler<NavigationView, NavigatingCancelEventArgs>? Navigating;
     public event TypedEventHandler<NavigationView, NavigatedEventArgs>? Navigated;
+    public event EventHandler<ModernFrameNavigationEventArgs>? NavigationCompleted;
 
     public bool Navigate(Type pageType, object? dataContext = null)
     {
@@ -221,13 +224,31 @@ public partial class ModernNavigationView : UserControl, INavigationView
 
     private void InvokeEntry(ModernNavigationEntry entry)
     {
+        if (!entry.IsEnabled)
+        {
+            return;
+        }
+
         if (entry.HasChildren)
         {
             entry.SetExpanded(!entry.IsExpanded);
+
+            // A hierarchical item is a group first. In ContextMenuMgr the legacy group also
+            // carries FileContextMenuPage for WPF-UI compatibility; its child owns navigation.
+            if (HasNavigableDescendant(entry))
+            {
+                ItemInvoked?.Invoke(null!, new RoutedEventArgs());
+                return;
+            }
         }
 
-        if (entry.TargetPageType is not null && entry.IsEnabled)
+        if (entry.TargetPageType is not null)
         {
+            if (IsCurrentEntry(entry))
+            {
+                return;
+            }
+
             ItemInvoked?.Invoke(null!, new RoutedEventArgs());
             NavigatePage(entry.TargetPageType, null, entry);
         }
@@ -235,6 +256,11 @@ public partial class ModernNavigationView : UserControl, INavigationView
 
     private bool NavigatePage(Type pageType, object? dataContext, ModernNavigationEntry? entry)
     {
+        if (IsCurrentPage(pageType) || entry is not null && IsCurrentEntry(entry))
+        {
+            return false;
+        }
+
         var page = PART_Frame.CreatePage(pageType, dataContext);
 
         var navigatingArgs = new NavigatingCancelEventArgs(System.Windows.Controls.Button.ClickEvent, this) { Page = page };
@@ -255,6 +281,30 @@ public partial class ModernNavigationView : UserControl, INavigationView
         Navigated?.Invoke(null!, new NavigatedEventArgs(System.Windows.Controls.Button.ClickEvent, this) { Page = page });
         return true;
     }
+
+    private bool IsCurrentEntry(ModernNavigationEntry entry)
+    {
+        if (!IsCurrentPage(entry.TargetPageType))
+        {
+            return false;
+        }
+
+        return ReferenceEquals(_selectedEntry, entry)
+            || ReferenceEquals(_selectedEntry?.SourceItem, entry.SourceItem)
+            || (_selectedEntry?.TargetPageType is { } selectedType
+                && selectedType == entry.TargetPageType);
+    }
+
+    private bool IsCurrentPage(Type? pageType) =>
+        pageType is not null
+        && PART_Frame.CurrentContent is { } content
+        && (content.GetType() == pageType || pageType.IsInstanceOfType(content));
+
+    private static bool HasNavigableDescendant(ModernNavigationEntry entry) =>
+        entry.Children.Any(child => child.TargetPageType is not null || HasNavigableDescendant(child));
+
+    private void OnFrameNavigationCompleted(object? sender, ModernFrameNavigationEventArgs e) =>
+        NavigationCompleted?.Invoke(this, e);
 
     private void SetSelectedEntry(ModernNavigationEntry? entry, bool addCurrentToBackStack)
     {
@@ -365,13 +415,22 @@ public partial class ModernNavigationView : UserControl, INavigationView
 
     private void AttachSourceCollection(object? source, bool footer)
     {
-        ref var current = ref footer ? ref _footerItemsSourceCollection : ref _menuItemsSourceCollection;
-        if (current is not null)
+        var previous = footer ? _footerItemsSourceCollection : _menuItemsSourceCollection;
+        if (previous is not null)
         {
-            current.CollectionChanged -= OnItemsSourceCollectionChanged;
+            previous.CollectionChanged -= OnItemsSourceCollectionChanged;
         }
 
-        current = source as INotifyCollectionChanged;
+        var current = source as INotifyCollectionChanged;
+        if (footer)
+        {
+            _footerItemsSourceCollection = current;
+        }
+        else
+        {
+            _menuItemsSourceCollection = current;
+        }
+
         if (current is not null)
         {
             current.CollectionChanged += OnItemsSourceCollectionChanged;

@@ -17,7 +17,19 @@ public sealed class ModernNavigationIconConverter : IValueConverter
         return icon switch
         {
             SymbolRegular symbol => CreateSymbolIcon(symbol),
-            SymbolIcon symbolIcon => CreateSymbolIcon(symbolIcon.Symbol, symbolIcon.FontSize, symbolIcon.Filled),
+            SymbolIcon symbolIcon => CopyCommonProperties(
+                symbolIcon,
+                CreateSymbolIcon(symbolIcon.Symbol, symbolIcon.FontSize, symbolIcon.Filled)),
+            ImageIcon imageIcon => CopyCommonProperties(imageIcon, new ImageIcon { Source = imageIcon.Source }),
+            IconSourceElement sourceElement => CreateFromIconSource(sourceElement),
+            FontIcon fontIcon => CopyCommonProperties(fontIcon, new FontIcon
+            {
+                FontFamily = fontIcon.FontFamily,
+                FontSize = fontIcon.FontSize,
+                FontStyle = fontIcon.FontStyle,
+                FontWeight = fontIcon.FontWeight,
+                Glyph = fontIcon.Glyph
+            }),
             null => CreateFallbackIcon(),
             IconElement iconElement => Unsupported(iconElement),
             FrameworkElement element => Unsupported(element),
@@ -33,6 +45,46 @@ public sealed class ModernNavigationIconConverter : IValueConverter
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
+
+    private static FrameworkElement CreateFromIconSource(IconSourceElement sourceElement)
+    {
+        try
+        {
+            return sourceElement.CreateIconElement() is { } icon
+                ? CopyCommonProperties(sourceElement, icon)
+                : Unsupported(sourceElement);
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine(
+                $"ModernNavigationView could not create icon from '{sourceElement.GetType().FullName}': {exception.Message}");
+            return CreateFallbackIcon();
+        }
+    }
+
+    private static T CopyCommonProperties<T>(IconElement source, T target) where T : IconElement
+    {
+        target.Width = source.Width;
+        target.Height = source.Height;
+        target.MinWidth = source.MinWidth;
+        target.MinHeight = source.MinHeight;
+        target.MaxWidth = source.MaxWidth;
+        target.MaxHeight = source.MaxHeight;
+        target.Margin = source.Margin;
+        target.HorizontalAlignment = source.HorizontalAlignment;
+        target.VerticalAlignment = source.VerticalAlignment;
+
+        if (BindingOperations.GetBindingBase(source, IconElement.ForegroundProperty) is { } foregroundBinding)
+        {
+            BindingOperations.SetBinding(target, IconElement.ForegroundProperty, foregroundBinding);
+        }
+        else if (source.ReadLocalValue(IconElement.ForegroundProperty) != DependencyProperty.UnsetValue)
+        {
+            target.SetCurrentValue(IconElement.ForegroundProperty, source.Foreground);
+        }
+
+        return target;
+    }
 
     private static FrameworkElement Unsupported(object value)
     {
