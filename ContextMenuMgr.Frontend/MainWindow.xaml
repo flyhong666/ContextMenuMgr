@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:modernNavigation="clr-namespace:ContextMenuMgr.Frontend.Controls.Modern.Navigation"
     xmlns:pages="clr-namespace:ContextMenuMgr.Frontend.Views.Pages"
     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
@@ -288,23 +289,21 @@
         </Border>
 
         <Grid Grid.Row="3" Margin="5,0,5,5">
-            <ui:NavigationView
+            <modernNavigation:ModernNavigationView
                 x:Name="RootNavigation"
                 IsBackButtonVisible="Auto"
                 IsPaneOpen="True"
                 IsPaneToggleVisible="False"
                 OpenPaneLength="257"
                 PaneDisplayMode="Left">
-                <ui:NavigationView.MenuItems>
+                <modernNavigation:ModernNavigationView.MenuItems>
                     <ui:NavigationViewItem
-                        x:Name="LegacyContextMenuItems"
                         Content="{Binding LegacyContextMenuItemsName}"
                         Icon="{ui:SymbolIcon Symbol=Window24}"
                         IsExpanded="True"
                         TargetPageType="{x:Type pages:FileContextMenuPage}">
                         <ui:NavigationViewItem.MenuItems>
                             <ui:NavigationViewItem
-                                x:Name="FileNavigationItem"
                                 Content="{Binding FileCategoryName}"
                                 Icon="{ui:SymbolIcon Symbol=Document24}"
                                 TargetPageType="{x:Type pages:FileContextMenuPage}" />
@@ -384,15 +383,15 @@
                         Icon="{ui:SymbolIcon Symbol=ChatWarning24}"
                         InfoBadge="{Binding ApprovalsBadge}"
                         TargetPageType="{x:Type pages:ApprovalsPage}" />
-                </ui:NavigationView.MenuItems>
+                </modernNavigation:ModernNavigationView.MenuItems>
 
-                <ui:NavigationView.FooterMenuItems>
+                <modernNavigation:ModernNavigationView.FooterMenuItems>
                     <ui:NavigationViewItem
                         Content="{Binding SettingsTitle}"
                         Icon="{ui:SymbolIcon Symbol=Settings24}"
                         TargetPageType="{x:Type pages:SettingsPage}" />
-                </ui:NavigationView.FooterMenuItems>
-            </ui:NavigationView>
+                </modernNavigation:ModernNavigationView.FooterMenuItems>
+            </modernNavigation:ModernNavigationView>
 
         </Grid>
     </Grid>

@@ -9,7 +9,7 @@ namespace ContextMenuMgr.Frontend.Views;
 /// </summary>
 public partial class OtherRulesPageView : Page
 {
-    // WPF-UI's NavigationView wraps page content in a DynamicScrollViewer that gives
+    // ModernFrame wraps page content in a shared outer ScrollViewer that gives
     // content infinite height, causing split-panel tabs to scroll together instead of
     // independently. We disable this outer ScrollViewer for split-panel tabs so that
     // the content height is constrained to the viewport, allowing inner ScrollViewers
@@ -31,7 +31,7 @@ public partial class OtherRulesPageView : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Find the outer DynamicScrollViewer injected by WPF-UI NavigationView
+        // Find the outer scroll host owned by ModernFrame.
         _outerScrollViewer = FindParentScrollViewer(this);
         if (_outerScrollViewer is null) return;
 

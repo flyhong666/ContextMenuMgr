@@ -1,9 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ContextMenuMgr.Frontend.Services;
 using ContextMenuMgr.Frontend.ViewModels;
@@ -21,7 +19,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly UpdateCheckService _updateCheckService;
     private readonly MainWindowPlacementService _windowPlacementService;
-    private Wpf.Ui.Controls.NavigationViewContentPresenter? _navigationContentPresenter;
 #if DEBUG
     private readonly IServiceProvider _serviceProvider;
     private DebugToolsWindow? _debugToolsWindow;
@@ -220,7 +217,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AttachNavigationContentPresenter();
         var targetPageType = _pendingPageType ?? typeof(FileContextMenuPage);
         RootNavigation.Navigate(targetPageType);
         _updateCheckService.StartInitialCheck();
@@ -228,104 +224,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (_navigationContentPresenter is not null)
-        {
-            _navigationContentPresenter.ContentRendered -= OnNavigationContentRendered;
-        }
-
         _windowPlacementService.SavePlacement(this);
-    }
-
-    private void AttachNavigationContentPresenter()
-    {
-        var presenter = FindDescendant<Wpf.Ui.Controls.NavigationViewContentPresenter>(RootNavigation);
-        if (ReferenceEquals(_navigationContentPresenter, presenter))
-        {
-            return;
-        }
-
-        if (_navigationContentPresenter is not null)
-        {
-            _navigationContentPresenter.ContentRendered -= OnNavigationContentRendered;
-        }
-
-        _navigationContentPresenter = presenter;
-        if (_navigationContentPresenter is not null)
-        {
-            _navigationContentPresenter.ContentRendered += OnNavigationContentRendered;
-        }
-    }
-
-    private void OnNavigationContentRendered(object? sender, EventArgs e)
-    {
-        ResetNavigationFrameScrollOffset();
-    }
-
-    private void ResetNavigationFrameScrollOffset()
-    {
-        var frame = _navigationContentPresenter;
-        if (frame is null)
-        {
-            return;
-        }
-
-        // WPF-UI wraps NavigationViewContentPresenter in its own DynamicScrollViewer.
-        // That viewer is shared by all navigated pages, so its offset must be reset
-        // whenever the NavigationView switches content. Avoid touching page-owned
-        // ListBox/ScrollViewer instances so each page keeps control of its own lists.
-        var navigationScrollViewer = FindDescendant<ScrollViewer>(
-            frame,
-            scrollViewer => ReferenceEquals(scrollViewer.TemplatedParent, frame));
-
-        navigationScrollViewer?.ScrollToHome();
-        navigationScrollViewer?.ScrollToLeftEnd();
-        if (navigationScrollViewer is not null)
-        {
-            FindDescendantImplementing<INavigationScrollTarget>(frame)
-                ?.ApplyNavigationScrollPosition(navigationScrollViewer);
-        }
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root, Predicate<T>? predicate = null)
-        where T : DependencyObject
-    {
-        var childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (var index = 0; index < childCount; index++)
-        {
-            var child = VisualTreeHelper.GetChild(root, index);
-            if (child is T typedChild && (predicate is null || predicate(typedChild)))
-            {
-                return typedChild;
-            }
-
-            var descendant = FindDescendant(child, predicate);
-            if (descendant is not null)
-            {
-                return descendant;
-            }
-        }
-
-        return null;
-    }
-
-    private static T? FindDescendantImplementing<T>(DependencyObject root) where T : class
-    {
-        if (root is T match)
-        {
-            return match;
-        }
-
-        var childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (var index = 0; index < childCount; index++)
-        {
-            var descendant = FindDescendantImplementing<T>(VisualTreeHelper.GetChild(root, index));
-            if (descendant is not null)
-            {
-                return descendant;
-            }
-        }
-
-        return null;
     }
 
     private void ApplyWindowIcon()
