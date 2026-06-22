@@ -463,8 +463,6 @@ public partial class ModernNavigationView : UserControl, INavigationView
         DisposeRootEntries(FooterMenuEntries);
     }
 
-    private void PaneToggleButton_OnClick(object sender, RoutedEventArgs e) => IsPaneOpen = !IsPaneOpen;
-
     private void BackButton_OnClick(object sender, RoutedEventArgs e) => GoBack();
 
     private static void OnIsPaneOpenChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

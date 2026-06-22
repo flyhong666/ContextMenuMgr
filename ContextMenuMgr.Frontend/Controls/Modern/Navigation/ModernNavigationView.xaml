@@ -167,39 +167,14 @@
             Visibility="{Binding IsPaneVisible, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" MinHeight="44" Margin="4,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Button
-                        Width="40"
-                        Height="36"
-                        Margin="0,4"
-                        Click="PaneToggleButton_OnClick"
-                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                        Visibility="{Binding IsPaneToggleVisible, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ui:SymbolIcon Symbol="Navigation24" />
-                    </Button>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock
-                            FontSize="14"
-                            FontWeight="SemiBold"
-                            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                            Text="{Binding PaneTitle, ElementName=Root}" />
-                        <ContentPresenter Content="{Binding PaneHeader, ElementName=Root}" />
-                    </StackPanel>
-                </Grid>
-
                 <ListBox
                     x:Name="PART_MenuList"
-                    Grid.Row="1"
+                    Grid.Row="0"
                     Background="Transparent"
                     BorderThickness="0"
                     ItemTemplate="{StaticResource ModernNavigationEntryTemplate}"
@@ -224,10 +199,10 @@
                     </ListBox.ItemContainerStyle>
                 </ListBox>
 
-                <ContentPresenter Grid.Row="2" Content="{Binding PaneFooter, ElementName=Root}" />
+                <ContentPresenter Grid.Row="1" Content="{Binding PaneFooter, ElementName=Root}" />
 
                 <ListBox
-                    Grid.Row="3"
+                    Grid.Row="2"
                     Margin="0,4"
                     Background="Transparent"
                     BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
