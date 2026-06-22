@@ -79,6 +79,8 @@ SendTo 菜单来自用户 profile 下的目录，当前代码通过 `BackendUser
 | 删除 / 恢复 | 使用 `.deleted` 机制进行软删除和恢复。 |
 | 编辑 | 更新 `.lnk` 的目标、参数、工作目录、图标等。 |
 
+除了用户 SendTo 目录中的真实文件，快照还会追加 Explorer 动态生成的当前可用可移动磁盘目标，例如 USB 盘。此类项来自 `DriveInfo.GetDrives()` 中 `DriveType.Removable` 且 `IsReady` 的驱动器，使用 `sendto:drive:X` 形式的稳定 id，并通过 metadata 标记为 Explorer-generated dynamic target。它们不对应 SendTo 目录内的文件，因此 `CanEdit=false`、`CanDelete=false`，前端不显示开关，后端也不会对它们执行创建、删除、编辑或 hidden 属性切换。
+
 SendTo 是文件系统菜单，不是 registry-only 功能。没有正确 profile path 时，服务可能改到错误用户目录或找不到目标。
 
 ## 6. WinX

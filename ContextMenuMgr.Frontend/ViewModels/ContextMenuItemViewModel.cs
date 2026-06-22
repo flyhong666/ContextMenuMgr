@@ -69,7 +69,10 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public ContextMenuCategory Category => Entry.Category;
 
-    public string DisplayName => Entry.DisplayName;
+    public string DisplayName => string.Equals(Entry.Id, "special:recyclebin:pintohome", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(Entry.DisplayName, "RecycleBinPinToQuickAccess", StringComparison.Ordinal)
+        ? _localization.Translate("RecycleBinPinToQuickAccess")
+        : Entry.DisplayName;
 
     public string KeyName => Entry.KeyName;
 
@@ -871,6 +874,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
+        OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(ShowNotes));
         OnPropertyChanged(nameof(KeyName));

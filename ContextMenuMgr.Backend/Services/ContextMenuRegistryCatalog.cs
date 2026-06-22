@@ -19,6 +19,10 @@ public sealed class ContextMenuRegistryCatalog
 {
     private const string BlockedShellExtensionsPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
     internal const string Windows11MonitoredRootPath = @"PackagedCom\Windows11ContextMenu";
+    private const string RecycleBinPinToHomeId = "special:recyclebin:pintohome";
+    private const string RecycleBinPinToHomeRegistryPath = @"HKEY_CLASSES_ROOT\Folder\shell\pintohome";
+    private const string RecycleBinPinToHomeSourceRootPath = @"Folder\shell";
+    private const string RecycleBinParsingNameExclusion = @"System.ParsingName:<>""::{645FF040-5081-101B-9F08-00AA002F954E}""";
 
     private static readonly RegistryRootDescriptor[] MonitoredRoots =
     [
@@ -399,6 +403,11 @@ public sealed class ContextMenuRegistryCatalog
         BackendUserContext? userContext = null,
         ContextMenuEntry? fallbackItem = null)
     {
+        if (string.Equals(itemId, RecycleBinPinToHomeId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await ApplyRecycleBinPinToHomeStateAsync(enable, cancellationToken, userContext);
+        }
+
         var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
         if (item is null)
@@ -431,7 +440,7 @@ public sealed class ContextMenuRegistryCatalog
             switch (item.EntryKind)
             {
                 case ContextMenuEntryKind.ShellVerb:
-                    SetShellVerbEnabled(item.BackendRegistryPath, enable);
+                    SetShellVerbEnabled(item.BackendRegistryPath, item.RegistryPath, enable);
                     break;
                 case ContextMenuEntryKind.ShellExtension:
                     SetShellExtensionEnabled(item, enable);
@@ -1265,7 +1274,7 @@ public sealed class ContextMenuRegistryCatalog
             var effectiveRelativePath = $@"{stableRelativePath}\{keyName}";
             var isEnabled = entryKind switch
             {
-                ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
+                ContextMenuEntryKind.ShellVerb => ShellVerbVisibility.IsEnabled(itemKey),
                 ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
                 _ => true
             };
@@ -1474,7 +1483,7 @@ public sealed class ContextMenuRegistryCatalog
         switch (item.EntryKind)
         {
             case ContextMenuEntryKind.ShellVerb when !item.IsWindows11ContextMenu:
-                SetShellVerbEnabled(item.BackendRegistryPath, enable: false);
+                SetShellVerbEnabled(item.BackendRegistryPath, item.RegistryPath, enable: false);
                 break;
             case ContextMenuEntryKind.ShellExtension when item.IsWindows11ContextMenu:
                 if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable: false))
@@ -1549,6 +1558,11 @@ public sealed class ContextMenuRegistryCatalog
             results.Add(item);
         }
 
+        if (TryCreateRecycleBinPinToHomeEntry() is { } recycleBinPinToHomeEntry)
+        {
+            results.Add(recycleBinPinToHomeEntry);
+        }
+
         if (_windows11Catalog.IsSupported)
         {
             results.AddRange(await _windows11Catalog.EnumerateEntriesAsync(cancellationToken, userContext));
@@ -1621,7 +1635,7 @@ public sealed class ContextMenuRegistryCatalog
                 var effectiveRelativePath = $@"{root.RelativePath}\{subKeyName}";
                 var isEnabled = root.EntryKind switch
                 {
-                    ContextMenuEntryKind.ShellVerb => itemKey.GetValue("LegacyDisable") is null,
+                    ContextMenuEntryKind.ShellVerb => ShellVerbVisibility.IsEnabled(itemKey),
                     ContextMenuEntryKind.ShellExtension => !IsShellExtensionBlocked(handlerClsid),
                     _ => true
                 };
@@ -2167,19 +2181,148 @@ public sealed class ContextMenuRegistryCatalog
         return blockedKey?.GetValue(handlerClsid) is not null;
     }
 
-    private static void SetShellVerbEnabled(string registryPath, bool enable)
+    private static ContextMenuEntry? TryCreateRecycleBinPinToHomeEntry()
+    {
+        using var itemKey = OpenRegistryKey(RecycleBinPinToHomeRegistryPath, writable: false);
+        if (itemKey is null)
+        {
+            return null;
+        }
+
+        var displayName = ShellMetadataResolver.ResolveVerbDisplayName(itemKey, "pintohome");
+        if (string.IsNullOrWhiteSpace(displayName) || string.Equals(displayName, "pintohome", StringComparison.OrdinalIgnoreCase))
+        {
+            displayName = "RecycleBinPinToQuickAccess";
+        }
+
+        var appliesTo = itemKey.GetValue("AppliesTo")?.ToString();
+        var isEnabled = !ContainsRecycleBinParsingNameExclusion(appliesTo);
+
+        return new ContextMenuEntry
+        {
+            Id = RecycleBinPinToHomeId,
+            Category = ContextMenuCategory.RecycleBin,
+            EntryKind = ContextMenuEntryKind.ShellVerb,
+            KeyName = "pintohome",
+            DisplayName = NormalizeDisplayName(displayName),
+            EditableText = NormalizeDisplayName(displayName),
+            RegistryPath = @"Folder\shell\pintohome",
+            BackendRegistryPath = RecycleBinPinToHomeRegistryPath,
+            SourceRootPath = RecycleBinPinToHomeSourceRootPath,
+            IsEnabled = isEnabled,
+            IsPresentInRegistry = true,
+            Notes = "Controls whether the Recycle Bin exposes the Folder\\shell\\pintohome verb."
+        };
+    }
+
+    private async Task<PipeResponse> ApplyRecycleBinPinToHomeStateAsync(
+        bool enable,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext)
+    {
+        var item = TryCreateRecycleBinPinToHomeEntry();
+        if (item is null)
+        {
+            return CreateFailure("Recycle Bin 'Pin to Quick access' registry key was not found.");
+        }
+
+        try
+        {
+            using var menuKey = OpenRegistryKey(RecycleBinPinToHomeRegistryPath, writable: true)
+                ?? throw new InvalidOperationException($"Unable to open {RecycleBinPinToHomeRegistryPath} for writing.");
+
+            var existingAppliesTo = menuKey.GetValue("AppliesTo")?.ToString();
+            var nextAppliesTo = enable
+                ? RemoveRecycleBinParsingNameExclusion(existingAppliesTo)
+                : AddRecycleBinParsingNameExclusion(existingAppliesTo);
+
+            if (string.IsNullOrWhiteSpace(nextAppliesTo))
+            {
+                menuKey.DeleteValue("AppliesTo", throwOnMissingValue: false);
+            }
+            else
+            {
+                menuKey.SetValue("AppliesTo", nextAppliesTo, RegistryValueKind.String);
+            }
+
+            var states = await _stateStore.LoadAsync(cancellationToken);
+            var state = GetOrCreateState(states, item);
+            state.DesiredEnabled = enable;
+            state.ObservedEnabled = enable;
+            state.IsDeleted = false;
+            state.IsPendingApproval = false;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            state.DeletedAtUtc = null;
+            state.BackupFilePath = null;
+            await _stateStore.SaveAsync(states, cancellationToken);
+
+            ShellChangeNotifier.NotifyAssociationsChanged();
+            var refreshed = TryCreateRecycleBinPinToHomeEntry() ?? item with { IsEnabled = enable };
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"{(enable ? "Enabled" : "Disabled")} {refreshed.DisplayName}.",
+                Item = refreshed
+            };
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied when updating Recycle Bin Pin to Quick access. Sid={DiagnosticLogFormatter.FormatSid(userContext)}, Error={ex}", cancellationToken);
+            return CreateFailure("Access denied while updating Recycle Bin 'Pin to Quick access'.", item);
+        }
+        catch (SecurityException ex)
+        {
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Security error when updating Recycle Bin Pin to Quick access. Sid={DiagnosticLogFormatter.FormatSid(userContext)}, Error={ex}", cancellationToken);
+            return CreateFailure("Access denied while updating Recycle Bin 'Pin to Quick access'.", item);
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to update Recycle Bin Pin to Quick access: {ex}", cancellationToken);
+            return CreateFailure(ex.Message, item);
+        }
+    }
+
+    private static bool ContainsRecycleBinParsingNameExclusion(string? appliesTo)
+        => !string.IsNullOrWhiteSpace(appliesTo)
+           && appliesTo.Contains(RecycleBinParsingNameExclusion, StringComparison.OrdinalIgnoreCase);
+
+    private static string AddRecycleBinParsingNameExclusion(string? appliesTo)
+    {
+        if (string.IsNullOrWhiteSpace(appliesTo))
+        {
+            return RecycleBinParsingNameExclusion;
+        }
+
+        if (ContainsRecycleBinParsingNameExclusion(appliesTo))
+        {
+            return appliesTo.Trim();
+        }
+
+        return $"{appliesTo.Trim()} AND {RecycleBinParsingNameExclusion}";
+    }
+
+    private static string? RemoveRecycleBinParsingNameExclusion(string? appliesTo)
+    {
+        if (string.IsNullOrWhiteSpace(appliesTo))
+        {
+            return appliesTo;
+        }
+
+        var updated = Regex.Replace(
+            appliesTo,
+            $@"\s+AND\s+{Regex.Escape(RecycleBinParsingNameExclusion)}|{Regex.Escape(RecycleBinParsingNameExclusion)}\s+AND\s+|{Regex.Escape(RecycleBinParsingNameExclusion)}",
+            string.Empty,
+            RegexOptions.IgnoreCase);
+
+        return string.IsNullOrWhiteSpace(updated) ? null : updated.Trim();
+    }
+
+    private static void SetShellVerbEnabled(string registryPath, string displayRegistryPath, bool enable)
     {
         using var menuKey = OpenRegistryKey(registryPath, writable: true)
             ?? throw new InvalidOperationException($"Unable to open {registryPath} for writing.");
 
-        if (enable)
-        {
-            menuKey.DeleteValue("LegacyDisable", throwOnMissingValue: false);
-        }
-        else
-        {
-            menuKey.SetValue("LegacyDisable", string.Empty, RegistryValueKind.String);
-        }
+        ShellVerbVisibility.SetEnabled(menuKey, displayRegistryPath, enable);
     }
 
     private static void SetShellVerbAttribute(string registryPath, ContextMenuShellAttribute attribute, bool enable)

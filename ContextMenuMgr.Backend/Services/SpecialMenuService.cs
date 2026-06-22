@@ -29,6 +29,7 @@ public sealed class SpecialMenuService
     private const string WinXGlobalRestoreDisabledMessage = "Win+X global restore is disabled to avoid deleting the entire user Win+X folder. Restore a single group instead.";
     private const string WinXUndoDisabledMessage = "Win+X undo is currently disabled because Win+X items are deleted directly.";
     private const string WinXPurgeDeletedDisabledMessage = "Win+X deleted-item purge is disabled because Win+X items are deleted directly.";
+    private const string DynamicSendToDriveIdPrefix = "sendto:drive:";
 
     private readonly FileLogger _logger;
 
@@ -77,6 +78,11 @@ public sealed class SpecialMenuService
             SpecialMenuEntry updated;
             try
             {
+                if (item.Kind == SpecialMenuKind.SendTo && IsDynamicSendToDrive(item))
+                {
+                    throw new InvalidOperationException("Explorer-generated SendTo drive targets cannot be toggled.");
+                }
+
                 updated = item.Kind switch
                 {
                     SpecialMenuKind.ShellNew => SetShellNewEnabled(item, enabled, RequireUserContext(userContext)),
@@ -225,6 +231,11 @@ public sealed class SpecialMenuService
                     break;
                 case SpecialMenuKind.SendTo:
                 {
+                    if (IsDynamicSendToDrive(item))
+                    {
+                        return Failure("Explorer-generated SendTo drive targets cannot be deleted.", operationId);
+                    }
+
                     var result = SoftDeleteFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), _logger);
                     if (!result.Success)
                     {
@@ -1283,12 +1294,15 @@ public sealed class SpecialMenuService
         }
 
         Directory.CreateDirectory(sendToPath);
-        return Directory.EnumerateFileSystemEntries(sendToPath)
+        var directoryItems = Directory.EnumerateFileSystemEntries(sendToPath)
             .Where(static path => !string.Equals(Path.GetFileName(path), "desktop.ini", StringComparison.OrdinalIgnoreCase)
                                  && !string.Equals(Path.GetFileName(path), DeletedFolderName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(static path => DesktopIniStore.GetLocalizedFileName(path), StringComparer.OrdinalIgnoreCase)
             .ThenBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-            .Select(CreateSendToEntry)
+            .Select(CreateSendToEntry);
+
+        return directoryItems
+            .Concat(GetDynamicSendToDriveItems())
             .ToArray();
     }
 
@@ -1309,6 +1323,11 @@ public sealed class SpecialMenuService
 
     private static SpecialMenuEntry UpdateSendTo(SendToUpdateRequest request, BackendUserContext context)
     {
+        if (IsDynamicSendToDriveId(request.Id))
+        {
+            throw new InvalidOperationException("Explorer-generated SendTo drive targets cannot be edited.");
+        }
+
         var path = DecodeId(request.Id);
         EnsurePathUnder(path, GetSendToPath(context));
         if (!File.Exists(path) && !Directory.Exists(path))
@@ -1373,6 +1392,58 @@ public sealed class SpecialMenuService
                 ["EntryType"] = Directory.Exists(path) ? "Directory" : Path.GetExtension(path).TrimStart('.')
             }
         };
+    }
+
+    private static IEnumerable<SpecialMenuEntry> GetDynamicSendToDriveItems()
+    {
+        var items = new List<SpecialMenuEntry>();
+        foreach (var drive in DriveInfo.GetDrives().OrderBy(static drive => drive.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (drive.DriveType != DriveType.Removable || !drive.IsReady)
+                {
+                    continue;
+                }
+
+                var rootPath = drive.RootDirectory.FullName;
+                var driveName = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var label = string.Empty;
+                try
+                {
+                    label = drive.VolumeLabel;
+                }
+                catch
+                {
+                    // Some removable media can become unavailable between IsReady and metadata reads.
+                }
+
+                items.Add(new SpecialMenuEntry
+                {
+                    Id = DynamicSendToDriveIdPrefix + driveName.TrimEnd(':').ToUpperInvariant(),
+                    Kind = SpecialMenuKind.SendTo,
+                    DisplayName = string.IsNullOrWhiteSpace(label) ? driveName : $"{label} ({driveName})",
+                    KeyName = driveName,
+                    IsEnabled = true,
+                    IconPath = rootPath,
+                    Path = rootPath,
+                    TargetPath = rootPath,
+                    CanEdit = false,
+                    CanDelete = false,
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["EntryType"] = "DynamicDrive",
+                        ["IsExplorerGenerated"] = bool.TrueString
+                    }
+                });
+            }
+            catch
+            {
+                // Ignore drives that disappear or reject metadata access during enumeration.
+            }
+        }
+
+        return items;
     }
 
     private static (string? IconPath, int IconIndex, string? FallbackPath) ResolveSendToIcon(string path, ShortcutInfo? shortcut)
@@ -2574,6 +2645,11 @@ public sealed class SpecialMenuService
 
     private static SpecialMenuEntry SetFileSystemItemEnabled(SpecialMenuEntry item, bool enabled, string allowedRoot)
     {
+        if (IsDynamicSendToDrive(item))
+        {
+            throw new InvalidOperationException("Explorer-generated SendTo drive targets cannot be toggled.");
+        }
+
         var path = item.Path ?? DecodeId(item.Id);
         EnsurePathUnder(path, allowedRoot);
         var attributes = File.GetAttributes(path);
@@ -3900,6 +3976,13 @@ public sealed class SpecialMenuService
 
         return Encoding.UTF8.GetString(Convert.FromBase64String(id[(index + 1)..]));
     }
+
+    private static bool IsDynamicSendToDrive(SpecialMenuEntry item)
+        => item.Kind == SpecialMenuKind.SendTo && IsDynamicSendToDriveId(item.Id);
+
+    private static bool IsDynamicSendToDriveId(string? id)
+        => !string.IsNullOrWhiteSpace(id)
+           && id.StartsWith(DynamicSendToDriveIdPrefix, StringComparison.OrdinalIgnoreCase);
 
     private static PipeResponse Success(string message, SpecialMenuEntry? item, Guid? operationId) => new()
     {

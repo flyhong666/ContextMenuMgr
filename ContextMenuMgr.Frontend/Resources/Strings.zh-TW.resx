@@ -312,6 +312,9 @@
   <data name="RecycleBinCategoryDescription" xml:space="preserve">
     <value>HKCR\CLSID\{645FF040-5081-101B-9F08-00AA002F954E} 的 Shell 根路徑</value>
   </data>
+  <data name="RecycleBinPinToQuickAccess" xml:space="preserve">
+    <value>釘選到快速存取</value>
+  </data>
   <data name="ExplorerCategoryName" xml:space="preserve">
     <value>檔案總管空白區域</value>
   </data>

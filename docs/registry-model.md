@@ -99,12 +99,14 @@
 
 | 类型 | 当前实现倾向 |
 | --- | --- |
-| `shell` verb | 可能使用标记值、状态库或具体 key 操作；常见 Windows 语义包括 `LegacyDisable`。 |
+| `shell` verb | 普通开关通过 `ShellVerbVisibility` 统一判断和写入，综合处理 `HideBasedOnVelocityId`、`ProgrammaticAccessOnly`、`LegacyDisable` 和相关 `CommandFlags`，避免只依赖 `LegacyDisable`。 |
 | `shellex` handler | 可能在 `ContextMenuHandlers` 与 disabled mirror 路径之间移动。 |
 | disabled mirror path | 用 `-ContextMenuHandlers` 识别被移出的 handler。 |
 | Windows 自带标记 | `Extended`、`NoWorkingDirectory`、`NeverDefault` 等属于属性，不等于禁用状态。 |
 
 不要承诺所有菜单项都能用同一种方式开关。某些项由第三方安装器、系统策略或 COM handler 自身逻辑控制，项目只能 best-effort 地修改注册表状态并记录结果。
+
+Recycle Bin 页面额外投影一个虚拟传统项 `special:recyclebin:pintohome`，用于控制系统的“Pin to Quick access” verb。它的真实注册表位置是 `HKCR\Folder\shell\pintohome`，但只在 Recycle Bin 分类显示。启用状态不使用普通 shell verb 隐藏值，而是检查 `AppliesTo` 是否包含 `System.ParsingName:<>"::{645FF040-5081-101B-9F08-00AA002F954E}"`；禁用时只追加这个 Recycle Bin 排除条件，启用时只移除这个排除条件并保留其它 `AppliesTo` 子句。如果 `pintohome` key 不存在，快照不显示该虚拟项。
 
 普通 ShellVerb 的命令文本编辑不解析命令行、不拆分程序和参数、也不重写引号；`SetCommandText` 只把用户输入的字符串原样写到 `<verb>\command` 的默认 `REG_SZ`。后端会先检查 `CanEditCommandText` 和当前注册表形态，并经过 Registry Write Protection preflight；不支持 Shell Extension、Windows 11 packaged context menu、`SubCommands` / `ExtendedSubCommandsKey` 父级、`DelegateExecute`、`DropTarget\CLSID` 或 `ExplorerCommandHandler` 项。
 

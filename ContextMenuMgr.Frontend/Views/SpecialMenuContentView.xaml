@@ -93,7 +93,7 @@
                             Command="{Binding RestoreDefaultsCommand}"
                             Content="{Binding RestoreDefaultsText}"
                             Icon="{ui:SymbolIcon Symbol=ArrowReset24}"
-                            Visibility="{Binding ShowRestoreDefaults, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            Visibility="Collapsed" />
                         <ui:Button
                             Margin="8,0,0,0"
                             Command="{Binding RefreshCommand}"
