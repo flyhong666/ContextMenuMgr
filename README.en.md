@@ -8,6 +8,10 @@
   <span align="center">Context Menu Manager Plus is a powerful utility that help you manage you context menu on Windows and avoid third party to add rubbish to your context menu.</span>
 </p>
 
+![GitHub Repo stars](https://img.shields.io/github/stars/PLFJY/ContextMenuMgr?style=?style=flat-square) ![GitHub License](https://img.shields.io/github/license/PLFJY/ContextMenuMgr) ![GitHub Release](https://img.shields.io/github/v/release/PLFJY/ContextMenuMgr)
+
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/PLFJY/ContextMenuMgr) ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/PLFJY/ContextMenuMgr) ![GitHub forks](https://img.shields.io/github/forks/PLFJY/ContextMenuMgr?style=flat-square)
+
 [中文版 README](./README.md)
 
 > [!WARNING]

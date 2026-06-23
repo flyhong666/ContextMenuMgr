@@ -8,6 +8,10 @@
   <span align="center">Context Menu Manager Plus 是一个强大的实用程序，它可帮助您管理 Windows 上的右键菜单，并避免第三方向你的右键菜单里塞屎。</span>
 </p>
 
+![GitHub Repo stars](https://img.shields.io/github/stars/PLFJY/ContextMenuMgr?style=?style=flat-square) ![GitHub License](https://img.shields.io/github/license/PLFJY/ContextMenuMgr) ![GitHub Release](https://img.shields.io/github/v/release/PLFJY/ContextMenuMgr)
+
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/PLFJY/ContextMenuMgr) ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-pr/PLFJY/ContextMenuMgr) ![GitHub forks](https://img.shields.io/github/forks/PLFJY/ContextMenuMgr?style=flat-square)
+
 [English Version](./README.en.md)
 
 > [!WARNING]
