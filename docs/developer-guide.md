@@ -129,7 +129,9 @@ ContextMenuRegistryMonitor 轮询快照
 
 当 `Command` 没有 `Default` 时，后端按 BluePointLilac 的规则由 `FileName` + `Arguments` 生成注册表默认值；`FileName` 或 `Arguments` 为空且包含 `CreateFile` 时，会写入 `RuntimePaths.GeneratedProgramsDirectory` 下的持久脚本文件。`.bat` / `.cmd` 使用系统默认编码，其它生成文件使用 Unicode。启用后的注册表命令必须直接指向系统工具或这些持久生成文件，而不是依赖后端服务继续运行。
 
-增强菜单字典和后端写入层会把直接作为可执行文件使用的裸 `cmd` / `cmd.exe` 规范化为 `%SystemRoot%\System32\cmd.exe`，把裸 `explorer` / `explorer.exe` 规范化为 `%SystemRoot%\explorer.exe`；`Command Default` 只在命令开头是这些安全前缀时改写可执行文件部分。`Arguments` 和生成脚本中直接启动 Explorer 的低风险位置也应使用 `%SystemRoot%\explorer.exe`，但不要把 `taskkill /im explorer.exe`、`tskill explorer`、图标引用或进程名匹配参数误改成路径。写入普通 `MUIVerb` 等可见标签时会移除 Win32 菜单加速键 `&`，但保留 `&&` 表示的字面量 `&`，并且不处理 `@shell32.dll,-...` 这类资源引用。
+`ShellExecute` 只在确实需要 ShellExecute 专属行为时才保留旧的 `mshta vbscript:createobject("shell.application").shellexecute(...)` 包装，例如 `Verb="runas"`、显式非空 `Directory` 或未知 ShellExecute 属性。空 `<ShellExecute/>`、`Verb="open"`，以及只有 `WindowStyle` 的增强菜单项会直接写成 `<FileName> <Arguments>`，避免多层 XML / C# / 注册表 / mshta / VBScript 转义导致简单命令失效。`runas` / 管理员增强菜单项暂时仍走旧包装，后续需要单独设计现代启动策略。
+
+增强菜单字典和后端写入层会把直接作为可执行文件使用的裸 `cmd` / `cmd.exe` 规范化为 `C:\Windows\System32\cmd.exe`，把裸 `explorer` / `explorer.exe` 规范化为 `C:\Windows\explorer.exe`；`Command Default` 只在命令开头是这些安全前缀时改写可执行文件部分。`Arguments` 和生成脚本中直接启动 Explorer 的低风险位置也应使用 `C:\Windows\explorer.exe`，但不要把 `taskkill /im explorer.exe`、`tskill explorer`、图标引用或进程名匹配参数误改成路径。写入普通 `MUIVerb` 等可见标签时会移除 Win32 菜单加速键 `&`，但保留 `&&` 表示的字面量 `&`，并且不处理 `@shell32.dll,-...` 这类资源引用。
 
 ## 6. 新菜单项检测与审核
 

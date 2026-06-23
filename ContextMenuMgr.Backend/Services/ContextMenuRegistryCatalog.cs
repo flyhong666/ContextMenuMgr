@@ -894,7 +894,7 @@ public sealed class ContextMenuRegistryCatalog
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName, userContext);
+                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName, userContext, _logger);
             }
             else if (itemElement.Element("Guid") is not null)
             {
@@ -2408,7 +2408,8 @@ public sealed class ContextMenuRegistryCatalog
         XElement itemElement,
         bool enable,
         string cultureName,
-        BackendUserContext userContext)
+        BackendUserContext userContext,
+        FileLogger? logger)
     {
         var keyName = itemElement.Attribute("KeyName")?.Value?.Trim();
         if (string.IsNullOrWhiteSpace(keyName))
@@ -2419,7 +2420,7 @@ public sealed class ContextMenuRegistryCatalog
         var registryPath = $@"{relativeGroupPath}\shell\{keyName}";
         if (enable)
         {
-            WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName, userContext);
+            WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName, userContext, logger);
         }
         else
         {
@@ -2556,7 +2557,12 @@ public sealed class ContextMenuRegistryCatalog
         return $@"{parentRelativePath}\{candidate}";
     }
 
-    private static void WriteEnhanceSubKeysValue(XElement keyElement, string registryPath, string cultureName, BackendUserContext userContext)
+    private static void WriteEnhanceSubKeysValue(
+        XElement keyElement,
+        string registryPath,
+        string cultureName,
+        BackendUserContext userContext,
+        FileLogger? logger)
     {
         if (!ShouldIncludeNode(keyElement, cultureName))
         {
@@ -2586,7 +2592,7 @@ public sealed class ContextMenuRegistryCatalog
         }
         else if (string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase))
         {
-            WriteEnhanceCommandValue(keyElement, registryPath, cultureName, userContext);
+            WriteEnhanceCommandValue(keyElement, registryPath, cultureName, userContext, logger);
         }
 
         WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath, cultureName, userContext);
@@ -2599,7 +2605,7 @@ public sealed class ContextMenuRegistryCatalog
 
         foreach (var childElement in subKeyElement.Elements())
         {
-            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName, userContext);
+            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName, userContext, logger);
         }
     }
 
@@ -2657,7 +2663,32 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private static void WriteEnhanceCommandValue(XElement commandElement, string registryPath, string cultureName, BackendUserContext userContext)
+    private static void WriteEnhanceCommandValue(
+        XElement commandElement,
+        string registryPath,
+        string cultureName,
+        BackendUserContext userContext,
+        FileLogger? logger)
+    {
+        var compilation = CompileEnhanceCommandValue(commandElement, cultureName);
+
+        logger?.LogFireAndForget(
+            "EnhanceCommandCompile: "
+            + $"KeyName={GetEnhanceCommandKeyName(commandElement)}, "
+            + $"FileName={compilation.FileName}, "
+            + $"HasShellExecute={compilation.HasShellExecute}, "
+            + $"ShellExecuteVerb={compilation.ShellExecuteVerb}, "
+            + $"DirectCommandEmitted={compilation.DirectCommandEmitted}, "
+            + $"WrapperReason={compilation.WrapperReason}.");
+
+        EnableBackupPrivilege();
+
+        using var userClasses = GetUserClassesRoot(userContext, writable: true);
+        using var key = userClasses.CreateSubKey(registryPath, writable: true);
+        key?.SetValue(string.Empty, compilation.Command, RegistryValueKind.String);
+    }
+
+    private static EnhanceCommandCompilationResult CompileEnhanceCommandValue(XElement commandElement, string cultureName)
     {
         var fileNameElement = commandElement.Element("FileName");
         var argumentsElement = commandElement.Element("Arguments");
@@ -2683,6 +2714,9 @@ public sealed class ContextMenuRegistryCatalog
         arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
 
         string command;
+        var directCommandEmitted = false;
+        var wrapperReason = string.Empty;
+        var shellExecuteVerb = shellExecuteElement?.Attribute("Verb")?.Value?.Trim() ?? string.Empty;
         if (shellExecuteElement is not null)
         {
             var verb = shellExecuteElement.Attribute("Verb")?.Value ?? "open";
@@ -2690,22 +2724,123 @@ public sealed class ContextMenuRegistryCatalog
             var directory = shellExecuteElement.Attribute("Directory") is { } directoryAttribute
                 ? Environment.ExpandEnvironmentVariables(directoryAttribute.Value)
                 : string.Empty;
-            command = BuildShellExecuteCommand(fileName, arguments, verb, windowStyle, directory);
+            if (!RequiresShellExecuteWrapper(shellExecuteElement))
+            {
+                command = BuildDirectEnhanceCommand(fileName, arguments);
+                directCommandEmitted = true;
+            }
+            else
+            {
+                wrapperReason = GetShellExecuteWrapperReason(shellExecuteElement);
+                command = BuildShellExecuteCommand(fileName, arguments, verb, windowStyle, directory);
+            }
         }
         else
         {
-            command = fileName;
-            if (!string.IsNullOrWhiteSpace(arguments))
+            command = BuildDirectEnhanceCommand(fileName, arguments);
+            directCommandEmitted = true;
+        }
+
+        return new EnhanceCommandCompilationResult(
+            command,
+            fileName,
+            shellExecuteElement is not null,
+            shellExecuteVerb,
+            directCommandEmitted,
+            wrapperReason);
+    }
+
+    private sealed record EnhanceCommandCompilationResult(
+        string Command,
+        string FileName,
+        bool HasShellExecute,
+        string ShellExecuteVerb,
+        bool DirectCommandEmitted,
+        string WrapperReason);
+
+    private static bool RequiresShellExecuteWrapper(XElement shellExecuteElement)
+        => !string.IsNullOrEmpty(GetShellExecuteWrapperReason(shellExecuteElement));
+
+    private static string GetShellExecuteWrapperReason(XElement shellExecuteElement)
+    {
+        var verb = shellExecuteElement.Attribute("Verb")?.Value?.Trim();
+        if (!string.IsNullOrEmpty(verb)
+            && !string.Equals(verb, "open", StringComparison.OrdinalIgnoreCase))
+        {
+            // TODO: runas/admin enhance items need a separate modern launcher strategy.
+            return $"Verb={verb}";
+        }
+
+        var directory = shellExecuteElement.Attribute("Directory")?.Value?.Trim();
+        if (!string.IsNullOrEmpty(directory))
+        {
+            return "Directory";
+        }
+
+        foreach (var attribute in shellExecuteElement.Attributes())
+        {
+            var name = attribute.Name.LocalName;
+            if (string.Equals(name, "Verb", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "WindowStyle", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Directory", StringComparison.OrdinalIgnoreCase))
             {
-                command += $" {arguments}";
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(attribute.Value))
+            {
+                return $"Attribute={name}";
             }
         }
 
-        EnableBackupPrivilege();
+        return string.Empty;
+    }
 
-        using var userClasses = GetUserClassesRoot(userContext, writable: true);
-        using var key = userClasses.CreateSubKey(registryPath, writable: true);
-        key?.SetValue(string.Empty, command, RegistryValueKind.String);
+    private static string BuildDirectEnhanceCommand(string fileName, string arguments)
+    {
+        var command = QuoteEnhanceExecutablePath(fileName);
+        if (!string.IsNullOrWhiteSpace(arguments))
+        {
+            command += $" {arguments}";
+        }
+
+        return command;
+    }
+
+    private static string QuoteEnhanceExecutablePath(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = fileName.Trim();
+        if (trimmed.Length >= 2 && trimmed[0] == '"' && trimmed[^1] == '"')
+        {
+            return trimmed;
+        }
+
+        if (trimmed.Contains(' ')
+            && (Path.IsPathRooted(trimmed) || Regex.IsMatch(trimmed, @"^%[^%]+%[\\/]", RegexOptions.IgnoreCase)))
+        {
+            return $"\"{trimmed}\"";
+        }
+
+        return trimmed;
+    }
+
+    private static string GetEnhanceCommandKeyName(XElement commandElement)
+    {
+        foreach (var element in commandElement.AncestorsAndSelf())
+        {
+            var keyName = element.Attribute("KeyName")?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(keyName))
+            {
+                return keyName;
+            }
+        }
+
+        return "<unknown>";
     }
 
     private static string CanonicalizeEnhanceExecutableFileName(string? fileName)
@@ -2723,10 +2858,10 @@ public sealed class ContextMenuRegistryCatalog
 
         return trimmed.Equals("cmd", StringComparison.OrdinalIgnoreCase)
                || trimmed.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)
-            ? @"%SystemRoot%\System32\cmd.exe"
+            ? @"C:\Windows\System32\cmd.exe"
             : trimmed.Equals("explorer", StringComparison.OrdinalIgnoreCase)
               || trimmed.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)
-                ? @"%SystemRoot%\explorer.exe"
+                ? @"C:\Windows\explorer.exe"
                 : trimmed;
     }
 
@@ -2743,10 +2878,10 @@ public sealed class ContextMenuRegistryCatalog
 
         foreach (var (prefix, replacement) in new[]
                  {
-                     ("cmd.exe ", @"%SystemRoot%\System32\cmd.exe "),
-                     ("cmd ", @"%SystemRoot%\System32\cmd.exe "),
-                     ("explorer.exe ", @"%SystemRoot%\explorer.exe "),
-                     ("explorer ", @"%SystemRoot%\explorer.exe ")
+                     ("cmd.exe ", @"C:\Windows\System32\cmd.exe "),
+                     ("cmd ", @"C:\Windows\System32\cmd.exe "),
+                     ("explorer.exe ", @"C:\Windows\explorer.exe "),
+                     ("explorer ", @"C:\Windows\explorer.exe ")
                  })
         {
             if (trimmedStart.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -2769,7 +2904,7 @@ public sealed class ContextMenuRegistryCatalog
         return Regex.Replace(
             arguments,
             @"(?i)(^|[&|]\s*)start\s+explorer(?:\.exe)?(?=\s|$)",
-            match => $"{match.Groups[1].Value}start %SystemRoot%\\explorer.exe");
+            match => $@"{match.Groups[1].Value}start C:\Windows\\explorer.exe");
     }
 
     private static string ExpandEnvironmentVariablesPreservingSystemRoot(string value)
@@ -2780,8 +2915,8 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         const string token = "\uF001";
-        var protectedValue = Regex.Replace(value, "%SystemRoot%", token, RegexOptions.IgnoreCase);
-        return Environment.ExpandEnvironmentVariables(protectedValue).Replace(token, "%SystemRoot%", StringComparison.Ordinal);
+        var protectedValue = Regex.Replace(value, @"C:\Windows", token, RegexOptions.IgnoreCase);
+        return Environment.ExpandEnvironmentVariables(protectedValue).Replace(token, @"C:\Windows", StringComparison.Ordinal);
     }
 
     private static string CreateEnhanceCommandFile(XElement? parentElement, string cultureName)

@@ -25,8 +25,8 @@ internal static class WinXHasher
     private static readonly Dictionary<string, string> GeneralizePathMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["%ProgramFiles%"] = "{905e63b6-c1bf-494e-b29c-65b732d3d21a}",
-        [@"%SystemRoot%\System32"] = "{1ac14e77-02e7-4e5d-b744-2eb1ae5198b7}",
-        ["%SystemRoot%"] = "{f38bf404-1d43-42f2-9305-67de0b28fc23}"
+        [@"C:\Windows\System32"] = "{1ac14e77-02e7-4e5d-b744-2eb1ae5198b7}",
+        [@"C:\Windows"] = "{f38bf404-1d43-42f2-9305-67de0b28fc23}"
     };
 
     // Hard-coded PropertyKeys. PSGetPropertyKeyFromName is unreliable on some

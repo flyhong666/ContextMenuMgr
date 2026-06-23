@@ -73,16 +73,16 @@ function Add-EnhanceItemCommands($Map, $GroupRegPath, $Parent, $Prefix) {
 
 function ConvertTo-CanonicalCommandXml([string]$Value) {
     $result = $Value
-    $result = $result -replace '<FileName>cmd\.exe</FileName>', '<FileName>%SystemRoot%\System32\cmd.exe</FileName>'
-    $result = $result -replace '<FileName>Cmd\.exe</FileName>', '<FileName>%SystemRoot%\System32\cmd.exe</FileName>'
-    $result = $result -replace '<FileName>explorer\.exe</FileName>', '<FileName>%SystemRoot%\explorer.exe</FileName>'
-    $result = $result -replace 'Default="cmd\.exe ', 'Default="%SystemRoot%\System32\cmd.exe '
-    $result = $result -replace 'Default="cmd ', 'Default="%SystemRoot%\System32\cmd.exe '
-    $result = $result -replace 'Default="explorer\.exe ', 'Default="%SystemRoot%\explorer.exe '
-    $result = $result -replace 'Default="explorer ', 'Default="%SystemRoot%\explorer.exe '
-    $result = $result -replace 'start explorer\.exe', 'start %SystemRoot%\explorer.exe'
-    $result = $result -replace 'start explorer(?=&quot;)', 'start %SystemRoot%\explorer.exe'
-    $result = $result -replace 'wsh\.Run\(&quot;explorer /select, &quot; &amp; path\)', 'wsh.Run(&quot;%SystemRoot%\explorer.exe /select, &quot; &amp; path)'
+    $result = $result -replace '<FileName>cmd\.exe</FileName>', '<FileName>C:\Windows\System32\cmd.exe</FileName>'
+    $result = $result -replace '<FileName>Cmd\.exe</FileName>', '<FileName>C:\Windows\System32\cmd.exe</FileName>'
+    $result = $result -replace '<FileName>explorer\.exe</FileName>', '<FileName>C:\Windows\explorer.exe</FileName>'
+    $result = $result -replace 'Default="cmd\.exe ', 'Default="C:\Windows\System32\cmd.exe '
+    $result = $result -replace 'Default="cmd ', 'Default="C:\Windows\System32\cmd.exe '
+    $result = $result -replace 'Default="explorer\.exe ', 'Default="C:\Windows\explorer.exe '
+    $result = $result -replace 'Default="explorer ', 'Default="C:\Windows\explorer.exe '
+    $result = $result -replace 'start explorer\.exe', 'start C:\Windows\explorer.exe'
+    $result = $result -replace 'start explorer(?=&quot;)', 'start C:\Windows\explorer.exe'
+    $result = $result -replace 'wsh\.Run\(&quot;explorer /select, &quot; &amp; path\)', 'wsh.Run(&quot;C:\Windows\explorer.exe /select, &quot; &amp; path)'
     return $result
 }
 
