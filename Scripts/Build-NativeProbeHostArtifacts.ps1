@@ -115,9 +115,11 @@ function Invoke-ExternalWithNormalizedEnvironment {
         $processInfo.EnvironmentVariables["Path"] = $pathValue
     }
 
-    if ($null -ne $processInfo.ArgumentList) {
+    $argumentListProperty = $processInfo.GetType().GetProperty("ArgumentList")
+    if ($null -ne $argumentListProperty) {
+        $argumentList = $argumentListProperty.GetValue($processInfo)
         foreach ($argument in $Arguments) {
-            [void] $processInfo.ArgumentList.Add($argument)
+            [void] $argumentList.Add($argument)
         }
     }
     else {

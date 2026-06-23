@@ -68,7 +68,7 @@ ProbeHost 是单文件 native exe。前端项目不再检查 `ContextMenuMgr.Pro
 
 普通 `dotnet build` / `dotnet run` 不会无条件清理 native ProbeHost 输出。`ContextMenuMgr.Frontend.csproj` 会先用 MSBuild incremental build 检查 `ContextMenuMgr.ProbeHost.vcxproj`、`src\**\*.cpp`、`src\**\*.h` 和 `third_party\nlohmann\json.hpp` 是否晚于当前 `NativeProbeHostPlatforms` 对应架构的目标 exe；全部最新时，`BuildNativeProbeHostArtifacts` target 会直接跳过，不启动 PowerShell。
 
-如果 target 需要运行，`Scripts\Build-NativeProbeHostArtifacts.ps1` 会在一次 PowerShell 进程中处理 `NativeProbeHostPlatforms` 指定的平台，并且只解析一次 `MSBuild.exe` 路径。脚本仍会对每个架构单独检查目标 `ContextMenuMgr.ProbeHost.exe` 是否最新；如果某个架构已是最新，会输出该 label 的 `Skipped=True` 并跳过该架构的 MSBuild。需要强制重建时可传入：
+如果 target 需要运行，`Scripts\Build-NativeProbeHostArtifacts.ps1` 会在一次 Windows PowerShell 5.1 兼容的 PowerShell 进程中处理 `NativeProbeHostPlatforms` 指定的平台，并且只解析一次 `MSBuild.exe` 路径。脚本仍会对每个架构单独检查目标 `ContextMenuMgr.ProbeHost.exe` 是否最新；如果某个架构已是最新，会输出该 label 的 `Skipped=True` 并跳过该架构的 MSBuild。需要强制重建时可传入：
 
 ```powershell
 dotnet build .\ContextMenuMgr.Frontend\ContextMenuMgr.Frontend.csproj -p:ForceRebuildNativeProbeHost=true
@@ -127,7 +127,7 @@ artifacts\probehost-native\<Configuration>\obj\arm64\
 
 当前 Release 脚本使用 MSBuild 构建 `ContextMenuMgr.ProbeHost.vcxproj`，按 `Win32`、`x64`、`ARM64` 平台生成单个 `ContextMenuMgr.ProbeHost.exe`，再复制到 `ProbeHost\<arch>`。不再对 ProbeHost 运行 `dotnet publish`，也不会发布 `.dll`、`.deps.json`、`.runtimeconfig.json` 或 ProbeHost 目录内的 `ContextMenuMgr.Contracts.dll`。
 
-构建脚本在调用 native MSBuild 前会先检查目标架构的 `cl.exe` 是否存在，并用规范化后的进程环境启动 MSBuild，避免当前 shell 同时带有 `Path` / `PATH` 两个环境变量时触发 C++ ToolTask 的 `Item has already been added` 异常。缺少 ARM64 C++ build tools 时，发布构建会在 ProbeHost arm64 阶段直接报出缺失工具链；需要通过 Visual Studio Installer 安装 C++ ARM64 build tools 和 Windows SDK 后再重试。
+构建脚本在调用 native MSBuild 前会先检查目标架构的 `cl.exe` 是否存在，并用规范化后的进程环境启动 MSBuild，避免当前 shell 同时带有 `Path` / `PATH` 两个环境变量时触发 C++ ToolTask 的 `Item has already been added` 异常。该外部命令启动逻辑必须兼容 Windows PowerShell 5.1，因为前端 csproj 的 ProbeHost target 通过 `powershell.exe` 调用脚本；不能依赖仅 PowerShell 7 / newer .NET 才有的 `ProcessStartInfo.ArgumentList` API。缺少 ARM64 C++ build tools 时，发布构建会在 ProbeHost arm64 阶段直接报出缺失工具链；需要通过 Visual Studio Installer 安装 C++ ARM64 build tools 和 Windows SDK 后再重试。
 
 Release 构建同样按发布目标和 architecture label 隔离 native ProbeHost 中间目录。例如 `installer\self-contained\win-x64` 的 native obj 位于：
 
