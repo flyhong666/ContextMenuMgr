@@ -472,17 +472,6 @@ public sealed class NamedPipeBackendClient : IBackendClient
             cancellationToken);
     }
 
-    public async Task RepairShellNewOrderAclAsync(Guid clientOperationId, CancellationToken cancellationToken)
-    {
-        await SendRequestAsync(
-            new PipeRequest
-            {
-                Command = PipeCommand.RepairShellNewOrderAcl,
-                ClientOperationId = clientOperationId
-            },
-            cancellationToken);
-    }
-
     public async Task<IReadOnlyList<FileTypeAnalysisResult>> AnalyzeFileTypeContextAsync(string path, CancellationToken cancellationToken)
     {
         var response = await SendRequestAsync(

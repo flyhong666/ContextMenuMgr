@@ -31,6 +31,8 @@ public sealed class SpecialMenuService
     private const string WinXUndoDisabledMessage = "Win+X undo is currently disabled because Win+X items are deleted directly.";
     private const string WinXPurgeDeletedDisabledMessage = "Win+X deleted-item purge is disabled because Win+X items are deleted directly.";
     private const string DynamicSendToDriveIdPrefix = "sendto:drive:";
+    // Do not use RegistryRights.WriteKey here: it is too broad and can block later ACL reads/unlock.
+    // Do not add take-ownership fallback back into the main backend; it increases AV false-positive risk.
     private const RegistryRights ShellNewOrderLockRights = RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete;
 
     private readonly FileLogger _logger;
@@ -691,23 +693,6 @@ public sealed class SpecialMenuService
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"SetShellNewOrderLockAsync failed: {ex}", cancellationToken);
-            return Failure(ex.Message, operationId);
-        }
-    }
-
-    public async Task<PipeResponse> RepairShellNewOrderAclAsync(Guid? operationId, BackendUserContext? userContext, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var context = RequireUserContext(userContext);
-            var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
-            var removed = RemoveShellNewOrderLock(context);
-            await _logger.LogAsync($"ShellNew order ACL repair request used simple unlock only. Sid={context.Sid}, FullPath={fullPath}. {removed.Message}", cancellationToken);
-            return new PipeResponse { Success = true, Message = "ShellNew order lock removed successfully.", ClientOperationId = operationId };
-        }
-        catch (Exception ex)
-        {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"RepairShellNewOrderAclAsync failed: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }

@@ -428,11 +428,6 @@ public sealed class NamedPipeBackendServer
                     request.ClientOperationId,
                     await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
                     cancellationToken),
-            PipeCommand.RepairShellNewOrderAcl
-                => await _specialMenuService.RepairShellNewOrderAclAsync(
-                    request.ClientOperationId,
-                    await ResolveSpecialMenuUserContextIfNeededAsync(request, stream, cancellationToken),
-                    cancellationToken),
             PipeCommand.AnalyzeFileTypeContext when request.FileTypeAnalysis is not null
                 => new PipeResponse
                 {
@@ -816,8 +811,7 @@ public sealed class NamedPipeBackendServer
         if (request.ShellNewCreate is not null
             || request.ShellNewUpdate is not null
             || request.ShellNewSort is not null
-            || request.ShellNewLock is not null
-            || request.Command == PipeCommand.RepairShellNewOrderAcl)
+            || request.ShellNewLock is not null)
         {
             return SpecialMenuKind.ShellNew;
         }

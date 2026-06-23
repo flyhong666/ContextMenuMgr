@@ -2453,7 +2453,6 @@ public sealed class ContextMenuRegistryCatalog
         if (enable)
         {
             EnableBackupPrivilege();
-            EnableRestorePrivilege();
 
             using var handlersKey = CreateUserClassesSubKey(userContext, handlersRelativePath);
 
@@ -2482,7 +2481,6 @@ public sealed class ContextMenuRegistryCatalog
         else
         {
             EnableBackupPrivilege();
-            EnableRestorePrivilege();
 
             using var handlersKey = OpenUserClassesSubKey(userContext, handlersRelativePath, writable: true);
             if (handlersKey is null)
@@ -2559,7 +2557,6 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         EnableBackupPrivilege();
-        EnableRestorePrivilege();
 
         var defaultValue = keyElement.Attribute("Default")?.Value;
         if (!string.IsNullOrWhiteSpace(defaultValue))
@@ -2595,7 +2592,6 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         EnableBackupPrivilege();
-        EnableRestorePrivilege();
 
         using var userClasses = GetUserClassesRoot(userContext, writable: true);
         using var key = userClasses.CreateSubKey(registryPath, writable: true);
@@ -2678,7 +2674,6 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         EnableBackupPrivilege();
-        EnableRestorePrivilege();
 
         using var userClasses = GetUserClassesRoot(userContext, writable: true);
         using var key = userClasses.CreateSubKey(registryPath, writable: true);
@@ -3614,7 +3609,6 @@ public sealed class ContextMenuRegistryCatalog
     private const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
     private const uint TOKEN_READ = 0x0008;
     private const int ERROR_NOT_ALL_ASSIGNED = 1300;
-    private const string SE_RESTORE_NAME = "SeRestorePrivilege";
     private const string SE_BACKUP_NAME = "SeBackupPrivilege";
 
     [StructLayout(LayoutKind.Sequential)]
@@ -3700,55 +3694,6 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
-    private static bool EnableRestorePrivilege()
-    {
-        try
-        {
-            IntPtr tokenHandle;
-            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
-            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
-            {
-                return false;
-            }
-
-            try
-            {
-                var privilege = new LUID_AND_ATTRIBUTES
-                {
-                    Luid = new LUID(),
-                    Attributes = SE_PRIVILEGE_ENABLED
-                };
-
-                if (!LookupPrivilegeValue(null, SE_RESTORE_NAME, out privilege.Luid))
-                {
-                    return false;
-                }
-
-                var privileges = new TOKEN_PRIVILEGES
-                {
-                    PrivilegeCount = 1,
-                    Privileges = [privilege]
-                };
-
-                var length = 0u;
-                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
-                {
-                    return false;
-                }
-
-                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
-            }
-            finally
-            {
-                CloseHandle(tokenHandle);
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static void DeleteRegistrySubKeyTreeWithFallback(string fullPath)
     {
         if (string.IsNullOrWhiteSpace(fullPath))
@@ -3757,7 +3702,6 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         EnableBackupPrivilege();
-        EnableRestorePrivilege();
 
         try
         {

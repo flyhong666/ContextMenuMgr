@@ -109,8 +109,6 @@ public interface IBackendClient : IAsyncDisposable
 
     Task SetShellNewOrderLockAsync(bool locked, Guid clientOperationId, CancellationToken cancellationToken);
 
-    Task RepairShellNewOrderAclAsync(Guid clientOperationId, CancellationToken cancellationToken);
-
     Task<IReadOnlyList<FileTypeAnalysisResult>> AnalyzeFileTypeContextAsync(string path, CancellationToken cancellationToken);
 
     Task<ContextMenuEntry?> CreateSceneMenuItemAsync(

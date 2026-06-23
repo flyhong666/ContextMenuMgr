@@ -1292,12 +1292,6 @@
   <data name="LockNewMenuDescription" xml:space="preserve">
     <value>啟用後可阻止第三方程式增加項目，且可對現有項目排序；關閉後會還原初始排序。</value>
   </data>
-  <data name="RepairShellNewAcl" xml:space="preserve">
-    <value>修復新增功能表鎖定</value>
-  </data>
-  <data name="RepairShellNewAclConfirmation" xml:space="preserve">
-    <value>修復會重設新增功能表鎖定權限。是否繼續？</value>
-  </data>
   <data name="DefaultDropEffect" xml:space="preserve">
     <value>預設拖放效果</value>
   </data>
