@@ -71,6 +71,7 @@ public partial class App
         services.AddSingleton<ShellNewPageViewModel>();
         services.AddSingleton<SendToPageViewModel>();
         services.AddSingleton<WinXPageViewModel>();
+        services.AddSingleton<OpenWithPageViewModel>();
         services.AddSingleton<OtherRulesPageViewModel>();
         services.AddSingleton<ApprovalsPageViewModel>();
         services.AddSingleton<SettingsPageViewModel>();
@@ -92,6 +93,7 @@ public partial class App
         services.AddSingleton<ShellNewPage>();
         services.AddSingleton<SendToPage>();
         services.AddSingleton<WinXPage>();
+        services.AddSingleton<OpenWithPage>();
         services.AddSingleton<OtherRulesPage>();
         services.AddSingleton<ApprovalsPage>();
         services.AddSingleton<SettingsPage>();

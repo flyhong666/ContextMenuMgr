@@ -8,6 +8,7 @@ public enum SpecialMenuKind
     ShellNew,
     SendTo,
     WinX,
+    OpenWith,
     DragDrop,
     CommandStore,
     GuidBlock,
@@ -135,6 +136,16 @@ public sealed record WinXUpdateEntryRequest(
     bool? RunAsAdministrator = null);
 
 public sealed record WinXMoveRequest(string Id, bool MoveUp);
+
+public sealed record OpenWithCreateRequest(
+    string DisplayName,
+    string TargetPath,
+    string? Arguments = null);
+
+public sealed record OpenWithUpdateRequest(
+    string Id,
+    string? DisplayName = null,
+    string? Command = null);
 
 public sealed record DragDropCreateRequest(string GuidText, string GroupName);
 

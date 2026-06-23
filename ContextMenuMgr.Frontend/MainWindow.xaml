@@ -368,6 +368,10 @@
                                 Content="{Binding WinXPageTitle}"
                                 Icon="{ui:SymbolIcon Symbol=WindowDevTools24}"
                                 TargetPageType="{x:Type pages:WinXPage}" />
+                            <ui:NavigationViewItem
+                                Content="{Binding OpenWithPageTitle}"
+                                Icon="{ui:SymbolIcon Symbol=Open24}"
+                                TargetPageType="{x:Type pages:OpenWithPage}" />
                         </ui:NavigationViewItem.MenuItems>
                     </ui:NavigationViewItem>
                     <ui:NavigationViewItem

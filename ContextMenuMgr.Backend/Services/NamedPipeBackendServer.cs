@@ -793,7 +793,8 @@ public sealed class NamedPipeBackendServer
     {
         return kind is SpecialMenuKind.ShellNew
             or SpecialMenuKind.SendTo
-            or SpecialMenuKind.WinX;
+            or SpecialMenuKind.WinX
+            or SpecialMenuKind.OpenWith;
     }
 
     private static SpecialMenuKind? TryGetSpecialMenuKindForUserContext(PipeRequest request)
@@ -828,6 +829,12 @@ public sealed class NamedPipeBackendServer
             || request.WinXMove is not null)
         {
             return SpecialMenuKind.WinX;
+        }
+
+        if (request.OpenWithCreate is not null
+            || request.OpenWithUpdate is not null)
+        {
+            return SpecialMenuKind.OpenWith;
         }
 
         return null;

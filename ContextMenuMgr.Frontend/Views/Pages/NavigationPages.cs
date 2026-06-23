@@ -210,6 +210,17 @@ public sealed class WinXPage : SpecialMenuPageView
 }
 
 /// <summary>
+/// Represents the open with page.
+/// </summary>
+public sealed class OpenWithPage : SpecialMenuPageView
+{
+    public OpenWithPage(OpenWithPageViewModel viewModel)
+    {
+        DataContext = viewModel;
+    }
+}
+
+/// <summary>
 /// Represents the windows11 Context Menu Page.
 /// </summary>
 public sealed class Windows11ContextMenuPage : Windows11ContextMenuPageView

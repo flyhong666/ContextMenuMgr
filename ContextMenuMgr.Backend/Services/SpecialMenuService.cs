@@ -19,6 +19,8 @@ public sealed class SpecialMenuService
     private const string ShellNewLegacyBroadLockMessage = "The ShellNew order key is locked by a legacy broad ACL rule and cannot be safely unlocked without ownership repair. Use BluePointLilac/ContextMenuManager once to unlock it, then retry.";
     private const string CommandStorePath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell";
     private const string GuidBlockedPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
+    private const string ApplicationsPath = @"Applications";
+    private const string OpenWithPolicyPath = @"Software\Policies\Microsoft\Windows\Explorer";
     private const string IeRootPath = @"Software\Microsoft\Internet Explorer";
     private const string UserClassesPath = @"Software\Classes";
     private const string MachineClassesPath = @"SOFTWARE\Classes";
@@ -45,7 +47,7 @@ public sealed class SpecialMenuService
 
     public Task<IReadOnlyList<SpecialMenuEntry>> GetSnapshotAsync(SpecialMenuKind kind, BackendUserContext? userContext, CancellationToken cancellationToken)
     {
-        var requiresUserContext = kind is SpecialMenuKind.ShellNew or SpecialMenuKind.SendTo or SpecialMenuKind.WinX;
+        var requiresUserContext = kind is SpecialMenuKind.ShellNew or SpecialMenuKind.SendTo or SpecialMenuKind.WinX or SpecialMenuKind.OpenWith;
         if (kind == SpecialMenuKind.WinX)
         {
             var context = RequireUserContext(userContext);
@@ -57,6 +59,7 @@ public sealed class SpecialMenuService
             SpecialMenuKind.ShellNew => GetShellNewItems(RequireUserContext(userContext)),
             SpecialMenuKind.SendTo => GetSendToItems(RequireUserContext(userContext)),
             SpecialMenuKind.WinX => GetWinXItems(RequireUserContext(userContext)),
+            SpecialMenuKind.OpenWith => GetOpenWithItems(RequireUserContext(userContext)),
             SpecialMenuKind.DragDrop => GetDragDropItems(),
             SpecialMenuKind.CommandStore => GetCommandStoreItems(),
             SpecialMenuKind.GuidBlock => GetGuidBlockItems(),
@@ -92,6 +95,7 @@ public sealed class SpecialMenuService
                     SpecialMenuKind.ShellNew => SetShellNewEnabled(item, enabled, RequireUserContext(userContext)),
                     SpecialMenuKind.SendTo => SetFileSystemItemEnabled(item, enabled, GetSendToPath(RequireUserContext(userContext))),
                     SpecialMenuKind.WinX => SetFileSystemItemEnabled(item, enabled, GetWinXPath(RequireUserContext(userContext))),
+                    SpecialMenuKind.OpenWith => SetOpenWithEnabled(item, enabled, RequireUserContext(userContext)),
                     SpecialMenuKind.DragDrop => SetDragDropEnabled(item, enabled),
                     SpecialMenuKind.InternetExplorer => SetRenameBackedRegistryItemEnabled(item, enabled, "MenuExt", "-MenuExt"),
                     SpecialMenuKind.CommandStore => SetCommandStoreEnabled(item, enabled),
@@ -135,7 +139,7 @@ public sealed class SpecialMenuService
     {
         try
         {
-            await _logger.LogAsync($"SpecialMenuCreateStart: Kind={request.SpecialKind}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, ShellNewExtension={request.ShellNewCreate?.Extension}, SendToName={request.SendToCreate?.DisplayName}, WinXGroup={request.WinXCreateGroup?.GroupName}, WinXEntry={request.WinXCreateEntry?.DisplayName}.", cancellationToken);
+            await _logger.LogAsync($"SpecialMenuCreateStart: Kind={request.SpecialKind}, Sid={DiagnosticLogFormatter.FormatSid(userContext)}, ShellNewExtension={request.ShellNewCreate?.Extension}, SendToName={request.SendToCreate?.DisplayName}, WinXGroup={request.WinXCreateGroup?.GroupName}, WinXEntry={request.WinXCreateEntry?.DisplayName}, OpenWithName={request.OpenWithCreate?.DisplayName}.", cancellationToken);
             if (request.SpecialKind == SpecialMenuKind.WinX)
             {
                 var context = RequireUserContext(userContext);
@@ -148,6 +152,7 @@ public sealed class SpecialMenuService
                 SpecialMenuKind.SendTo when request.SendToCreate is not null => CreateSendTo(request.SendToCreate, RequireUserContext(userContext)),
                 SpecialMenuKind.WinX when request.WinXCreateGroup is not null => CreateWinXGroup(request.WinXCreateGroup, RequireUserContext(userContext)),
                 SpecialMenuKind.WinX when request.WinXCreateEntry is not null => CreateWinXEntry(request.WinXCreateEntry, RequireUserContext(userContext)),
+                SpecialMenuKind.OpenWith when request.OpenWithCreate is not null => CreateOpenWith(request.OpenWithCreate, RequireUserContext(userContext)),
                 SpecialMenuKind.DragDrop when request.DragDropCreate is not null => CreateDragDrop(request.DragDropCreate),
                 SpecialMenuKind.CommandStore when request.SpecialItem is not null => CreateCommandStore(request.SpecialItem),
                 SpecialMenuKind.GuidBlock when request.GuidBlockCreate is not null => CreateGuidBlock(request.GuidBlockCreate),
@@ -182,6 +187,7 @@ public sealed class SpecialMenuService
                 SpecialMenuKind.ShellNew when request.ShellNewUpdate is not null => UpdateShellNew(request.ShellNewUpdate, RequireUserContext(userContext)),
                 SpecialMenuKind.SendTo when request.SendToUpdate is not null => UpdateSendTo(request.SendToUpdate, RequireUserContext(userContext)),
                 SpecialMenuKind.WinX when request.WinXUpdateEntry is not null => UpdateWinXEntry(request.WinXUpdateEntry, RequireUserContext(userContext)),
+                SpecialMenuKind.OpenWith when request.OpenWithUpdate is not null => UpdateOpenWith(request.OpenWithUpdate, RequireUserContext(userContext)),
                 SpecialMenuKind.DragDrop when request.DefaultDropEffect is not null => UpdateDefaultDropEffect(request.DefaultDropEffect.Value),
                 SpecialMenuKind.InternetExplorer when request.IeMenuUpdate is not null => UpdateIe(request.IeMenuUpdate),
                 SpecialMenuKind.CommandStore when request.SpecialItem is not null => UpdateCommandStore(request.SpecialItem),
@@ -229,6 +235,9 @@ public sealed class SpecialMenuService
                 case SpecialMenuKind.DragDrop:
                 case SpecialMenuKind.CommandStore:
                     deletedPath = SoftDeleteRegistryTree(item.RegistryPath, logger: _logger);
+                    break;
+                case SpecialMenuKind.OpenWith:
+                    deletedPath = SoftDeleteRegistryTree(GetOpenWithItemAppPath(item), RequireUserContext(userContext), _logger);
                     break;
                 case SpecialMenuKind.GuidBlock:
                     DeleteRegistryValue(Registry.LocalMachine, GuidBlockedPath, item.KeyName, _logger);
@@ -313,6 +322,9 @@ public sealed class SpecialMenuService
                 case SpecialMenuKind.CommandStore:
                     RestoreSoftDeletedRegistryTree(item.RegistryPath, logger: _logger);
                     break;
+                case SpecialMenuKind.OpenWith:
+                    RestoreSoftDeletedRegistryTree(GetOpenWithItemAppPath(item), RequireUserContext(userContext), _logger);
+                    break;
                 case SpecialMenuKind.SendTo:
                     RestoreSoftDeletedFileSystemItem(item.Path, GetSendToPath(RequireUserContext(userContext)), item.Metadata.GetValueOrDefault("DeletedPath"), _logger);
                     break;
@@ -365,6 +377,9 @@ public sealed class SpecialMenuService
                 case SpecialMenuKind.DragDrop:
                 case SpecialMenuKind.CommandStore:
                     DeleteRegistryTree(item.RegistryPath + DeletedSuffix, logger: _logger);
+                    break;
+                case SpecialMenuKind.OpenWith:
+                    DeleteRegistryTree(GetOpenWithItemAppPath(item) + DeletedSuffix, RequireUserContext(userContext), _logger);
                     break;
                 case SpecialMenuKind.SendTo:
                 {
@@ -2109,6 +2124,355 @@ public sealed class SpecialMenuService
         }
 
         return GetDragDropItems().First(static item => item.Id == "dragdrop:default-drop-effect");
+    }
+
+    private static IReadOnlyList<SpecialMenuEntry> GetOpenWithItems(BackendUserContext context)
+    {
+        var result = new List<SpecialMenuEntry>
+        {
+            GetUseStoreOpenWithItem(context)
+        };
+
+        PopulateOpenWithItems(
+            Registry.Users,
+            $@"{context.Sid}\{UserClassesPath}\{ApplicationsPath}",
+            $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{ApplicationsPath}",
+            "User",
+            result);
+
+        PopulateOpenWithItems(
+            Registry.LocalMachine,
+            $@"{MachineClassesPath}\{ApplicationsPath}",
+            $@"HKEY_LOCAL_MACHINE\{MachineClassesPath}\{ApplicationsPath}",
+            "Machine",
+            result);
+
+        return result
+            .GroupBy(static item => item.RegistryPath ?? item.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .OrderBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static SpecialMenuEntry GetUseStoreOpenWithItem(BackendUserContext context)
+    {
+        var machineDisabled = Registry.LocalMachine
+            .OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\Explorer", writable: false)
+            ?.GetValue("NoUseStoreOpenWith") is int machineValue && machineValue == 1;
+        var userDisabled = Registry.Users
+            .OpenSubKey($@"{context.Sid}\{OpenWithPolicyPath}", writable: false)
+            ?.GetValue("NoUseStoreOpenWith") is int userValue && userValue == 1;
+
+        return new SpecialMenuEntry
+        {
+            Id = "openwith:use-store",
+            Kind = SpecialMenuKind.OpenWith,
+            DisplayName = "Look for an app in the Microsoft Store",
+            KeyName = "NoUseStoreOpenWith",
+            IsEnabled = !machineDisabled && !userDisabled,
+            IconPath = "imageres.dll",
+            IconIndex = -102,
+            RegistryPath = $@"HKEY_USERS\{context.Sid}\{OpenWithPolicyPath}",
+            CanDelete = false,
+            Metadata = new Dictionary<string, string>
+            {
+                ["EntryType"] = "Policy",
+                ["CanEditDetails"] = "false",
+                ["RegistryScope"] = "UserPolicy"
+            }
+        };
+    }
+
+    private static void PopulateOpenWithItems(
+        RegistryKey root,
+        string subPath,
+        string displayRootPath,
+        string scope,
+        List<SpecialMenuEntry> result)
+    {
+        using var applicationsKey = root.OpenSubKey(subPath, writable: false);
+        if (applicationsKey is null)
+        {
+            return;
+        }
+
+        foreach (var appName in applicationsKey.GetSubKeyNames().OrderBy(static name => name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!appName.Contains('.', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            using var appKey = applicationsKey.OpenSubKey(appName, writable: false);
+            using var shellKey = appKey?.OpenSubKey("shell", writable: false);
+            if (appKey is null || shellKey is null)
+            {
+                continue;
+            }
+
+            var verbName = ChooseOpenWithVerb(shellKey);
+            if (verbName is null)
+            {
+                continue;
+            }
+
+            using var verbKey = shellKey.OpenSubKey(verbName, writable: false);
+            using var commandKey = verbKey?.OpenSubKey("command", writable: false);
+            var command = commandKey?.GetValue(null)?.ToString();
+            var targetPath = ExtractCommandExecutablePath(command);
+            if (string.IsNullOrWhiteSpace(targetPath))
+            {
+                continue;
+            }
+
+            var appPath = $@"{displayRootPath}\{appName}";
+            var verbPath = $@"{appPath}\shell\{verbName}";
+            var commandPath = $@"{verbPath}\command";
+            var displayName = ResolveOpenWithDisplayName(appKey, appName, targetPath);
+            var icon = ShellMetadataResolver.ResolveVerbIcon(verbKey!, command);
+
+            result.Add(new SpecialMenuEntry
+            {
+                Id = EncodeId(SpecialMenuKind.OpenWith, commandPath),
+                Kind = SpecialMenuKind.OpenWith,
+                DisplayName = displayName,
+                KeyName = appName,
+                IsEnabled = appKey.GetValue("NoOpenWith") is null,
+                IconPath = icon.IconPath ?? targetPath,
+                IconIndex = icon.IconIndex,
+                RegistryPath = commandPath,
+                CommandText = command,
+                TargetPath = targetPath,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["AppRegistryPath"] = appPath,
+                    ["VerbRegistryPath"] = verbPath,
+                    ["VerbName"] = verbName,
+                    ["RegistryScope"] = scope
+                }
+            });
+        }
+    }
+
+    private static string? ChooseOpenWithVerb(RegistryKey shellKey)
+    {
+        var names = shellKey.GetSubKeyNames().ToList();
+        if (names.Count == 0)
+        {
+            return null;
+        }
+
+        var openIndex = names.FindIndex(static name => name.Equals("open", StringComparison.OrdinalIgnoreCase));
+        if (openIndex > 0)
+        {
+            var open = names[openIndex];
+            names.RemoveAt(openIndex);
+            names.Insert(0, open);
+        }
+
+        foreach (var name in names)
+        {
+            using var verbKey = shellKey.OpenSubKey(name, writable: false);
+            using var commandKey = verbKey?.OpenSubKey("command", writable: false);
+            if (commandKey?.GetValue(null) is not null && verbKey?.GetValue("NeverDefault") is null)
+            {
+                return name;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveOpenWithDisplayName(RegistryKey appKey, string appName, string targetPath)
+    {
+        var targetFileName = Path.GetFileName(targetPath);
+        if (appName.Equals(targetFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            var friendlyName = ShellMetadataResolver.ResolveResourceString(appKey.GetValue("FriendlyAppName")?.ToString());
+            if (!string.IsNullOrWhiteSpace(friendlyName))
+            {
+                return friendlyName;
+            }
+        }
+
+        try
+        {
+            var versionInfo = FileVersionInfo.GetVersionInfo(targetPath);
+            if (!string.IsNullOrWhiteSpace(versionInfo.FileDescription))
+            {
+                return versionInfo.FileDescription;
+            }
+        }
+        catch
+        {
+        }
+
+        return string.IsNullOrWhiteSpace(targetFileName) ? appName : targetFileName;
+    }
+
+    private static SpecialMenuEntry CreateOpenWith(OpenWithCreateRequest request, BackendUserContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.DisplayName) || string.IsNullOrWhiteSpace(request.TargetPath))
+        {
+            throw new InvalidOperationException("Open With items require a display name and target path.");
+        }
+
+        var targetPath = Environment.ExpandEnvironmentVariables(request.TargetPath.Trim().Trim('"'));
+        if (!File.Exists(targetPath))
+        {
+            throw new FileNotFoundException("The selected application was not found.", targetPath);
+        }
+
+        var appName = Path.GetFileName(targetPath);
+        if (string.IsNullOrWhiteSpace(appName) || !appName.Contains('.', StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Open With application keys require a filename with an extension.");
+        }
+
+        var appPath = $@"HKEY_USERS\{context.Sid}\{UserClassesPath}\{ApplicationsPath}\{SanitizeKeyName(appName)}";
+        var commandPath = $@"{appPath}\shell\open\command";
+        var command = BuildOpenWithCommand(targetPath, request.Arguments);
+        using (var appKey = CreateRegistryKey(appPath, context)
+            ?? throw new InvalidOperationException($"Unable to create {appPath}."))
+        {
+            appKey.SetValue("FriendlyAppName", request.DisplayName, RegistryValueKind.String);
+            appKey.DeleteValue("NoOpenWith", throwOnMissingValue: false);
+        }
+
+        using (var commandKey = CreateRegistryKey(commandPath, context)
+            ?? throw new InvalidOperationException($"Unable to create {commandPath}."))
+        {
+            commandKey.SetValue(string.Empty, command, RegistryValueKind.String);
+        }
+
+        return GetOpenWithItems(context).First(item => string.Equals(item.RegistryPath, commandPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static SpecialMenuEntry UpdateOpenWith(OpenWithUpdateRequest request, BackendUserContext context)
+    {
+        var commandPath = DecodeId(request.Id);
+        var appPath = GetOpenWithAppPath(commandPath);
+        if (!string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            using var appKey = OpenRegistryKey(appPath, writable: true, context)
+                ?? throw new InvalidOperationException($"Unable to open {appPath}.");
+            appKey.SetValue("FriendlyAppName", request.DisplayName, RegistryValueKind.String);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Command))
+        {
+            var existing = OpenRegistryKey(commandPath, writable: false, context)?.GetValue(null)?.ToString();
+            var existingTarget = ExtractCommandExecutablePath(existing);
+            var newTarget = ExtractCommandExecutablePath(request.Command);
+            if (!string.IsNullOrWhiteSpace(existingTarget)
+                && !string.IsNullOrWhiteSpace(newTarget)
+                && !existingTarget.Equals(newTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Changing the target application path is not supported for existing Open With items.");
+            }
+
+            using var commandKey = OpenRegistryKey(commandPath, writable: true, context)
+                ?? throw new InvalidOperationException($"Unable to open {commandPath}.");
+            commandKey.SetValue(string.Empty, request.Command, RegistryValueKind.String);
+        }
+
+        return GetOpenWithItems(context).First(item => string.Equals(item.RegistryPath, commandPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static SpecialMenuEntry SetOpenWithEnabled(SpecialMenuEntry item, bool enabled, BackendUserContext context)
+    {
+        if (item.Id.Equals("openwith:use-store", StringComparison.OrdinalIgnoreCase))
+        {
+            SetUseStoreOpenWithEnabled(enabled, context);
+            return GetUseStoreOpenWithItem(context);
+        }
+
+        var commandPath = item.RegistryPath ?? DecodeId(item.Id);
+        var appPath = item.Metadata.TryGetValue("AppRegistryPath", out var metadataAppPath)
+            ? metadataAppPath
+            : GetOpenWithAppPath(commandPath);
+        using var appKey = OpenRegistryKey(appPath, writable: true, context)
+            ?? throw new InvalidOperationException($"Unable to open {appPath}.");
+        if (enabled)
+        {
+            appKey.DeleteValue("NoOpenWith", throwOnMissingValue: false);
+        }
+        else
+        {
+            appKey.SetValue("NoOpenWith", string.Empty, RegistryValueKind.String);
+        }
+
+        return item with { IsEnabled = enabled };
+    }
+
+    private static void SetUseStoreOpenWithEnabled(bool enabled, BackendUserContext context)
+    {
+        using (var machineKey = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\Explorer", writable: true))
+        {
+            if (enabled)
+            {
+                machineKey?.DeleteValue("NoUseStoreOpenWith", throwOnMissingValue: false);
+            }
+            else
+            {
+                machineKey?.SetValue("NoUseStoreOpenWith", 1, RegistryValueKind.DWord);
+            }
+        }
+
+        using var userKey = Registry.Users.CreateSubKey($@"{context.Sid}\{OpenWithPolicyPath}", writable: true);
+        if (enabled)
+        {
+            userKey?.DeleteValue("NoUseStoreOpenWith", throwOnMissingValue: false);
+        }
+        else
+        {
+            userKey?.SetValue("NoUseStoreOpenWith", 1, RegistryValueKind.DWord);
+        }
+    }
+
+    private static string GetOpenWithAppPath(string commandPath)
+    {
+        var normalized = commandPath.TrimEnd('\\');
+        const string suffix = @"\shell\";
+        var shellIndex = normalized.LastIndexOf(suffix, StringComparison.OrdinalIgnoreCase);
+        if (shellIndex < 0)
+        {
+            throw new InvalidOperationException("The Open With registry path is invalid.");
+        }
+
+        return normalized[..shellIndex];
+    }
+
+    private static string GetOpenWithItemAppPath(SpecialMenuEntry item)
+        => item.Metadata.TryGetValue("AppRegistryPath", out var appPath) && !string.IsNullOrWhiteSpace(appPath)
+            ? appPath
+            : GetOpenWithAppPath(item.RegistryPath ?? DecodeId(item.Id));
+
+    private static string BuildOpenWithCommand(string targetPath, string? arguments)
+    {
+        var args = string.IsNullOrWhiteSpace(arguments) ? "\"%1\"" : arguments.Trim();
+        return $"\"{targetPath}\" {args}".TrimEnd();
+    }
+
+    private static string? ExtractCommandExecutablePath(string? commandText)
+    {
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            return null;
+        }
+
+        var expanded = Environment.ExpandEnvironmentVariables(commandText.Trim());
+        if (expanded.StartsWith('"'))
+        {
+            var closingQuoteIndex = expanded.IndexOf('"', 1);
+            if (closingQuoteIndex > 1)
+            {
+                return expanded[1..closingQuoteIndex];
+            }
+        }
+
+        var firstToken = expanded.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(firstToken) ? null : firstToken.Trim('"');
     }
 
     private static IReadOnlyList<SpecialMenuEntry> GetCommandStoreItems()

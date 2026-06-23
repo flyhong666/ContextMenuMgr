@@ -632,6 +632,28 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                         winxData.RunAsAdmin),
                     ClientOperationId = operationId
                 };
+            case SpecialMenuKind.OpenWith:
+                var openWithData = await MenuItemFormDialog.ShowAddOpenWithAsync(Title, _localization);
+                if (openWithData is null)
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(openWithData.Name) || string.IsNullOrWhiteSpace(openWithData.TargetPath))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
+                return new PipeRequest
+                {
+                    SpecialKind = Kind,
+                    OpenWithCreate = new OpenWithCreateRequest(
+                        openWithData.Name,
+                        openWithData.TargetPath,
+                        EmptyToNull(openWithData.Arguments)),
+                    ClientOperationId = operationId
+                };
             case SpecialMenuKind.DragDrop:
                 var dragDrop = await TextInputDialog.ShowAsync(Title, "GUID|Group(Folder/Directory/Drive/AllFilesystemObjects)", "{00000000-0000-0000-0000-000000000000}|Folder");
                 var dragDropParts = SplitParts(dragDrop, 2);
@@ -774,6 +796,35 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                         winxData.GroupName,
                         EmptyToNull(winxData.IconPath),
                         winxData.RunAsAdmin),
+                    ClientOperationId = operationId
+                };
+            case SpecialMenuKind.OpenWith:
+                var openWithInitialData = new MenuItemFormData
+                {
+                    Name = item.DisplayName,
+                    TargetPath = item.Entry.TargetPath ?? string.Empty,
+                    Arguments = item.Entry.CommandText ?? string.Empty,
+                    IconPath = item.Entry.IconPath ?? string.Empty
+                };
+                var openWithData = await MenuItemFormDialog.ShowEditOpenWithAsync(Title, openWithInitialData, _localization);
+                if (openWithData is null)
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(openWithData.Name))
+                {
+                    await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), Title);
+                    return null;
+                }
+
+                return new PipeRequest
+                {
+                    SpecialKind = Kind,
+                    OpenWithUpdate = new OpenWithUpdateRequest(
+                        item.Id,
+                        openWithData.Name,
+                        EmptyToNull(openWithData.Arguments)),
                     ClientOperationId = operationId
                 };
             case SpecialMenuKind.CommandStore:
@@ -1389,6 +1440,14 @@ public sealed class WinXPageViewModel : SpecialMenuPageViewModel
 {
     public WinXPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState, ListPlaceholderDebugStateService placeholderDebug)
         : base(SpecialMenuKind.WinX, "WinXPageTitle", "WinXPageDescription", backendClient, iconPreviewService, localization, explorerRestartState, placeholderDebug)
+    {
+    }
+}
+
+public sealed class OpenWithPageViewModel : SpecialMenuPageViewModel
+{
+    public OpenWithPageViewModel(IBackendClient backendClient, IconPreviewService iconPreviewService, LocalizationService localization, ExplorerRestartStateService explorerRestartState, ListPlaceholderDebugStateService placeholderDebug)
+        : base(SpecialMenuKind.OpenWith, "OpenWithPageTitle", "OpenWithPageDescription", backendClient, iconPreviewService, localization, explorerRestartState, placeholderDebug)
     {
     }
 }

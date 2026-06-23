@@ -1157,6 +1157,12 @@
   <data name="WinXPageDescription" xml:space="preserve">
     <value>管理 Win+X 分組和帶 hash 的捷徑。</value>
   </data>
+  <data name="OpenWithPageTitle" xml:space="preserve">
+    <value>開啟方式</value>
+  </data>
+  <data name="OpenWithPageDescription" xml:space="preserve">
+    <value>管理目前使用者「開啟方式」選單中註冊的應用程式。</value>
+  </data>
   <data name="WinXCompatibilityNotice" xml:space="preserve">
     <value>新版 Windows 可能會拒絕新加入的自訂 Win+X 項目。</value>
   </data>

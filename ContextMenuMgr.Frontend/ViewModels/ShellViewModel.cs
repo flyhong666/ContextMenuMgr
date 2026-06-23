@@ -108,6 +108,8 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public string WinXPageTitle => _localization.Translate("WinXPageTitle");
 
+    public string OpenWithPageTitle => _localization.Translate("OpenWithPageTitle");
+
     public string Windows11PageTitle => _localization.Translate("Windows11PageTitle");
 
     public bool IsWindows11ContextMenuSupported => _windows11Service.IsSupported;
@@ -291,6 +293,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShellNewPageTitle));
         OnPropertyChanged(nameof(SendToPageTitle));
         OnPropertyChanged(nameof(WinXPageTitle));
+        OnPropertyChanged(nameof(OpenWithPageTitle));
         OnPropertyChanged(nameof(Windows11PageTitle));
         OnPropertyChanged(nameof(OtherRulesPageTitle));
         OnPropertyChanged(nameof(ApprovalsTitle));

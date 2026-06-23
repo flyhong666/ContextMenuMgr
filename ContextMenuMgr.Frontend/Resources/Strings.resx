@@ -1157,6 +1157,12 @@ Continue anyway? (Not recommended)</value>
   <data name="WinXPageDescription" xml:space="preserve">
     <value>Manage Win+X groups and hashed shortcuts.</value>
   </data>
+  <data name="OpenWithPageTitle" xml:space="preserve">
+    <value>Open With</value>
+  </data>
+  <data name="OpenWithPageDescription" xml:space="preserve">
+    <value>Manage applications registered in the current user's Open With menu.</value>
+  </data>
   <data name="WinXCompatibilityNotice" xml:space="preserve">
     <value>Newer Windows versions may reject newly added custom Win+X items.</value>
   </data>

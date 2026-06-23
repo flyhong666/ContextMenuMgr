@@ -130,6 +130,10 @@ public sealed record PipeRequest
 
     public WinXMoveRequest? WinXMove { get; init; }
 
+    public OpenWithCreateRequest? OpenWithCreate { get; init; }
+
+    public OpenWithUpdateRequest? OpenWithUpdate { get; init; }
+
     public DragDropCreateRequest? DragDropCreate { get; init; }
 
     public GuidBlockCreateRequest? GuidBlockCreate { get; init; }

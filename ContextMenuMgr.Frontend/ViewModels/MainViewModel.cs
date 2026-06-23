@@ -112,6 +112,8 @@ public partial class MainViewModel : ObservableObject
 
     public string WinXPageTitle => _localization.Translate("WinXPageTitle");
 
+    public string OpenWithPageTitle => _localization.Translate("OpenWithPageTitle");
+
     public string ServiceNotesTitle => _localization.Translate("ServiceNotesTitle");
 
     public string ServiceNotesDescription => _localization.Translate("ServiceNotesDescription");
@@ -436,6 +438,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShellNewPageTitle));
         OnPropertyChanged(nameof(SendToPageTitle));
         OnPropertyChanged(nameof(WinXPageTitle));
+        OnPropertyChanged(nameof(OpenWithPageTitle));
         OnPropertyChanged(nameof(ServiceNotesTitle));
         OnPropertyChanged(nameof(ServiceNotesDescription));
         OnPropertyChanged(nameof(AllowText));

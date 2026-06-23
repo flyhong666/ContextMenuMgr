@@ -53,13 +53,30 @@ public class MenuItemFormDialog
     private readonly string _title;
     private readonly bool _showGroupField;
     private readonly bool _showRunAsAdmin;
+    private readonly bool _showWorkingDirectory;
+    private readonly bool _showIconField;
+    private readonly bool _targetPathReadOnly;
+    private readonly bool _argumentsAsCommand;
     private readonly LocalizationService _localization;
 
-    public MenuItemFormDialog(string title, MenuItemFormData? initialData, LocalizationService localization, bool showGroupField = false, bool showRunAsAdmin = true)
+    public MenuItemFormDialog(
+        string title,
+        MenuItemFormData? initialData,
+        LocalizationService localization,
+        bool showGroupField = false,
+        bool showRunAsAdmin = true,
+        bool showWorkingDirectory = true,
+        bool showIconField = true,
+        bool targetPathReadOnly = false,
+        bool argumentsAsCommand = false)
     {
         _title = title;
         _showGroupField = showGroupField;
         _showRunAsAdmin = showRunAsAdmin;
+        _showWorkingDirectory = showWorkingDirectory;
+        _showIconField = showIconField;
+        _targetPathReadOnly = targetPathReadOnly;
+        _argumentsAsCommand = argumentsAsCommand;
         _localization = localization;
         _data = initialData ?? new MenuItemFormData();
     }
@@ -85,6 +102,18 @@ public class MenuItemFormDialog
     public static async Task<MenuItemFormData?> ShowEditWinXAsync(string title, MenuItemFormData initialData, LocalizationService localization)
     {
         var dialog = new MenuItemFormDialog(title, initialData, localization, true, true);
+        return await dialog.ShowDialogAsync();
+    }
+
+    public static async Task<MenuItemFormData?> ShowAddOpenWithAsync(string title, LocalizationService localization)
+    {
+        var dialog = new MenuItemFormDialog(title, null, localization, false, false, false, false);
+        return await dialog.ShowDialogAsync();
+    }
+
+    public static async Task<MenuItemFormData?> ShowEditOpenWithAsync(string title, MenuItemFormData initialData, LocalizationService localization)
+    {
+        var dialog = new MenuItemFormDialog(title, initialData, localization, false, false, false, false, true, true);
         return await dialog.ShowDialogAsync();
     }
 
@@ -120,7 +149,7 @@ public class MenuItemFormDialog
 
     private Task<MenuItemFormData?> ShowDialogAsync()
     {
-        var window = new MenuItemFormWindow(_title, _data, _localization, _showGroupField, _showRunAsAdmin)
+        var window = new MenuItemFormWindow(_title, _data, _localization, _showGroupField, _showRunAsAdmin, _showWorkingDirectory, _showIconField, _targetPathReadOnly, _argumentsAsCommand)
         {
             Owner = System.Windows.Application.Current?.MainWindow
         };
@@ -139,7 +168,7 @@ public class MenuItemFormDialog
         private readonly LocalizationService _localization;
         private MenuItemFormData _formData = null!;
 
-        public MenuItemFormWindow(string title, MenuItemFormData data, LocalizationService localization, bool showGroupField, bool showRunAsAdmin)
+        public MenuItemFormWindow(string title, MenuItemFormData data, LocalizationService localization, bool showGroupField, bool showRunAsAdmin, bool showWorkingDirectory, bool showIconField, bool targetPathReadOnly, bool argumentsAsCommand)
         {
             _localization = localization;
             _formData = data;
@@ -176,11 +205,12 @@ public class MenuItemFormDialog
                 data.TargetPath,
                 localization.Translate("MenuFormBrowse"),
                 DialogType.Target);
+            _targetPathTextBox.IsReadOnly = targetPathReadOnly;
 
             _argumentsTextBox = CreateTextBoxWithLabel(
                 mainPanel,
-                localization.Translate("MenuFormArguments"),
-                localization.Translate("MenuFormArgumentsDescription"),
+                localization.Translate(argumentsAsCommand ? "MenuFormShellNewCommand" : "MenuFormArguments"),
+                localization.Translate(argumentsAsCommand ? "MenuFormShellNewCommandDescription" : "MenuFormArgumentsDescription"),
                 data.Arguments);
 
             _workingDirectoryTextBox = CreateTextBoxWithBrowseButton(
@@ -190,6 +220,10 @@ public class MenuItemFormDialog
                 data.WorkingDirectory,
                 localization.Translate("MenuFormBrowse"),
                 DialogType.Folder);
+            if (!showWorkingDirectory)
+            {
+                mainPanel.Children.RemoveAt(mainPanel.Children.Count - 1);
+            }
 
             _iconPathTextBox = CreateTextBoxWithBrowseButton(
                 mainPanel,
@@ -198,6 +232,10 @@ public class MenuItemFormDialog
                 data.IconPath,
                 localization.Translate("MenuFormBrowse"),
                 DialogType.Icon);
+            if (!showIconField)
+            {
+                mainPanel.Children.RemoveAt(mainPanel.Children.Count - 1);
+            }
 
             _runAsAdminCheckBox = new System.Windows.Controls.CheckBox
             {
