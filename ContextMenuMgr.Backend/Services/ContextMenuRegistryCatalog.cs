@@ -820,12 +820,6 @@ public sealed class ContextMenuRegistryCatalog
                     result: $"Success, OldValue={DiagnosticLogFormatter.FormatRegistryValueData(oldValue)}"),
                 cancellationToken);
 
-            var states = await _stateStore.LoadAsync(cancellationToken);
-            var state = GetOrCreateState(states, item);
-            state.CommandText = commandText;
-            state.ObservedEnabled = item.IsEnabled;
-            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            await _stateStore.SaveAsync(states, cancellationToken);
             ShellChangeNotifier.NotifyAssociationsChanged();
 
             var refreshed = (await GetSnapshotAsync(cancellationToken))
@@ -837,11 +831,24 @@ public sealed class ContextMenuRegistryCatalog
                     Notes = BuildNotes(item.EntryKind, commandText, item.HandlerClsid)
                 };
 
+            var states = await _stateStore.LoadAsync(cancellationToken);
+            var state = GetOrCreateState(states, refreshed);
+            UpdateMetadata(state, refreshed);
+            state.ObservedEnabled = refreshed.IsEnabled;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await _stateStore.SaveAsync(states, cancellationToken);
+
             return new PipeResponse
             {
                 Success = true,
                 Message = $"Updated command text for {item.DisplayName}.",
-                Item = refreshed
+                Item = refreshed with
+                {
+                    DetectedChangeKind = ContextMenuChangeKind.None,
+                    DetectedChangeDetails = null,
+                    HasConsistencyIssue = false,
+                    ConsistencyIssue = null
+                }
             };
         }
         catch (Exception ex)
