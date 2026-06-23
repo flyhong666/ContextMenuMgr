@@ -12,6 +12,11 @@ public static class ContextMenuApprovalIdentity
     {
         if (entry.IsWindows11ContextMenu)
         {
+            if (entry.Windows11SourceKind == Windows11ContextMenuSourceKind.SystemCommandStore)
+            {
+                return string.Join("|", "win11-system", entry.KeyName);
+            }
+
             return CreateWindows11LogicalItemKey(
                 ExtractWin11PackageKey(entry.RegistryPath),
                 entry.DisplayName,

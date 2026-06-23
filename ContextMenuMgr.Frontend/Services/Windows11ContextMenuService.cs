@@ -39,7 +39,7 @@ public sealed class Windows11ContextMenuService
     /// Gets a value indicating whether this instance is supported.
     /// </summary>
     public bool IsSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
-                               && HasPackagedComRegistryRoot();
+                               && (HasPackagedComRegistryRoot() || HasCommandStoreRegistryRoot());
 
     /// <summary>
     /// Gets packaged com Packages.
@@ -187,6 +187,19 @@ public sealed class Windows11ContextMenuService
         }
     }
 
+    private static bool HasCommandStoreRegistryRoot()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell");
+            return key is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string NormalizeGuid(string guidText) =>
         Guid.TryParse(guidText, out var guid)
             ? guid.ToString("B")
@@ -195,13 +208,39 @@ public sealed class Windows11ContextMenuService
     private static string ExtractHandlerId(string id)
     {
         var parts = id.Split('|');
-        return parts.Length >= 2 && string.Equals(parts[0], "win11", StringComparison.OrdinalIgnoreCase)
+        return parts.Length >= 2
+               && (string.Equals(parts[0], "win11", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(parts[0], "win11-system", StringComparison.OrdinalIgnoreCase))
             ? parts[1]
             : id;
     }
 
     private static Windows11ContextMenuItemDefinition CreateDefinition(ContextMenuEntry entry)
     {
+        if (entry.Windows11SourceKind == Windows11ContextMenuSourceKind.SystemCommandStore)
+        {
+            return new Windows11ContextMenuItemDefinition(
+                entry.Id,
+                entry.DisplayName,
+                new Windows11PackageInfo(
+                    "CommandStore",
+                    "System Command",
+                    string.Empty)
+                {
+                    FamilyName = entry.KeyName,
+                    PublisherDisplayName = "Microsoft Windows"
+                },
+                [],
+                new Windows11ComServerInfo(entry.HandlerClsid, entry.FilePath, entry.DisplayName),
+                [ToContextType(entry.Category)])
+            {
+                IsEnabled = entry.IsEnabled,
+                SourceKind = entry.Windows11SourceKind,
+                IsProtected = entry.IsProtectedSystemItem,
+                Entry = entry
+            };
+        }
+
         var packageFullName = ContextMenuApprovalIdentity.ExtractWin11PackageKey(entry.RegistryPath);
         if (string.IsNullOrWhiteSpace(packageFullName)
             || string.Equals(packageFullName, entry.RegistryPath, StringComparison.OrdinalIgnoreCase))
@@ -231,6 +270,8 @@ public sealed class Windows11ContextMenuService
         {
             IsEnabled = entry.IsEnabled,
             IsMachineBlocked = false,
+            SourceKind = entry.Windows11SourceKind,
+            IsProtected = entry.IsProtectedSystemItem,
             Entry = entry
         };
     }
@@ -272,6 +313,8 @@ public sealed record Windows11ContextMenuItemDefinition(
 {
     public bool IsEnabled { get; init; } = true;
     public bool IsMachineBlocked { get; init; } = false;
+    public Windows11ContextMenuSourceKind SourceKind { get; init; } = Windows11ContextMenuSourceKind.PackagedCom;
+    public bool IsProtected { get; init; }
     public ContextMenuEntry? Entry { get; init; }
 }
 

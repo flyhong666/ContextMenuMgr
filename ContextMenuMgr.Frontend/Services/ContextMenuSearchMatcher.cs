@@ -119,6 +119,8 @@ public static class ContextMenuSearchMatcher
             .Where(static entry => entry is not null)
             .SelectMany(static entry => new[]
             {
+                entry!.DisplayName,
+                entry!.KeyName,
                 entry!.RegistryPath,
                 entry.BackendRegistryPath,
                 entry.SourceRootPath,

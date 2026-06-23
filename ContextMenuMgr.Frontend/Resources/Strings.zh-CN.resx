@@ -951,7 +951,7 @@
     <value>Win11 新菜单</value>
   </data>
   <data name="Windows11PageDescription" xml:space="preserve">
-    <value>管理 Windows 11 新版右键菜单中的打包应用项目。当前先支持启用和禁用。</value>
+    <value>管理 Windows 11 新版右键菜单中的打包应用项目和 Windows 系统命令。</value>
   </data>
   <data name="Windows11NoItems" xml:space="preserve">
     <value>没有找到可管理的 Win11 新菜单项目。</value>
@@ -967,6 +967,18 @@
   </data>
   <data name="Windows11MachineBlockedText" xml:space="preserve">
     <value>已被系统范围阻止</value>
+  </data>
+  <data name="Windows11PackagedComSourceLabel" xml:space="preserve">
+    <value>Packaged COM</value>
+  </data>
+  <data name="Windows11SystemCommandSourceLabel" xml:space="preserve">
+    <value>系统命令 / CommandStore</value>
+  </data>
+  <data name="Windows11SystemCommandProtectedText" xml:space="preserve">
+    <value>受 Windows 保护</value>
+  </data>
+  <data name="Windows11SystemCommandGuidLockWarning" xml:space="preserve">
+    <value>不要对 Windows 11 内置命令使用 GUID Lock。阻止错误的 Explorer 命令处理器可能导致 Windows 11 新版右键菜单回退到经典菜单。</value>
   </data>
   <data name="OtherRulesPageTitle" xml:space="preserve">
     <value>其他规则</value>

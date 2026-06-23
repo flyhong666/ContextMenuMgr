@@ -273,6 +273,11 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
 
     private static string CreateLogicalGroupKey(Windows11ContextMenuItemDefinition item)
     {
+        if (item.SourceKind == Windows11ContextMenuSourceKind.SystemCommandStore)
+        {
+            return string.Join("|", "win11-system", item.Entry?.KeyName ?? item.Id);
+        }
+
         var filePath = File.Exists(item.ComServer.Path ?? string.Empty)
             ? item.ComServer.Path
             : item.Package.InstallPath;

@@ -111,6 +111,16 @@
                                         <Border
                                             Margin="0,0,8,8"
                                             Padding="8,2"
+                                            Background="{DynamicResource ControlFillColorTertiaryBrush}"
+                                            CornerRadius="4">
+                                            <ui:TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding SourceLabel}" />
+                                        </Border>
+                                        <Border
+                                            Margin="0,0,8,8"
+                                            Padding="8,2"
                                             Background="{DynamicResource AccentFillColorSecondaryBrush}"
                                             CornerRadius="4">
                                             <ui:TextBlock
@@ -129,8 +139,43 @@
                                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                 Text="{Binding MachineBlockedText}" />
                                         </Border>
+                                        <Border
+                                            Margin="0,0,8,8"
+                                            Padding="8,2"
+                                            Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                                            CornerRadius="4"
+                                            Visibility="{Binding IsProtected, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <ui:TextBlock
+                                                FontSize="11"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                Text="{Binding ProtectedText}" />
+                                        </Border>
                                     </WrapPanel>
 
+                                    <ui:TextBlock
+                                        Margin="0,2,0,0"
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Opacity="0.72"
+                                        Text="{Binding CommandKey}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasCommandKey, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,4,0,0"
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Opacity="0.68"
+                                        Text="{Binding HandlerGuid}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasHandlerGuid, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,4,0,0"
+                                        FontFamily="Consolas"
+                                        FontSize="11"
+                                        Opacity="0.68"
+                                        Text="{Binding RegistryPath}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasRegistryPath, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                     <ui:TextBlock
                                         Margin="0,2,0,0"
                                         FontFamily="Consolas"
@@ -139,6 +184,12 @@
                                         Text="{Binding ComServerPath}"
                                         TextWrapping="Wrap"
                                         Visibility="{Binding HasComServerPath, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,8,0,0"
+                                        Opacity="0.76"
+                                        Text="{Binding GuidLockWarningText}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding ShowGuidLockWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
 
                                 <StackPanel

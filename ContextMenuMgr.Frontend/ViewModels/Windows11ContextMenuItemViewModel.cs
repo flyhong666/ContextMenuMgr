@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
 
 namespace ContextMenuMgr.Frontend.ViewModels;
@@ -32,7 +33,7 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
         _localization = localization;
 
         _logoTask = Windows11ContextMenuService.LoadLogo(_primaryDefinition.Package, CancellationToken.None);
-        IsEnabled = definitions.All(static definition => definition.IsEnabled);
+        RefreshState(definitions.All(static definition => definition.IsEnabled));
 
         _languageChangedHandler = (_, _) =>
         {
@@ -40,6 +41,9 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
             OnPropertyChanged(nameof(ToggleOffText));
             OnPropertyChanged(nameof(ContextTypesText));
             OnPropertyChanged(nameof(MachineBlockedText));
+            OnPropertyChanged(nameof(SourceLabel));
+            OnPropertyChanged(nameof(ProtectedText));
+            OnPropertyChanged(nameof(GuidLockWarningText));
         };
         _localization.LanguageChanged += _languageChangedHandler;
     }
@@ -61,6 +65,12 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
 
     public string ComServerPath => _primaryDefinition.ComServer.Path ?? string.Empty;
 
+    public string CommandKey => _primaryDefinition.Entry?.KeyName ?? string.Empty;
+
+    public string RegistryPath => _primaryDefinition.Entry?.RegistryPath ?? string.Empty;
+
+    public string HandlerGuid => _primaryDefinition.Entry?.HandlerClsid ?? string.Empty;
+
     public string ContextTypesText => string.Join(
         "  ·  ",
         Definitions
@@ -70,6 +80,12 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
             .Select(LocalizeContextType));
 
     public bool HasComServerPath => !string.IsNullOrWhiteSpace(_primaryDefinition.ComServer.Path);
+
+    public bool HasCommandKey => IsSystemCommand && !string.IsNullOrWhiteSpace(CommandKey);
+
+    public bool HasRegistryPath => !string.IsNullOrWhiteSpace(RegistryPath);
+
+    public bool HasHandlerGuid => !string.IsNullOrWhiteSpace(HandlerGuid);
 
     public bool HasPublisherName => !string.IsNullOrWhiteSpace(_primaryDefinition.Package.PublisherDisplayName);
 
@@ -82,6 +98,14 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     public string ToggleOffText => _localization.Translate("ToggleOff");
 
     public string MachineBlockedText => _localization.Translate("Windows11MachineBlockedText");
+
+    public string SourceLabel => IsSystemCommand
+        ? _localization.Translate("Windows11SystemCommandSourceLabel")
+        : _localization.Translate("Windows11PackagedComSourceLabel");
+
+    public string ProtectedText => _localization.Translate("Windows11SystemCommandProtectedText");
+
+    public string GuidLockWarningText => _localization.Translate("Windows11SystemCommandGuidLockWarning");
 
     public string OpenFileLocationText => _localization.Translate("DetailsFileLocation");
 
@@ -111,7 +135,13 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
 
     public bool IsMachineBlocked => Definitions.Any(static definition => definition.IsMachineBlocked);
 
-    public bool CanToggle => !IsBusy && !IsMachineBlocked;
+    public bool IsSystemCommand => _primaryDefinition.SourceKind == Windows11ContextMenuSourceKind.SystemCommandStore;
+
+    public bool IsProtected => Definitions.Any(static definition => definition.IsProtected);
+
+    public bool ShowGuidLockWarning => IsSystemCommand;
+
+    public bool CanToggle => !IsBusy && !IsMachineBlocked && !IsProtected;
 
     public bool CanOpenFileLocation => !IsBusy
         && !string.IsNullOrWhiteSpace(InstallPath)

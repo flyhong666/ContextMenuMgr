@@ -180,6 +180,19 @@ public sealed class ContextMenuRegistryCatalog
             : [];
     }
 
+    public async Task<PipeResponse> SetWindows11SystemCommandEnabledAsync(
+        string commandKey,
+        bool enable,
+        Guid? operationId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _windows11Catalog.SetSystemCommandEnabledAsync(
+            commandKey,
+            enable,
+            operationId,
+            cancellationToken);
+    }
+
     internal async Task<PipeResponse?> CreateRegistryWriteProtectionPreflightFailureAsync(
         string operationName,
         IEnumerable<string?> targetPaths,
@@ -1819,6 +1832,8 @@ public sealed class ContextMenuRegistryCatalog
         dirty |= UpdateIfChanged(state.IconIndex, entry.IconIndex, value => state.IconIndex = value);
         dirty |= UpdateIfChanged(state.FilePath, entry.FilePath, value => state.FilePath = value);
         dirty |= UpdateIfChanged(state.IsWindows11ContextMenu, entry.IsWindows11ContextMenu, value => state.IsWindows11ContextMenu = value);
+        dirty |= UpdateIfChanged(state.Windows11SourceKind, entry.Windows11SourceKind, value => state.Windows11SourceKind = value);
+        dirty |= UpdateIfChanged(state.IsProtectedSystemItem, entry.IsProtectedSystemItem, value => state.IsProtectedSystemItem = value);
         dirty |= UpdateIfChanged(state.OnlyWithShift, entry.OnlyWithShift, value => state.OnlyWithShift = value);
         dirty |= UpdateIfChanged(state.OnlyInExplorer, entry.OnlyInExplorer, value => state.OnlyInExplorer = value);
         dirty |= UpdateIfChanged(state.NoWorkingDirectory, entry.NoWorkingDirectory, value => state.NoWorkingDirectory = value);
@@ -1874,6 +1889,8 @@ public sealed class ContextMenuRegistryCatalog
             IconIndex = state.IconIndex,
             FilePath = state.FilePath,
             IsWindows11ContextMenu = state.IsWindows11ContextMenu,
+            Windows11SourceKind = state.Windows11SourceKind,
+            IsProtectedSystemItem = state.IsProtectedSystemItem,
             OnlyWithShift = state.OnlyWithShift,
             OnlyInExplorer = state.OnlyInExplorer,
             NoWorkingDirectory = state.NoWorkingDirectory,
@@ -1912,6 +1929,8 @@ public sealed class ContextMenuRegistryCatalog
             IconIndex = state.IconIndex,
             FilePath = state.FilePath,
             IsWindows11ContextMenu = state.IsWindows11ContextMenu,
+            Windows11SourceKind = state.Windows11SourceKind,
+            IsProtectedSystemItem = state.IsProtectedSystemItem,
             OnlyWithShift = state.OnlyWithShift,
             OnlyInExplorer = state.OnlyInExplorer,
             NoWorkingDirectory = state.NoWorkingDirectory,
@@ -2071,6 +2090,8 @@ public sealed class ContextMenuRegistryCatalog
                || state.IconIndex != entry.IconIndex
                || !string.Equals(state.FilePath, entry.FilePath, StringComparison.OrdinalIgnoreCase)
                || state.IsWindows11ContextMenu != entry.IsWindows11ContextMenu
+               || state.Windows11SourceKind != entry.Windows11SourceKind
+               || state.IsProtectedSystemItem != entry.IsProtectedSystemItem
                || state.OnlyWithShift != entry.OnlyWithShift
                || state.OnlyInExplorer != entry.OnlyInExplorer
                || state.NoWorkingDirectory != entry.NoWorkingDirectory

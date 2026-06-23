@@ -536,6 +536,23 @@ public sealed class NamedPipeBackendServer
         var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
         var handlerClsid = request.ItemId ?? string.Empty;
         var blockMachine = request.BlockMachine ?? false;
+        if (IsWindows11SystemCommandKey(handlerClsid))
+        {
+            var systemResponse = await _catalog.SetWindows11SystemCommandEnabledAsync(
+                handlerClsid,
+                enable: false,
+                request.ClientOperationId,
+                cancellationToken);
+            await LogWin11CommandAsync(
+                PipeCommand.SetWin11BlockedItem,
+                userContext,
+                blockMachine,
+                handlerClsid,
+                systemResponse.Success ? "system-command-succeeded" : "system-command-failed",
+                cancellationToken);
+            return systemResponse;
+        }
+
         await LogWin11CommandAsync(
             PipeCommand.SetWin11BlockedItem,
             userContext,
@@ -571,6 +588,23 @@ public sealed class NamedPipeBackendServer
         var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
         var handlerClsid = request.ItemId ?? string.Empty;
         var unblockMachine = request.UnblockMachine ?? false;
+        if (IsWindows11SystemCommandKey(handlerClsid))
+        {
+            var systemResponse = await _catalog.SetWindows11SystemCommandEnabledAsync(
+                handlerClsid,
+                enable: true,
+                request.ClientOperationId,
+                cancellationToken);
+            await LogWin11CommandAsync(
+                PipeCommand.RemoveWin11BlockedItem,
+                userContext,
+                unblockMachine,
+                handlerClsid,
+                systemResponse.Success ? "system-command-succeeded" : "system-command-failed",
+                cancellationToken);
+            return systemResponse;
+        }
+
         await LogWin11CommandAsync(
             PipeCommand.RemoveWin11BlockedItem,
             userContext,
@@ -734,6 +768,10 @@ public sealed class NamedPipeBackendServer
             $"Win11 command {command}: Sid={sid}, Machine={machineScope}, Clsid={normalizedClsid}, Result={result}.",
             cancellationToken);
     }
+
+    private static bool IsWindows11SystemCommandKey(string? itemId) =>
+        !string.IsNullOrWhiteSpace(itemId)
+        && itemId.StartsWith("Windows.", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeGuid(string guidText)
     {

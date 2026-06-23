@@ -88,6 +88,16 @@ public sealed class PersistedContextMenuState
     public bool IsWindows11ContextMenu { get; set; }
 
     /// <summary>
+    /// Gets or sets the Windows 11 context-menu source kind.
+    /// </summary>
+    public Windows11ContextMenuSourceKind Windows11SourceKind { get; set; } = Windows11ContextMenuSourceKind.PackagedCom;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this Windows 11 item is protected from safe modification.
+    /// </summary>
+    public bool IsProtectedSystemItem { get; set; }
+
+    /// <summary>
     /// Gets or sets the only With Shift.
     /// </summary>
     public bool OnlyWithShift { get; set; }
@@ -185,6 +195,8 @@ public sealed class PersistedContextMenuState
             IconIndex = IconIndex,
             FilePath = FilePath,
             IsWindows11ContextMenu = IsWindows11ContextMenu,
+            Windows11SourceKind = Windows11SourceKind,
+            IsProtectedSystemItem = IsProtectedSystemItem,
             OnlyWithShift = OnlyWithShift,
             OnlyInExplorer = OnlyInExplorer,
             NoWorkingDirectory = NoWorkingDirectory,
@@ -226,6 +238,8 @@ public sealed class PersistedContextMenuState
             IconIndex = entry.IconIndex,
             FilePath = entry.FilePath,
             IsWindows11ContextMenu = entry.IsWindows11ContextMenu,
+            Windows11SourceKind = entry.Windows11SourceKind,
+            IsProtectedSystemItem = entry.IsProtectedSystemItem,
             OnlyWithShift = entry.OnlyWithShift,
             OnlyInExplorer = entry.OnlyInExplorer,
             NoWorkingDirectory = entry.NoWorkingDirectory,

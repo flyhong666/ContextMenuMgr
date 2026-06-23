@@ -951,7 +951,7 @@
     <value>Win11 新功能表</value>
   </data>
   <data name="Windows11PageDescription" xml:space="preserve">
-    <value>管理 Windows 11 新版快顯功能表中的封裝應用程式項目。目前先支援啟用和停用。</value>
+    <value>管理 Windows 11 新版快顯功能表中的封裝應用程式項目和 Windows 系統命令。</value>
   </data>
   <data name="Windows11NoItems" xml:space="preserve">
     <value>沒有找到可管理的 Win11 新功能表項目。</value>
@@ -967,6 +967,18 @@
   </data>
   <data name="Windows11MachineBlockedText" xml:space="preserve">
     <value>已被系統範圍封鎖</value>
+  </data>
+  <data name="Windows11PackagedComSourceLabel" xml:space="preserve">
+    <value>Packaged COM</value>
+  </data>
+  <data name="Windows11SystemCommandSourceLabel" xml:space="preserve">
+    <value>系統命令 / CommandStore</value>
+  </data>
+  <data name="Windows11SystemCommandProtectedText" xml:space="preserve">
+    <value>受 Windows 保護</value>
+  </data>
+  <data name="Windows11SystemCommandGuidLockWarning" xml:space="preserve">
+    <value>不要對 Windows 11 內建命令使用 GUID Lock。封鎖錯誤的 Explorer 命令處理器可能導致 Windows 11 新版快顯功能表回退到傳統功能表。</value>
   </data>
   <data name="OtherRulesPageTitle" xml:space="preserve">
     <value>其他規則</value>

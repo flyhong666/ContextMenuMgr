@@ -15,10 +15,17 @@ internal sealed class Windows11ContextMenuCatalog
 {
     private const string PackagedComPath = @"PackagedCom\Package";
     private const string PackageRepositoryPath = @"Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\PackageRepository\Packages";
+    private const string SystemCommandStorePath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell";
     private const string UserBlockedPathSuffix = @"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
     private const string MachineBlockedPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
     private const string NamespaceCom = "http://schemas.microsoft.com/appx/manifest/com/windows10";
     private const string NamespaceDesktop4 = "http://schemas.microsoft.com/appx/manifest/desktop/windows10/4";
+    private static readonly HashSet<string> SupportedSystemCommandKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Windows.SendToMyPhone",
+        "Windows.Share"
+    };
+
     private readonly FileLogger? _logger;
 
     public Windows11ContextMenuCatalog(FileLogger? logger = null)
@@ -47,68 +54,142 @@ internal sealed class Windows11ContextMenuCatalog
             return [];
         }
 
-        var packageNames = GetPackagedComPackages();
-        if (packageNames.Length == 0)
+        var items = new ConcurrentDictionary<string, ContextMenuEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var commandEntry in EnumerateSystemCommandStoreEntries())
         {
-            _logger?.LogFireAndForget($"Win11ContextMenuEnumerate: IsSupported={IsSupported}, UserSid={userSid}, PackageCount=0, Result=NoPackages.");
-            return [];
+            items[commandEntry.Id] = commandEntry;
         }
 
-        var items = new ConcurrentDictionary<string, ContextMenuEntry>(StringComparer.OrdinalIgnoreCase);
+        var packageNames = GetPackagedComPackages();
         var manifestCount = 0;
         var parseFailureCount = 0;
 
-        await Parallel.ForEachAsync(
-            packageNames,
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = 4,
-                CancellationToken = cancellationToken
-            },
-            async (fullName, ct) =>
-            {
-                try
+        if (packageNames.Length > 0)
+        {
+            await Parallel.ForEachAsync(
+                packageNames,
+                new ParallelOptions
                 {
-                    ct.ThrowIfCancellationRequested();
-                    var package = TryGetPackageInfo(fullName);
-                    if (package is null)
+                    MaxDegreeOfParallelism = 4,
+                    CancellationToken = cancellationToken
+                },
+                async (fullName, ct) =>
+                {
+                    try
                     {
-                        return;
-                    }
-
-                    var definitions = await AnalyzeManifestAsync(
-                        package,
-                        ct);
-                    if (definitions.Count > 0)
-                    {
-                        Interlocked.Increment(ref manifestCount);
-                    }
-
-                    foreach (var definition in definitions)
-                    {
-                        var isEnabled = GetIsEnabled(definition.Id, userContext);
-                        var blockedSource = GetBlockedSource(definition.Id, userContext);
-                        foreach (var category in MapCategories(definition.ContextTypes))
+                        ct.ThrowIfCancellationRequested();
+                        var package = TryGetPackageInfo(fullName);
+                        if (package is null)
                         {
-                            var entry = CreateEntry(definition, category, isEnabled, userSid);
-                            items[entry.Id] = entry;
-                            _logger?.LogFireAndForget($"Win11ContextMenuEntry: PackageFullName={definition.Package.FullName}, DisplayName={definition.DisplayName}, Clsid={NormalizeGuid(definition.Id)}, HandlerPath={definition.ComServer.Path}, IsEnabled={isEnabled}, BlockedSource={blockedSource}, LogoPath=<not-resolved>.");
+                            return;
+                        }
+
+                        var definitions = await AnalyzeManifestAsync(
+                            package,
+                            ct);
+                        if (definitions.Count > 0)
+                        {
+                            Interlocked.Increment(ref manifestCount);
+                        }
+
+                        foreach (var definition in definitions)
+                        {
+                            var isEnabled = GetIsEnabled(definition.Id, userContext);
+                            var blockedSource = GetBlockedSource(definition.Id, userContext);
+                            foreach (var category in MapCategories(definition.ContextTypes))
+                            {
+                                var entry = CreateEntry(definition, category, isEnabled, userSid);
+                                items[entry.Id] = entry;
+                                _logger?.LogFireAndForget($"Win11ContextMenuEntry: PackageFullName={definition.Package.FullName}, DisplayName={definition.DisplayName}, Clsid={NormalizeGuid(definition.Id)}, HandlerPath={definition.ComServer.Path}, IsEnabled={isEnabled}, BlockedSource={blockedSource}, LogoPath=<not-resolved>.");
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    Interlocked.Increment(ref parseFailureCount);
-                    _logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"Win11ContextMenuPackageParseFailure: PackageFullName={fullName}, Exception={ex}");
-                }
-            });
+                    catch (Exception ex)
+                    {
+                        Interlocked.Increment(ref parseFailureCount);
+                        _logger?.LogFireAndForget(RuntimeLogLevel.Warning, $"Win11ContextMenuPackageParseFailure: PackageFullName={fullName}, Exception={ex}");
+                    }
+                });
+        }
+        else
+        {
+            _logger?.LogFireAndForget($"Win11ContextMenuEnumerate: IsSupported={IsSupported}, UserSid={userSid}, PackageCount=0, Result=NoPackages.");
+        }
 
         var result = items.Values
             .OrderBy(static item => item.Category)
+            .ThenBy(static item => item.Windows11SourceKind)
             .ThenBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        _logger?.LogFireAndForget($"Win11ContextMenuEnumerateSummary: IsSupported={IsSupported}, UserSid={userSid}, PackageCount={packageNames.Length}, ManifestCount={manifestCount}, EntriesCount={result.Length}, BlockedMachineCount={GetMachineBlockedCount()}, BlockedUserCount={GetUserBlockedCount(userSid)}, PackageParseFailures={parseFailureCount}.");
+        _logger?.LogFireAndForget($"Win11ContextMenuEnumerateSummary: IsSupported={IsSupported}, UserSid={userSid}, PackageCount={packageNames.Length}, ManifestCount={manifestCount}, EntriesCount={result.Length}, SystemCommandCount={result.Count(static item => item.Windows11SourceKind == Windows11ContextMenuSourceKind.SystemCommandStore)}, BlockedMachineCount={GetMachineBlockedCount()}, BlockedUserCount={GetUserBlockedCount(userSid)}, PackageParseFailures={parseFailureCount}.");
         return result;
+    }
+
+    /// <summary>
+    /// Sets enabled for a Windows 11 system CommandStore item using shell verb visibility only.
+    /// </summary>
+    public async Task<PipeResponse> SetSystemCommandEnabledAsync(
+        string commandKey,
+        bool enable,
+        Guid? operationId,
+        CancellationToken cancellationToken)
+    {
+        var registryPath = $@"HKEY_LOCAL_MACHINE\{SystemCommandStorePath}\{commandKey}";
+        if (string.IsNullOrWhiteSpace(commandKey) || !IsSupportedSystemCommandKey(commandKey))
+        {
+            return Failure("Only Windows 11 system CommandStore command keys can be modified here.", operationId);
+        }
+
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey($@"{SystemCommandStorePath}\{commandKey}", writable: true);
+            if (key is null)
+            {
+                return Failure("The Windows 11 system command was not found in CommandStore.", operationId);
+            }
+
+            ShellVerbVisibility.SetEnabled(key, registryPath, enable);
+            if (_logger is not null)
+            {
+                await _logger.LogAsync(
+                    DiagnosticLogFormatter.BuildRegistryOperationLog(
+                        "Win11SystemCommandSetEnabled",
+                        registryPath,
+                        commandKey,
+                        null,
+                        null,
+                        writable: true,
+                        result: $"Success, Enable={enable}"),
+                    cancellationToken);
+            }
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = enable
+                    ? "Windows 11 system command enabled successfully."
+                    : "Windows 11 system command disabled successfully.",
+                ClientOperationId = operationId
+            };
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            if (_logger is not null)
+            {
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Win11SystemCommandProtected: Path={registryPath}, CommandKey={commandKey}, Exception={ex}", cancellationToken);
+            }
+
+            return ProtectedFailure(operationId);
+        }
+        catch (System.Security.SecurityException ex)
+        {
+            if (_logger is not null)
+            {
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"Win11SystemCommandProtected: Path={registryPath}, CommandKey={commandKey}, Exception={ex}", cancellationToken);
+            }
+
+            return ProtectedFailure(operationId);
+        }
     }
 
     /// <summary>
@@ -364,6 +445,7 @@ internal sealed class Windows11ContextMenuCatalog
                 ? definition.ComServer.Path
                 : definition.Package.InstallPath,
             IsWindows11ContextMenu = true,
+            Windows11SourceKind = Windows11ContextMenuSourceKind.PackagedCom,
             IsEnabled = isEnabled,
             IsPresentInRegistry = true,
             Notes = notes
@@ -562,6 +644,139 @@ internal sealed class Windows11ContextMenuCatalog
         finally
         {
             NativeMethods.WTSFreeMemory(sessionInfoPtr);
+        }
+    }
+
+    private IEnumerable<ContextMenuEntry> EnumerateSystemCommandStoreEntries()
+    {
+        using var root = Registry.LocalMachine.OpenSubKey(SystemCommandStorePath, writable: false);
+        if (root is null)
+        {
+            return [];
+        }
+
+        var entries = new List<ContextMenuEntry>();
+        foreach (var name in root.GetSubKeyNames().Where(IsSupportedSystemCommandKey))
+        {
+            using var itemKey = root.OpenSubKey(name, writable: false);
+            if (itemKey is null || !HasSystemCommandMetadata(itemKey))
+            {
+                continue;
+            }
+
+            entries.Add(CreateSystemCommandEntry(name, itemKey));
+        }
+
+        return entries;
+    }
+
+    private ContextMenuEntry CreateSystemCommandEntry(string commandKey, RegistryKey itemKey)
+    {
+        var registryPath = $@"HKEY_LOCAL_MACHINE\{SystemCommandStorePath}\{commandKey}";
+        var commandText = itemKey.OpenSubKey("command", writable: false)?.GetValue(null)?.ToString();
+        var handlerGuid = ResolveSystemCommandHandlerGuid(itemKey);
+        var icon = ShellMetadataResolver.ResolveVerbIcon(itemKey, commandText);
+        var filePath = ShellMetadataResolver.ResolveVerbFilePath(itemKey, commandText)
+            ?? ShellMetadataResolver.ResolveShellExtensionFilePath(handlerGuid);
+        var displayName = ShellMetadataResolver.ResolveVerbDisplayName(itemKey, commandKey);
+        var isEnabled = ShellVerbVisibility.IsEnabled(itemKey);
+        var isProtected = IsSystemCommandProtected(commandKey);
+        var notes = "System Command / CommandStore. Do not use GUID Lock for Windows 11 built-in commands. Blocking the wrong Explorer command handler may cause the Windows 11 modern context menu to fall back to the classic menu.";
+
+        _logger?.LogFireAndForget($"Win11SystemCommandEntry: CommandKey={commandKey}, DisplayName={displayName}, HandlerGuid={handlerGuid ?? "<none>"}, IsEnabled={isEnabled}, IsProtected={isProtected}.");
+        return new ContextMenuEntry
+        {
+            Id = $"win11-system|{commandKey}",
+            Category = ContextMenuCategory.File,
+            EntryKind = ContextMenuEntryKind.ShellVerb,
+            KeyName = commandKey,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? commandKey : displayName,
+            RegistryPath = registryPath,
+            BackendRegistryPath = registryPath,
+            SourceRootPath = @"CommandStore\shell",
+            CommandText = commandText,
+            HandlerClsid = handlerGuid,
+            IconPath = icon.IconPath,
+            IconIndex = icon.IconIndex,
+            FilePath = filePath,
+            IsWindows11ContextMenu = true,
+            Windows11SourceKind = Windows11ContextMenuSourceKind.SystemCommandStore,
+            IsProtectedSystemItem = isProtected,
+            IsEnabled = isEnabled,
+            IsPresentInRegistry = true,
+            Notes = notes
+        };
+    }
+
+    private static bool IsSupportedSystemCommandKey(string keyName) =>
+        keyName.StartsWith("Windows.", StringComparison.OrdinalIgnoreCase)
+        && SupportedSystemCommandKeys.Contains(keyName);
+
+    private static bool HasSystemCommandMetadata(RegistryKey itemKey)
+    {
+        foreach (var valueName in new[]
+                 {
+                     "MUIVerb",
+                     "ExplorerCommandHandler",
+                     "DelegateExecute",
+                     "CommandFlags",
+                     "AppliesTo",
+                     "Icon",
+                     "ImpliedSelectionModel"
+                 })
+        {
+            if (itemKey.GetValue(valueName) is not null)
+            {
+                return true;
+            }
+        }
+
+        return itemKey.OpenSubKey("command", writable: false) is not null;
+    }
+
+    private static string? ResolveSystemCommandHandlerGuid(RegistryKey itemKey)
+    {
+        foreach (var valueName in new[] { "ExplorerCommandHandler", "DelegateExecute" })
+        {
+            var value = itemKey.GetValue(valueName)?.ToString();
+            if (Guid.TryParse(value, out var guid))
+            {
+                return guid.ToString("B");
+            }
+        }
+
+        return null;
+    }
+
+    private static PipeResponse ProtectedFailure(Guid? operationId) => new()
+    {
+        Success = false,
+        ErrorCode = "WIN11_SYSTEM_COMMAND_PROTECTED",
+        Message = "This Windows 11 system command is protected by Windows and cannot be safely modified by ContextMenuMgr.",
+        ClientOperationId = operationId
+    };
+
+    private static PipeResponse Failure(string message, Guid? operationId) => new()
+    {
+        Success = false,
+        Message = message,
+        ClientOperationId = operationId
+    };
+
+    private static bool IsSystemCommandProtected(string commandKey)
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey($@"{SystemCommandStorePath}\{commandKey}", writable: true);
+            return key is null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
+        catch (System.Security.SecurityException)
+        {
+            return true;
         }
     }
 

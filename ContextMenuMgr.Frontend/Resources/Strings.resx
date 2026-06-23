@@ -951,7 +951,7 @@ Continue anyway? (Not recommended)</value>
     <value>Win11 New Menu</value>
   </data>
   <data name="Windows11PageDescription" xml:space="preserve">
-    <value>Manage packaged-app entries that appear in the Windows 11 modern context menu. This first pass supports enable and disable only.</value>
+    <value>Manage packaged-app and Windows system commands that appear in the Windows 11 modern context menu.</value>
   </data>
   <data name="Windows11NoItems" xml:space="preserve">
     <value>No manageable Windows 11 modern context-menu entries were found.</value>
@@ -967,6 +967,18 @@ Continue anyway? (Not recommended)</value>
   </data>
   <data name="Windows11MachineBlockedText" xml:space="preserve">
     <value>Blocked at machine scope</value>
+  </data>
+  <data name="Windows11PackagedComSourceLabel" xml:space="preserve">
+    <value>Packaged COM</value>
+  </data>
+  <data name="Windows11SystemCommandSourceLabel" xml:space="preserve">
+    <value>System Command / CommandStore</value>
+  </data>
+  <data name="Windows11SystemCommandProtectedText" xml:space="preserve">
+    <value>Protected by Windows</value>
+  </data>
+  <data name="Windows11SystemCommandGuidLockWarning" xml:space="preserve">
+    <value>Do not use GUID Lock for Windows 11 built-in commands. Blocking the wrong Explorer command handler may cause the Windows 11 modern context menu to fall back to the classic menu.</value>
   </data>
   <data name="OtherRulesPageTitle" xml:space="preserve">
     <value>Other Rules</value>
