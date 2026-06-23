@@ -162,7 +162,7 @@
 “权限不够。”
 
 正确方向：
-先查 ShellNew order key ACL、Everyone deny rule、take ownership fallback、是否用正确 SID 打开 `HKEY_USERS`。
+先查 ShellNew order key ACL、WorldSid deny rule、是否用正确 SID 打开 `HKEY_USERS`。ShellNew lock/unlock 不再走 take ownership fallback；如果 ACL 已损坏到 `ChangePermissions` 无法修改，应外部修复。
 
 ### 例 4：Deep Analysis 失败
 

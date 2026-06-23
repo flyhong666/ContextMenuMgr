@@ -80,11 +80,11 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 现象 | ShellNew order key 锁住后 unlock 或 repair 失败。 |
-| 可能原因 | ACL deny rule 阻止写入、所有者异常、继承关闭、写到了错误 SID。 |
-| 优先查看的代码 | `SpecialMenuService.SetShellNewOrderLockAsync`、`RepairShellNewOrderAclAsync`。 |
-| 优先查看的日志 | `backend.log`。 |
-| 常见修复方向 | 使用 ShellNew ACL repair 路径；必要时检查 ownership fallback；不要把它当 Registry Write Protection 的问题处理。 |
+| 现象 | ShellNew order key 锁住后 unlock 失败。 |
+| 可能原因 | ACL deny rule 阻止写入、所有者异常、继承关闭、写到了错误 SID，或 legacy broken ACL 已无法用 `ChangePermissions` 安全修改。 |
+| 优先查看的代码 | `SpecialMenuService.SetShellNewOrderLockAsync`、`RemoveShellNewOrderLock`。 |
+| 优先查看的日志 | `backend.log` 中的 SID 和 `HKEY_USERS\<sid>\Software\Microsoft\Windows\CurrentVersion\Explorer\Discardable\PostSetup\ShellNew` 路径。 |
+| 常见修复方向 | 主程序只做 `ReadPermissions` / `ChangePermissions` simple unlock，不 take ownership、不替换 DACL。无法安全修改时应外部修复或用已知良好的工具切换；不要把它当 Registry Write Protection 的问题处理。 |
 
 ## 8. ShellNew 排序失败
 

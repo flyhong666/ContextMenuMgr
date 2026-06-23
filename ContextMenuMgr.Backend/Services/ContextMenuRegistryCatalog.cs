@@ -3616,7 +3616,6 @@ public sealed class ContextMenuRegistryCatalog
     private const int ERROR_NOT_ALL_ASSIGNED = 1300;
     private const string SE_RESTORE_NAME = "SeRestorePrivilege";
     private const string SE_BACKUP_NAME = "SeBackupPrivilege";
-    private const string SE_TAKE_OWNERSHIP_NAME = "SeTakeOwnershipPrivilege";
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LUID
@@ -3721,55 +3720,6 @@ public sealed class ContextMenuRegistryCatalog
                 };
 
                 if (!LookupPrivilegeValue(null, SE_RESTORE_NAME, out privilege.Luid))
-                {
-                    return false;
-                }
-
-                var privileges = new TOKEN_PRIVILEGES
-                {
-                    PrivilegeCount = 1,
-                    Privileges = [privilege]
-                };
-
-                var length = 0u;
-                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
-                {
-                    return false;
-                }
-
-                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
-            }
-            finally
-            {
-                CloseHandle(tokenHandle);
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool EnableTakeOwnershipPrivilege()
-    {
-        try
-        {
-            IntPtr tokenHandle;
-            var processHandle = System.Diagnostics.Process.GetCurrentProcess().SafeHandle;
-            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
-            {
-                return false;
-            }
-
-            try
-            {
-                var privilege = new LUID_AND_ATTRIBUTES
-                {
-                    Luid = new LUID(),
-                    Attributes = SE_PRIVILEGE_ENABLED
-                };
-
-                if (!LookupPrivilegeValue(null, SE_TAKE_OWNERSHIP_NAME, out privilege.Luid))
                 {
                     return false;
                 }

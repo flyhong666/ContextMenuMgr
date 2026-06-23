@@ -16,6 +16,7 @@ namespace ContextMenuMgr.Backend.Services;
 public sealed class SpecialMenuService
 {
     private const string ShellNewOrderPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Discardable\PostSetup\ShellNew";
+    private const string ShellNewLegacyBroadLockMessage = "The ShellNew order key is locked by a legacy broad ACL rule and cannot be safely unlocked without ownership repair. Use BluePointLilac/ContextMenuManager once to unlock it, then retry.";
     private const string CommandStorePath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell";
     private const string GuidBlockedPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
     private const string IeRootPath = @"Software\Microsoft\Internet Explorer";
@@ -30,6 +31,7 @@ public sealed class SpecialMenuService
     private const string WinXUndoDisabledMessage = "Win+X undo is currently disabled because Win+X items are deleted directly.";
     private const string WinXPurgeDeletedDisabledMessage = "Win+X deleted-item purge is disabled because Win+X items are deleted directly.";
     private const string DynamicSendToDriveIdPrefix = "sendto:drive:";
+    private const RegistryRights ShellNewOrderLockRights = RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete;
 
     private readonly FileLogger _logger;
 
@@ -661,21 +663,26 @@ public sealed class SpecialMenuService
     {
         try
         {
-            await _logger.LogAsync("ShellNewAclFixVersion=NoCreateSubKeyBeforeUnlock-v1", cancellationToken);
             var context = RequireUserContext(userContext);
+            var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+            await _logger.LogAsync($"ShellNewOrderLockRequest: Sid={context.Sid}, FullPath={fullPath}, Locked={locked}.", cancellationToken);
             if (locked)
             {
+                if (IsShellNewOrderLocked(context))
+                {
+                    var removed = RemoveShellNewOrderLock(context);
+                    await _logger.LogAsync($"ShellNew order key was already locked before applying lock. Sid={context.Sid}, FullPath={fullPath}. {removed.Message}", cancellationToken);
+                }
+
                 var currentRealItems = GetShellNewItems(context).Where(IsRealShellNewEntry).ToList();
-                var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
-                await _logger.LogAsync($"ShellNew order pre-lock ACL reset: {reset.Message}", cancellationToken);
                 WriteShellNewOrderClasses(context, currentRealItems);
                 var applied = ApplyShellNewOrderLock(context);
-                await _logger.LogAsync($"ShellNew order lock applied. KeyCreated={applied.KeyCreated}. Reset={applied.Reset.Message}. Verification={applied.VerificationMessage}", cancellationToken);
+                await _logger.LogAsync($"ShellNew order lock applied. Sid={context.Sid}, FullPath={fullPath}, KeyCreated={applied.KeyCreated}. {applied.Message}", cancellationToken);
             }
             else
             {
-                var reset = RemoveShellNewOrderLock(context);
-                await _logger.LogAsync($"ShellNew order lock removed. {reset.Message}", cancellationToken);
+                var removed = RemoveShellNewOrderLock(context);
+                await _logger.LogAsync($"ShellNew order lock removed. Sid={context.Sid}, FullPath={fullPath}. {removed.Message}", cancellationToken);
             }
 
             await _logger.LogAsync($"ShellNew order lock set to {locked} for user {context.Sid}.", cancellationToken);
@@ -692,11 +699,11 @@ public sealed class SpecialMenuService
     {
         try
         {
-            await _logger.LogAsync("ShellNewAclFixVersion=NoCreateSubKeyBeforeUnlock-v1", cancellationToken);
             var context = RequireUserContext(userContext);
-            var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
-            await _logger.LogAsync($"ShellNew order ACL repaired for user {context.Sid}. KeyMissing={reset.KeyMissing}. {reset.Message}", cancellationToken);
-            return new PipeResponse { Success = true, Message = "ShellNew order ACL repaired successfully.", ClientOperationId = operationId };
+            var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+            var removed = RemoveShellNewOrderLock(context);
+            await _logger.LogAsync($"ShellNew order ACL repair request used simple unlock only. Sid={context.Sid}, FullPath={fullPath}. {removed.Message}", cancellationToken);
+            return new PipeResponse { Success = true, Message = "ShellNew order lock removed successfully.", ClientOperationId = operationId };
         }
         catch (Exception ex)
         {
@@ -718,14 +725,6 @@ public sealed class SpecialMenuService
         catch
         {
             ordered = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        try
-        {
-            EnableSecurityPrivilege();
-        }
-        catch
-        {
         }
 
         var orderLocked = false;
@@ -1253,10 +1252,13 @@ public sealed class SpecialMenuService
         (allRealItems[sourceAllIndex], allRealItems[targetAllIndex]) = (allRealItems[targetAllIndex], allRealItems[sourceAllIndex]);
         var movedItem = allRealItems[targetAllIndex];
 
+        var unlocked = false;
         try
         {
             var unlock = RemoveShellNewOrderLock(context);
+            unlocked = true;
             await _logger.LogAsync($"ShellNew move unlocked order key. UnlockResult={unlock.Message}", cancellationToken);
+            Exception? writeFailure = null;
             try
             {
                 WriteShellNewOrderClasses(context, allRealItems);
@@ -1264,17 +1266,24 @@ public sealed class SpecialMenuService
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or InvalidOperationException)
             {
-                await _logger.LogAsync(RuntimeLogLevel.Warning, $"ShellNew order write failed after unlock; retrying after ACL reset. Error={ex}", cancellationToken);
-                var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
-                await _logger.LogAsync($"ShellNew move retry ACL reset. {reset.Message}", cancellationToken);
-                WriteShellNewOrderClasses(context, allRealItems);
-                await _logger.LogAsync($"ShellNew move retry write Classes result. Result=Success, FinalClasses={JoinShellNewOrder(allRealItems)}.", cancellationToken);
+                writeFailure = ex;
+                await _logger.LogAsync(RuntimeLogLevel.Warning, $"ShellNew order write failed after simple unlock. No ACL reset or ownership fallback will be attempted. Sid={context.Sid}, Path={DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath)}, Error={ex}", cancellationToken);
+            }
+
+            if (writeFailure is not null)
+            {
+                throw new InvalidOperationException(
+                    "ShellNew order move failed after unlocking with ChangePermissions only. The ShellNew order ACL may need external repair.",
+                    writeFailure);
             }
         }
         finally
         {
-            var relock = ApplyShellNewOrderLock(context);
-            await _logger.LogAsync($"ShellNew move relocked order key. RelockResult=Success, KeyCreated={relock.KeyCreated}. Reset={relock.Reset.Message}. Verification={relock.VerificationMessage}", cancellationToken);
+            if (unlocked)
+            {
+                var relock = ApplyShellNewOrderLock(context);
+                await _logger.LogAsync($"ShellNew move relocked order key. RelockResult=Success, KeyCreated={relock.KeyCreated}. {relock.Message}", cancellationToken);
+            }
         }
 
         await _logger.LogAsync($"MoveShellNewEnd: Sid={context.Sid}, Extension={extension}, FinalClasses={JoinShellNewOrder(allRealItems)}, MovedItemId={movedItem.Id}.", cancellationToken);
@@ -2316,7 +2325,6 @@ public sealed class SpecialMenuService
         try
         {
             EnableSecurityPrivilege();
-            EnableRestorePrivilege();
             EnableBackupPrivilege();
 
             return SetRenameBackedRegistryItemEnabled(item, enabled, "DragDropHandlers", "-DragDropHandlers");
@@ -2355,7 +2363,6 @@ public sealed class SpecialMenuService
         catch (UnauthorizedAccessException)
         {
             EnableSecurityPrivilege();
-            EnableRestorePrivilege();
 
             using var sourceKey = OpenRegistryKeyWithFallback(sourcePath, writable: false);
             if (sourceKey is null)
@@ -2473,55 +2480,6 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static bool EnableRestorePrivilege()
-    {
-        try
-        {
-            IntPtr tokenHandle;
-            var processHandle = Process.GetCurrentProcess().SafeHandle;
-            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
-            {
-                return false;
-            }
-
-            try
-            {
-                var privilege = new LUID_AND_ATTRIBUTES
-                {
-                    Luid = new LUID(),
-                    Attributes = SE_PRIVILEGE_ENABLED
-                };
-
-                if (!LookupPrivilegeValue(null, SE_RESTORE_NAME, out privilege.Luid))
-                {
-                    return false;
-                }
-
-                var privileges = new TOKEN_PRIVILEGES
-                {
-                    PrivilegeCount = 1,
-                    Privileges = [privilege]
-                };
-
-                var length = 0u;
-                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
-                {
-                    return false;
-                }
-
-                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
-            }
-            finally
-            {
-                CloseHandle(tokenHandle);
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static bool EnableBackupPrivilege()
     {
         try
@@ -2571,58 +2529,7 @@ public sealed class SpecialMenuService
         }
     }
 
-    private static bool EnableTakeOwnershipPrivilege()
-    {
-        try
-        {
-            IntPtr tokenHandle;
-            var processHandle = Process.GetCurrentProcess().SafeHandle;
-            if (!OpenProcessToken(processHandle.DangerousGetHandle(), TOKEN_ADJUST_PRIVILEGES | TOKEN_READ, out tokenHandle))
-            {
-                return false;
-            }
-
-            try
-            {
-                var privilege = new LUID_AND_ATTRIBUTES
-                {
-                    Luid = new LUID(),
-                    Attributes = SE_PRIVILEGE_ENABLED
-                };
-
-                if (!LookupPrivilegeValue(null, SE_TAKE_OWNERSHIP_NAME, out privilege.Luid))
-                {
-                    return false;
-                }
-
-                var privileges = new TOKEN_PRIVILEGES
-                {
-                    PrivilegeCount = 1,
-                    Privileges = [privilege]
-                };
-
-                var length = 0u;
-                if (!AdjustTokenPrivileges(tokenHandle, false, ref privileges, 0u, IntPtr.Zero, ref length))
-                {
-                    return false;
-                }
-
-                return Marshal.GetLastWin32Error() != ERROR_NOT_ALL_ASSIGNED;
-            }
-            finally
-            {
-                CloseHandle(tokenHandle);
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private const string SE_RESTORE_NAME = "SeRestorePrivilege";
     private const string SE_BACKUP_NAME = "SeBackupPrivilege";
-    private const string SE_TAKE_OWNERSHIP_NAME = "SeTakeOwnershipPrivilege";
 
     private static SpecialMenuEntry SetRenameBackedRegistryItemEnabled(SpecialMenuEntry item, bool enabled, string enabledPart, string disabledPart)
     {
@@ -2853,15 +2760,23 @@ public sealed class SpecialMenuService
     private RegistryKey? OpenShellNewOrderKeyForAclWrite(BackendUserContext context)
     {
         var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
-        const RegistryRights rights = RegistryRights.ChangePermissions;
+        const RegistryRights rights = RegistryRights.ReadPermissions | RegistryRights.ChangePermissions;
         _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclWrite", fullPath, rights, "PermissionCheck=ReadWriteSubTree"));
-        using var userRoot = GetUserRegistryRoot(context, writable: false);
-        var key = userRoot.OpenSubKey(
-            ShellNewOrderPath,
-            RegistryKeyPermissionCheck.ReadWriteSubTree,
-            rights);
-        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclWrite", fullPath, rights, key is null ? "Missing" : "Success"));
-        return key;
+        try
+        {
+            using var userRoot = GetUserRegistryRoot(context, writable: false);
+            var key = userRoot.OpenSubKey(
+                ShellNewOrderPath,
+                RegistryKeyPermissionCheck.ReadWriteSubTree,
+                rights);
+            _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForAclWrite", fullPath, rights, key is null ? "Missing" : "Success"));
+            return key;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"OpenShellNewOrderKeyForAclWriteFailed: Sid={context.Sid}, FullPath={fullPath}, Rights={rights}, LegacyMessage={ShellNewLegacyBroadLockMessage}, Exception={ex}");
+            throw CreateShellNewLegacyBroadLockException(ex);
+        }
     }
 
     private RegistryKey? OpenShellNewOrderKeyForAclRead(BackendUserContext context)
@@ -2878,253 +2793,124 @@ public sealed class SpecialMenuService
         return key;
     }
 
-    private RegistryKey? OpenShellNewOrderKeyForTakeOwnership(BackendUserContext context)
+    private ShellNewLockChangeResult ApplyShellNewOrderLock(BackendUserContext context)
     {
         var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
-        const RegistryRights rights = RegistryRights.TakeOwnership;
-        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForTakeOwnership", fullPath, rights, "PermissionCheck=ReadWriteSubTree"));
-        using var userRoot = GetUserRegistryRoot(context, writable: false);
-        var key = userRoot.OpenSubKey(
-            ShellNewOrderPath,
-            RegistryKeyPermissionCheck.ReadWriteSubTree,
-            rights);
-        _logger.LogFireAndForget(DiagnosticLogFormatter.BuildAclOperationLog("OpenShellNewOrderKeyForTakeOwnership", fullPath, rights, key is null ? "Missing" : "Success"));
-        return key;
-    }
+        var keyCreated = CreateShellNewOrderKeyIfMissing(context);
 
-    private ShellNewAclResetResult ResetShellNewOrderAcl(BackendUserContext context, bool createIfMissing)
-    {
-        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
-        _logger.LogFireAndForget($"ResetShellNewOrderAclStart: Sid={context.Sid}, FullPath={fullPath}, CreateIfMissing={createIfMissing}, Privileges=Security|TakeOwnership|Restore.");
-        EnableSecurityPrivilege();
-        EnableTakeOwnershipPrivilege();
-        EnableRestorePrivilege();
-        _logger.LogFireAndForget($"ResetShellNewOrderAclPrivilegesEnabled: Sid={context.Sid}, Security=True, TakeOwnership=True, Restore=True.");
-
-        if (createIfMissing)
-        {
-            CreateShellNewOrderKeyIfMissing(context);
-        }
-
-        Exception? normalFailure = null;
-        try
-        {
-            _logger.LogFireAndForget($"ResetShellNewOrderAclNormalStageStart: FullPath={fullPath}.");
-            using var key = OpenShellNewOrderKeyForAclWrite(context);
-            if (key is null)
-            {
-                _logger.LogFireAndForget($"ResetShellNewOrderAclNormalStageEnd: FullPath={fullPath}, Result=KeyMissing.");
-                return new ShellNewAclResetResult(KeyMissing: true, UsedOwnershipFallback: false, Message: "ShellNew order key is missing.");
-            }
-
-            var result = ResetShellNewOrderAclCore(context, key, usedOwnershipFallback: false);
-            _logger.LogFireAndForget($"ResetShellNewOrderAclNormalStageEnd: FullPath={fullPath}, Result={result.Message}.");
-            return result;
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or InvalidOperationException)
-        {
-            normalFailure = ex;
-            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ResetShellNewOrderAclNormalStageFailure: FullPath={fullPath}, Exception={ex}");
-        }
-
-        try
-        {
-            _logger.LogFireAndForget($"ResetShellNewOrderAclOwnershipFallbackStart: FullPath={fullPath}.");
-            using (var ownerKey = OpenShellNewOrderKeyForTakeOwnership(context))
-            {
-                if (ownerKey is null)
-                {
-                    return new ShellNewAclResetResult(KeyMissing: true, UsedOwnershipFallback: true, Message: "ShellNew order key is missing.");
-                }
-
-                var ownerSecurity = new RegistrySecurity();
-                ownerSecurity.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
-                ownerKey.SetAccessControl(ownerSecurity);
-            }
-
-            using var aclKey = OpenShellNewOrderKeyForAclWrite(context)
-                ?? throw new InvalidOperationException("Unable to reopen ShellNew order key for ACL write after taking ownership.");
-            var result = ResetShellNewOrderAclCore(context, aclKey, usedOwnershipFallback: true);
-            _logger.LogFireAndForget($"ResetShellNewOrderAclOwnershipFallbackEnd: FullPath={fullPath}, Result={result.Message}.");
-            return result;
-        }
-        catch (Exception fallbackEx) when (fallbackEx is UnauthorizedAccessException or SecurityException or InvalidOperationException)
-        {
-            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ResetShellNewOrderAclOwnershipFallbackFailure: FullPath={fullPath}, NormalException={normalFailure}, FallbackException={fallbackEx}");
-            throw new InvalidOperationException(
-                $"Failed to reset ShellNew order ACL. Normal={normalFailure?.Message}; Fallback={fallbackEx.Message}",
-                fallbackEx);
-        }
-    }
-
-    private ShellNewAclResetResult ResetShellNewOrderAclCore(BackendUserContext context, RegistryKey key, bool usedOwnershipFallback)
-    {
-        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
+        using var key = OpenShellNewOrderKeyForAclWrite(context)
+            ?? throw new InvalidOperationException("Unable to open ShellNew order key for ACL write.");
         RegistrySecurity security;
-        var oldDaclRead = true;
         try
         {
             security = key.GetAccessControl(AccessControlSections.Access);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
         {
-            oldDaclRead = false;
-            security = CreateUnlockedShellNewOrderSecurity(context);
-            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ResetShellNewOrderAclCoreOldDaclReadFailure: FullPath={fullPath}, ReplacementDaclFallback=True, Exception={ex}");
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ApplyShellNewOrderLockReadAclFailed: Sid={context.Sid}, FullPath={fullPath}, LegacyMessage={ShellNewLegacyBroadLockMessage}, Exception={ex}");
+            throw CreateShellNewLegacyBroadLockException(ex);
         }
 
-        _logger.LogFireAndForget($"ResetShellNewOrderAclCore: FullPath={fullPath}, OldDaclRead={oldDaclRead}, ReplacementDaclFallback={!oldDaclRead}, UsedOwnershipFallback={usedOwnershipFallback}, AreAccessRulesProtected={security.AreAccessRulesProtected}.");
-        if (oldDaclRead)
+        var detectedVersion = GetShellNewLockVersion(security);
+        _logger.LogFireAndForget($"ApplyShellNewOrderLockDetected: Sid={context.Sid}, FullPath={fullPath}, LockVersion={detectedVersion}.");
+        var removedRules = RemoveMatchingShellNewWorldDenyRules(security).ToArray();
+        foreach (var removedRule in removedRules)
         {
-            var beforeRules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().ToArray();
-            foreach (var rule in beforeRules.Where(static rule => !rule.IsInherited))
-            {
-                _logger.LogFireAndForget($"ResetShellNewOrderAclBeforeAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
-            }
-
-            foreach (RegistryAccessRule existing in security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().ToArray())
-            {
-                if (!ShouldRemoveShellNewDenyRule(existing, context))
-                {
-                    continue;
-                }
-
-                _logger.LogFireAndForget($"ResetShellNewOrderAclRemovedAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(existing)}.");
-                try
-                {
-                    security.RemoveAccessRuleSpecific(existing);
-                }
-                catch
-                {
-                }
-
-                security.RemoveAccessRule(existing);
-            }
-
-            security.SetAccessRuleProtection(isProtected: false, preserveInheritance: true);
+            _logger.LogFireAndForget($"ApplyShellNewOrderLockRemovedAce: Sid={context.Sid}, FullPath={fullPath}, RightsRemoved={removedRule.RegistryRights}, Rule={DiagnosticLogFormatter.FormatAclRule(removedRule)}.");
         }
-
-        key.SetAccessControl(security);
-        _logger.LogFireAndForget($"ResetShellNewOrderAclSetAccessControl: FullPath={fullPath}, Success=True.");
-
-        try
-        {
-            var verifySecurity = key.GetAccessControl(AccessControlSections.Access);
-            foreach (var rule in verifySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().Where(static rule => !rule.IsInherited))
-            {
-                _logger.LogFireAndForget($"ResetShellNewOrderAclAfterAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
-            }
-            var hasBadDeny = verifySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<RegistryAccessRule>()
-                .Any(rule => ShouldRemoveShellNewDenyRule(rule, context));
-            if (verifySecurity.AreAccessRulesProtected || hasBadDeny)
-            {
-                throw new InvalidOperationException("Failed to verify ShellNew order ACL reset.");
-            }
-
-            return new ShellNewAclResetResult(
-                KeyMissing: false,
-                UsedOwnershipFallback: usedOwnershipFallback,
-                Message: $"ShellNew order ACL reset. OpenRights=ChangePermissions only. OldDaclRead={oldDaclRead}. ReplacementDaclFallback={!oldDaclRead}. SetAccessControl=True. FinalState=ReadableUnlocked.");
-        }
-        catch (Exception ex) when (!oldDaclRead && (ex is UnauthorizedAccessException or SecurityException))
-        {
-            return new ShellNewAclResetResult(
-                KeyMissing: false,
-                UsedOwnershipFallback: usedOwnershipFallback,
-                Message: $"ShellNew order ACL reset. OpenRights=ChangePermissions only. OldDaclRead=False. ReplacementDaclFallback=True. SetAccessControl=True. FinalState=UnreadableAfterReplacement ({ex.Message}).");
-        }
-    }
-
-    private static RegistrySecurity CreateUnlockedShellNewOrderSecurity(BackendUserContext context)
-    {
-        var security = new RegistrySecurity();
-        security.SetAccessRuleProtection(isProtected: false, preserveInheritance: false);
-        security.AddAccessRule(new RegistryAccessRule(
-            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-            RegistryRights.FullControl,
-            InheritanceFlags.None,
-            PropagationFlags.None,
-            AccessControlType.Allow));
-        security.AddAccessRule(new RegistryAccessRule(
-            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
-            RegistryRights.FullControl,
-            InheritanceFlags.None,
-            PropagationFlags.None,
-            AccessControlType.Allow));
-
-        if (!string.IsNullOrWhiteSpace(context.Sid))
-        {
-            security.AddAccessRule(new RegistryAccessRule(
-                new SecurityIdentifier(context.Sid),
-                RegistryRights.FullControl,
-                InheritanceFlags.None,
-                PropagationFlags.None,
-                AccessControlType.Allow));
-        }
-
-        return security;
-    }
-
-    private ShellNewLockChangeResult ApplyShellNewOrderLock(BackendUserContext context)
-    {
-        var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
-        var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
-        var keyCreated = CreateShellNewOrderKeyIfMissing(context);
-        _logger.LogFireAndForget($"ApplyShellNewOrderLockResetResult: Sid={context.Sid}, FullPath={fullPath}, Reset={reset.Message}, KeyCreated={keyCreated}.");
-
-        RegistrySecurity security;
-        try
-        {
-            using var readKey = OpenShellNewOrderKeyForAclRead(context);
-            security = readKey?.GetAccessControl(AccessControlSections.Access)
-                ?? CreateUnlockedShellNewOrderSecurity(context);
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
-        {
-            security = CreateUnlockedShellNewOrderSecurity(context);
-        }
-
-        using var key = OpenShellNewOrderKeyForAclWrite(context)
-            ?? throw new InvalidOperationException("Unable to open ShellNew order key for ACL write.");
 
         var denyRule = new RegistryAccessRule(
             new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-            RegistryRights.Delete | RegistryRights.WriteKey,
+            ShellNewOrderLockRights,
             InheritanceFlags.None,
             PropagationFlags.None,
             AccessControlType.Deny);
         security.AddAccessRule(denyRule);
-        _logger.LogFireAndForget($"ApplyShellNewOrderLockAddedAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(denyRule)}.");
+        _logger.LogFireAndForget($"ApplyShellNewOrderLockAddedAce: Sid={context.Sid}, FullPath={fullPath}, RightsAdded={ShellNewOrderLockRights}, Rule={DiagnosticLogFormatter.FormatAclRule(denyRule)}.");
 
-        key.SetAccessControl(security);
-        _logger.LogFireAndForget($"ApplyShellNewOrderLockSetAccessControl: FullPath={fullPath}, Success=True.");
+        try
+        {
+            key.SetAccessControl(security);
+            _logger.LogFireAndForget($"ApplyShellNewOrderLockSetAccessControl: Sid={context.Sid}, FullPath={fullPath}, Success=True.");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"ApplyShellNewOrderLockSetAccessControlFailed: Sid={context.Sid}, FullPath={fullPath}, LegacyMessage={ShellNewLegacyBroadLockMessage}, Exception={ex}");
+            throw CreateShellNewLegacyBroadLockException(ex);
+        }
 
         if (!TryVerifyShellNewOrderLocked(context, out var verificationMessage))
         {
-            throw new InvalidOperationException($"ShellNew order lock ACL did not contain expected Everyone deny rule after SetAccessControl. {verificationMessage}");
+            throw new InvalidOperationException($"ShellNew order lock ACL did not contain expected WorldSid deny rule after SetAccessControl. {verificationMessage}");
         }
 
         _logger.LogFireAndForget($"ApplyShellNewOrderLockVerification: FullPath={fullPath}, Verification={verificationMessage}.");
-        return new ShellNewLockChangeResult(keyCreated, reset, $"OpenRights=ChangePermissions only. Applied Everyone Deny Delete|WriteKey. SetAccessControl=True. {verificationMessage}");
+        return new ShellNewLockChangeResult(keyCreated, $"OpenRights=ReadPermissions|ChangePermissions. LockVersionBefore={detectedVersion}. RemovedWorldDenyRules={removedRules.Length}. RightsRemoved={FormatRegistryRights(removedRules)}. Applied WorldSid Deny {ShellNewOrderLockRights}. SetAccessControl=True. {verificationMessage}");
     }
 
-    private ShellNewAclResetResult RemoveShellNewOrderLock(BackendUserContext context)
+    private ShellNewLockChangeResult RemoveShellNewOrderLock(BackendUserContext context)
     {
         var fullPath = DiagnosticLogFormatter.FormatUserHivePath(context, ShellNewOrderPath);
-        var reset = ResetShellNewOrderAcl(context, createIfMissing: false);
-        var verificationMessage = "KeyMissing.";
-
-        if (!reset.KeyMissing && !TryVerifyShellNewOrderUnlocked(context, out verificationMessage))
+        using var key = OpenShellNewOrderKeyForAclWrite(context);
+        if (key is null)
         {
-            throw new InvalidOperationException($"Failed to verify ShellNew order unlock after ACL reset. {verificationMessage}");
+            _logger.LogFireAndForget($"RemoveShellNewOrderLockVerification: Sid={context.Sid}, FullPath={fullPath}, Result=KeyMissing.");
+            return new ShellNewLockChangeResult(KeyCreated: false, Message: "ShellNew order key is missing.");
         }
 
-        _logger.LogFireAndForget($"RemoveShellNewOrderLockVerification: FullPath={fullPath}, Reset={reset.Message}, Verification={verificationMessage}.");
-        return reset with { Message = $"{reset.Message} FinalState={verificationMessage}" };
+        RegistrySecurity security;
+        try
+        {
+            security = key.GetAccessControl(AccessControlSections.Access);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"RemoveShellNewOrderLockReadAclFailed: Sid={context.Sid}, FullPath={fullPath}, LegacyMessage={ShellNewLegacyBroadLockMessage}, Exception={ex}");
+            throw CreateShellNewLegacyBroadLockException(ex);
+        }
+
+        var detectedVersion = GetShellNewLockVersion(security);
+        _logger.LogFireAndForget($"RemoveShellNewOrderLockDetected: Sid={context.Sid}, FullPath={fullPath}, LockVersion={detectedVersion}.");
+        var removedRules = RemoveMatchingShellNewWorldDenyRules(security).ToArray();
+        foreach (var removedRule in removedRules)
+        {
+            _logger.LogFireAndForget($"RemoveShellNewOrderLockRemovedAce: Sid={context.Sid}, FullPath={fullPath}, RightsRemoved={removedRule.RegistryRights}, Rule={DiagnosticLogFormatter.FormatAclRule(removedRule)}.");
+        }
+
+        try
+        {
+            key.SetAccessControl(security);
+            _logger.LogFireAndForget($"RemoveShellNewOrderLockSetAccessControl: Sid={context.Sid}, FullPath={fullPath}, Success=True, RemovedWorldDenyRules={removedRules.Length}, RightsRemoved={FormatRegistryRights(removedRules)}.");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException)
+        {
+            _logger.LogFireAndForget(RuntimeLogLevel.Warning, $"RemoveShellNewOrderLockSetAccessControlFailed: Sid={context.Sid}, FullPath={fullPath}, LockVersion={detectedVersion}, LegacyMessage={ShellNewLegacyBroadLockMessage}, Exception={ex}");
+            throw CreateShellNewLegacyBroadLockException(ex);
+        }
+
+        if (!TryVerifyShellNewOrderUnlocked(context, out var verificationMessage))
+        {
+            throw new InvalidOperationException($"Failed to verify ShellNew order unlock after removing WorldSid deny rule. {verificationMessage}");
+        }
+
+        _logger.LogFireAndForget($"RemoveShellNewOrderLockVerification: Sid={context.Sid}, FullPath={fullPath}, LockVersionBefore={detectedVersion}, RemovedWorldDenyRules={removedRules.Length}, Verification={verificationMessage}.");
+        return new ShellNewLockChangeResult(KeyCreated: false, Message: $"OpenRights=ReadPermissions|ChangePermissions. LockVersionBefore={detectedVersion}. RemovedWorldDenyRules={removedRules.Length}. RightsRemoved={FormatRegistryRights(removedRules)}. SetAccessControl=True. {verificationMessage}");
     }
 
-    private static bool ShouldRemoveShellNewDenyRule(RegistryAccessRule rule, BackendUserContext context)
+    private static IEnumerable<RegistryAccessRule> RemoveMatchingShellNewWorldDenyRules(RegistrySecurity security)
+    {
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .Cast<RegistryAccessRule>()
+            .Where(IsShellNewWorldDenyRule)
+            .ToArray();
+        foreach (var rule in rules)
+        {
+            security.RemoveAccessRuleSpecific(rule);
+            yield return rule;
+        }
+    }
+
+    private static bool IsShellNewWorldDenyRule(RegistryAccessRule rule)
     {
         if (rule.IsInherited || rule.AccessControlType != AccessControlType.Deny)
         {
@@ -3132,19 +2918,64 @@ public sealed class SpecialMenuService
         }
 
         return IsWorldSid(rule.IdentityReference)
-            || IsFrontendUserSid(rule.IdentityReference, context)
-            || HasAnyRegistryRight(
+            && (IsShellNewLegacyWorldLockRule(rule) || IsShellNewV2WorldDenyRule(rule));
+    }
+
+    private static bool IsShellNewWorldLockRule(RegistryAccessRule rule)
+        => IsShellNewLegacyWorldLockRule(rule) || IsShellNewV2WorldLockRule(rule);
+
+    private static bool IsShellNewLegacyWorldLockRule(RegistryAccessRule rule)
+    {
+        return !rule.IsInherited
+            && rule.AccessControlType == AccessControlType.Deny
+            && IsWorldSid(rule.IdentityReference)
+            && HasAnyRegistryRight(rule.RegistryRights, RegistryRights.WriteKey);
+    }
+
+    private static bool IsShellNewV2WorldLockRule(RegistryAccessRule rule)
+    {
+        return !rule.IsInherited
+            && rule.AccessControlType == AccessControlType.Deny
+            && IsWorldSid(rule.IdentityReference)
+            && (rule.RegistryRights & RegistryRights.SetValue) == RegistryRights.SetValue
+            && (rule.RegistryRights & RegistryRights.CreateSubKey) == RegistryRights.CreateSubKey
+            && (rule.RegistryRights & RegistryRights.Delete) == RegistryRights.Delete;
+    }
+
+    private static bool IsShellNewV2WorldDenyRule(RegistryAccessRule rule)
+    {
+        return !rule.IsInherited
+            && rule.AccessControlType == AccessControlType.Deny
+            && IsWorldSid(rule.IdentityReference)
+            && HasAnyRegistryRight(
                 rule.RegistryRights,
-                RegistryRights.Delete,
-                RegistryRights.WriteKey,
                 RegistryRights.SetValue,
                 RegistryRights.CreateSubKey,
-                RegistryRights.ChangePermissions,
-                RegistryRights.TakeOwnership);
+                RegistryRights.Delete);
     }
 
     private static bool HasAnyRegistryRight(RegistryRights actual, params RegistryRights[] requiredRights) =>
-        requiredRights.Any(right => (actual & right) == right);
+        requiredRights.Any(right => (actual & right) != 0);
+
+    private static string GetShellNewLockVersion(RegistrySecurity security)
+    {
+        var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<RegistryAccessRule>().ToArray();
+        if (rules.Any(IsShellNewLegacyWorldLockRule))
+        {
+            return "legacy-writekey";
+        }
+
+        return rules.Any(IsShellNewV2WorldLockRule) ? "v2-narrow" : "none";
+    }
+
+    private static string FormatRegistryRights(IEnumerable<RegistryAccessRule> rules)
+    {
+        var values = rules.Select(static rule => rule.RegistryRights.ToString()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return values.Length == 0 ? "none" : string.Join("|", values);
+    }
+
+    private static InvalidOperationException CreateShellNewLegacyBroadLockException(Exception innerException)
+        => new(ShellNewLegacyBroadLockMessage, innerException);
 
     private static bool IsWorldSid(IdentityReference identity)
     {
@@ -3153,20 +2984,6 @@ public sealed class SpecialMenuService
             var sid = identity as SecurityIdentifier
                 ?? identity.Translate(typeof(SecurityIdentifier)) as SecurityIdentifier;
             return sid?.IsWellKnown(WellKnownSidType.WorldSid) == true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool IsFrontendUserSid(IdentityReference identity, BackendUserContext context)
-    {
-        try
-        {
-            var sid = identity as SecurityIdentifier
-                ?? identity.Translate(typeof(SecurityIdentifier)) as SecurityIdentifier;
-            return sid is not null && string.Equals(sid.Value, context.Sid, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
@@ -3201,13 +3018,9 @@ public sealed class SpecialMenuService
             }
 
             var security = key.GetAccessControl(AccessControlSections.Access);
-            locked = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<RegistryAccessRule>()
-                .Any(rule => rule.AccessControlType == AccessControlType.Deny
-                    && IsWorldSid(rule.IdentityReference)
-                    && rule.RegistryRights.HasFlag(RegistryRights.Delete)
-                    && rule.RegistryRights.HasFlag(RegistryRights.WriteKey));
-            message = locked ? "ReadableFoundEveryoneDeny." : "ReadableNoEveryoneDeny.";
+            var lockVersion = GetShellNewLockVersion(security);
+            locked = !string.Equals(lockVersion, "none", StringComparison.OrdinalIgnoreCase);
+            message = $"ReadableLockVersion={lockVersion}.";
             return true;
         }
         catch (SecurityException ex)
@@ -3236,11 +3049,11 @@ public sealed class SpecialMenuService
         {
             if (locked)
             {
-                message = "Verification=ReadableFoundEveryoneDeny.";
+                message = "Verification=ReadableFoundWorldSidDeny.";
                 return true;
             }
 
-            message = "Verification=ReadableNoEveryoneDeny.";
+            message = "Verification=ReadableNoWorldSidDeny.";
             return false;
         }
 
@@ -3285,19 +3098,15 @@ public sealed class SpecialMenuService
                 .Cast<RegistryAccessRule>()
                 .Where(static rule => !rule.IsInherited && rule.AccessControlType == AccessControlType.Deny)
                 .ToArray();
-            locked = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
-                .Cast<RegistryAccessRule>()
-                .Any(rule => rule.AccessControlType == AccessControlType.Deny
-                    && IsWorldSid(rule.IdentityReference)
-                    && rule.RegistryRights.HasFlag(RegistryRights.Delete)
-                    && rule.RegistryRights.HasFlag(RegistryRights.WriteKey));
-            message = locked ? "ReadableFoundEveryoneDeny." : "ReadableNoEveryoneDeny.";
+            var lockVersion = GetShellNewLockVersion(security);
+            locked = !string.Equals(lockVersion, "none", StringComparison.OrdinalIgnoreCase);
+            message = $"ReadableLockVersion={lockVersion}.";
             foreach (var rule in explicitDenyRules)
             {
                 _logger.LogFireAndForget($"TryReadShellNewOrderLockStateExplicitDenyAce: FullPath={fullPath}, Rule={DiagnosticLogFormatter.FormatAclRule(rule)}.");
             }
 
-            _logger.LogFireAndForget($"TryReadShellNewOrderLockStateEnd: FullPath={fullPath}, Result={message}");
+            _logger.LogFireAndForget($"TryReadShellNewOrderLockStateEnd: FullPath={fullPath}, LockVersion={lockVersion}, Result={message}");
             return true;
         }
         catch (SecurityException ex)
@@ -4105,9 +3914,7 @@ public sealed class SpecialMenuService
 
     private const string SE_SECURITY_NAME = "SeSecurityPrivilege";
 
-    private sealed record ShellNewAclResetResult(bool KeyMissing, bool UsedOwnershipFallback, string Message);
-
-    private sealed record ShellNewLockChangeResult(bool KeyCreated, ShellNewAclResetResult Reset, string VerificationMessage);
+    private sealed record ShellNewLockChangeResult(bool KeyCreated, string Message);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct LUID
