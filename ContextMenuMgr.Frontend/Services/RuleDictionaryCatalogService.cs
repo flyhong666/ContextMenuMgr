@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Xml.Linq;
+using ContextMenuMgr.Contracts;
 using Microsoft.Win32;
 
 namespace ContextMenuMgr.Frontend.Services;
@@ -456,7 +457,7 @@ public sealed class RuleDictionaryCatalogService
         var source = value.Trim();
         if (!source.StartsWith('@'))
         {
-            return source;
+            return EnhanceMenuTextSanitizer.StripMenuAcceleratorAmpersands(source);
         }
 
         var buffer = new char[1024];

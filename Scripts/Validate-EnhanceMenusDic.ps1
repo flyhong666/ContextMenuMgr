@@ -62,13 +62,28 @@ function Add-EnhanceItemCommands($Map, $GroupRegPath, $Parent, $Prefix) {
     foreach ($item in Get-ElementChildren $Parent | Where-Object { $_.Name -eq "Item" -or $_.Name -match '^Item\d+$' }) {
         $key = Get-ElementKey $item
         $path = if ([string]::IsNullOrEmpty($Prefix)) { "/$key" } else { "$Prefix/$key" }
-        $commands = @($item.SelectNodes(".//Command") | ForEach-Object { $_.OuterXml })
+        $commands = @($item.SelectNodes(".//Command") | ForEach-Object { ConvertTo-CanonicalCommandXml $_.OuterXml })
         $Map["$GroupRegPath|$path"] = $commands -join "`n"
 
         foreach ($nestedShellItems in @($item.SelectNodes("./SubKey/Shell/SubKey"))) {
             Add-EnhanceItemCommands $Map $GroupRegPath $nestedShellItems $path
         }
     }
+}
+
+function ConvertTo-CanonicalCommandXml([string]$Value) {
+    $result = $Value
+    $result = $result -replace '<FileName>cmd\.exe</FileName>', '<FileName>%SystemRoot%\System32\cmd.exe</FileName>'
+    $result = $result -replace '<FileName>Cmd\.exe</FileName>', '<FileName>%SystemRoot%\System32\cmd.exe</FileName>'
+    $result = $result -replace '<FileName>explorer\.exe</FileName>', '<FileName>%SystemRoot%\explorer.exe</FileName>'
+    $result = $result -replace 'Default="cmd\.exe ', 'Default="%SystemRoot%\System32\cmd.exe '
+    $result = $result -replace 'Default="cmd ', 'Default="%SystemRoot%\System32\cmd.exe '
+    $result = $result -replace 'Default="explorer\.exe ', 'Default="%SystemRoot%\explorer.exe '
+    $result = $result -replace 'Default="explorer ', 'Default="%SystemRoot%\explorer.exe '
+    $result = $result -replace 'start explorer\.exe', 'start %SystemRoot%\explorer.exe'
+    $result = $result -replace 'start explorer(?=&quot;)', 'start %SystemRoot%\explorer.exe'
+    $result = $result -replace 'wsh\.Run\(&quot;explorer /select, &quot; &amp; path\)', 'wsh.Run(&quot;%SystemRoot%\explorer.exe /select, &quot; &amp; path)'
+    return $result
 }
 
 function Get-CommandMap($Document) {
@@ -82,6 +97,70 @@ function Get-CommandMap($Document) {
     }
 
     return $map
+}
+
+function Strip-MenuAcceleratorAmpersands([string]$Value) {
+    if ([string]::IsNullOrEmpty($Value) -or $Value.StartsWith("@")) {
+        return $Value
+    }
+
+    $escapedAmpersandToken = [string][char]0xF000
+    return $Value.Replace("&&", $escapedAmpersandToken).Replace("&", "").Replace($escapedAmpersandToken, "&")
+}
+
+function Assert-MenuAcceleratorUnitCases() {
+    $failures = New-Object System.Collections.Generic.List[string]
+    $cases = @(
+        @{ Input = "Op&en"; Expected = "Open" },
+        @{ Input = "as &administrator"; Expected = "as administrator" },
+        @{ Input = "Save && Exit"; Expected = "Save & Exit" },
+        @{ Input = "@shell32.dll,-37444"; Expected = "@shell32.dll,-37444" }
+    )
+
+    foreach ($case in $cases) {
+        $actual = Strip-MenuAcceleratorAmpersands $case.Input
+        if ($actual -ne $case.Expected) {
+            $failures.Add("Strip-MenuAcceleratorAmpersands failed for '$($case.Input)': expected '$($case.Expected)', got '$actual'.")
+        }
+    }
+
+    return $failures
+}
+
+function Assert-NoBareCommandExecutables($Document) {
+    $failures = New-Object System.Collections.Generic.List[string]
+    foreach ($fileName in @($Document.SelectNodes("//Command/FileName"))) {
+        $value = $fileName.InnerText.Trim()
+        if ($value -match '^(?i:cmd|cmd\.exe|explorer|explorer\.exe)$') {
+            $failures.Add("Bare command executable in FileName: $($fileName.OuterXml)")
+        }
+    }
+
+    foreach ($command in @($Document.SelectNodes("//Command[@Default]"))) {
+        $value = $command.Attributes["Default"].Value.TrimStart()
+        if ($value -match '^(?i:cmd|cmd\.exe|explorer|explorer\.exe)(\s|$)') {
+            $failures.Add("Bare command executable prefix in Command Default: $($command.OuterXml)")
+        }
+    }
+
+    foreach ($arguments in @($Document.SelectNodes("//Command/Arguments"))) {
+        $value = $arguments.InnerXml
+        if ($value -match '(?i)(^|[&|]\s*)start\s+explorer(\.exe)?(\s|$|&quot;)') {
+            $failures.Add("Bare explorer launch in Arguments: $($arguments.OuterXml)")
+        }
+    }
+
+    foreach ($createFile in @($Document.SelectNodes("//Command//*[self::FileName or self::Arguments]/CreateFile"))) {
+        foreach ($attribute in @($createFile.Attributes)) {
+            $hasBareStartExplorer = $attribute.Value -match '(?i)(^|\s|["])start\s+explorer(\.exe)?(\s|$|")'
+            $hasBareWshExplorer = $attribute.Value -match '(?i)wsh\.Run\("explorer\s'
+            if ($hasBareStartExplorer -or $hasBareWshExplorer) {
+                $failures.Add("Bare explorer launch in CreateFile: $($createFile.OuterXml)")
+            }
+        }
+    }
+
+    return $failures
 }
 
 function Assert-NoForbiddenDependencies($Document) {
@@ -116,8 +195,19 @@ function Assert-NoForbiddenDependencies($Document) {
     return $failures
 }
 
+function Add-Failures($Target, $Source) {
+    foreach ($item in @($Source)) {
+        if ($null -ne $item) {
+            $Target.Add([string]$item)
+        }
+    }
+}
+
 $dictionary = Load-XmlDocument $DictionaryPath
-$failures = Assert-NoForbiddenDependencies $dictionary
+$failures = New-Object System.Collections.Generic.List[string]
+Add-Failures $failures (Assert-NoForbiddenDependencies $dictionary)
+Add-Failures $failures (Assert-NoBareCommandExecutables $dictionary)
+Add-Failures $failures (Assert-MenuAcceleratorUnitCases)
 
 if (Test-Path $ReferencePath) {
     $reference = Load-XmlDocument $ReferencePath

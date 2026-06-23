@@ -123,9 +123,13 @@ ContextMenuRegistryMonitor 轮询快照
 
 `EnhanceMenusDic.xml` 中的内置增强菜单是静态 shell 命令字典。ContextMenuMgr 只负责把这些字典项安装、禁用或移除到当前前端用户的 `Software\Classes` 下；菜单项被启用后，运行时执行必须完全由注册表中的命令、系统工具和生成的 `.vbs` / `.bat` / `.cmd` 文件完成。
 
+增强菜单字典的源码只保留在 `ContextMenuMgr.Frontend/Resources/EnhanceMenusDic.xml`。前端构建时会把它复制到输出目录，前端读取该文件并把选中项的定义 XML 传给后端；后端不维护第二份增强菜单字典，也不在运行时重新读取项目内的字典副本。
+
 增强菜单命令不得调用 `ContextMenuMgr` 前端、后端服务、TrayHost、Named Pipe、服务 RPC/IPC 或任何要求本程序仍在运行的宿主进程。迁移 BluePointLilac / ContextMenuManager 内置项时，应优先保持 `EnhanceMenusDic.xml` 的 `KeyName`、`SubKey`、`Command Default`、`ShellExecute`、`FileName`、`Arguments` 和 `CreateFile` 脚本内容 1:1；新增翻译节点只能影响显示文本，不能改变命令语义。
 
 当 `Command` 没有 `Default` 时，后端按 BluePointLilac 的规则由 `FileName` + `Arguments` 生成注册表默认值；`FileName` 或 `Arguments` 为空且包含 `CreateFile` 时，会写入 `RuntimePaths.GeneratedProgramsDirectory` 下的持久脚本文件。`.bat` / `.cmd` 使用系统默认编码，其它生成文件使用 Unicode。启用后的注册表命令必须直接指向系统工具或这些持久生成文件，而不是依赖后端服务继续运行。
+
+增强菜单字典和后端写入层会把直接作为可执行文件使用的裸 `cmd` / `cmd.exe` 规范化为 `%SystemRoot%\System32\cmd.exe`，把裸 `explorer` / `explorer.exe` 规范化为 `%SystemRoot%\explorer.exe`；`Command Default` 只在命令开头是这些安全前缀时改写可执行文件部分。`Arguments` 和生成脚本中直接启动 Explorer 的低风险位置也应使用 `%SystemRoot%\explorer.exe`，但不要把 `taskkill /im explorer.exe`、`tskill explorer`、图标引用或进程名匹配参数误改成路径。写入普通 `MUIVerb` 等可见标签时会移除 Win32 菜单加速键 `&`，但保留 `&&` 表示的字面量 `&`，并且不处理 `@shell32.dll,-...` 这类资源引用。
 
 ## 6. 新菜单项检测与审核
 

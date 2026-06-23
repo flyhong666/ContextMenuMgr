@@ -2568,9 +2568,21 @@ public sealed class ContextMenuRegistryCatalog
         var defaultValue = keyElement.Attribute("Default")?.Value;
         if (!string.IsNullOrWhiteSpace(defaultValue))
         {
+            if (string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase))
+            {
+                defaultValue = CanonicalizeEnhanceCommandDefaultValue(defaultValue);
+            }
+            else
+            {
+                defaultValue = EnhanceMenuTextSanitizer.StripMenuAcceleratorAmpersands(defaultValue);
+            }
+
             using var userClasses = GetUserClassesRoot(userContext, writable: true);
             using var key = userClasses.CreateSubKey(registryPath, writable: true);
-            key?.SetValue(string.Empty, Environment.ExpandEnvironmentVariables(defaultValue), RegistryValueKind.String);
+            var expandedDefaultValue = string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase)
+                ? ExpandEnvironmentVariablesPreservingSystemRoot(defaultValue)
+                : Environment.ExpandEnvironmentVariables(defaultValue);
+            key?.SetValue(string.Empty, expandedDefaultValue, RegistryValueKind.String);
         }
         else if (string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase))
         {
@@ -2622,6 +2634,11 @@ public sealed class ContextMenuRegistryCatalog
                 switch (valueNode.Name.LocalName)
                 {
                     case "REG_SZ":
+                        if (string.Equals(attribute.Name.LocalName, "MUIVerb", StringComparison.OrdinalIgnoreCase))
+                        {
+                            attributeValue = EnhanceMenuTextSanitizer.StripMenuAcceleratorAmpersands(attributeValue);
+                        }
+
                         key.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
                         break;
                     case "REG_EXPAND_SZ":
@@ -2659,8 +2676,10 @@ public sealed class ContextMenuRegistryCatalog
             arguments = CreateEnhanceCommandFile(argumentsElement, cultureName);
         }
 
-        fileName = Environment.ExpandEnvironmentVariables(fileName ?? string.Empty);
-        arguments = Environment.ExpandEnvironmentVariables(arguments ?? string.Empty);
+        fileName = CanonicalizeEnhanceExecutableFileName(fileName);
+        fileName = ExpandEnvironmentVariablesPreservingSystemRoot(fileName ?? string.Empty);
+        arguments = ExpandEnvironmentVariablesPreservingSystemRoot(arguments ?? string.Empty);
+        arguments = CanonicalizeEnhanceCommandArguments(arguments);
         arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
 
         string command;
@@ -2687,6 +2706,82 @@ public sealed class ContextMenuRegistryCatalog
         using var userClasses = GetUserClassesRoot(userContext, writable: true);
         using var key = userClasses.CreateSubKey(registryPath, writable: true);
         key?.SetValue(string.Empty, command, RegistryValueKind.String);
+    }
+
+    private static string CanonicalizeEnhanceExecutableFileName(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = fileName.Trim();
+        if (Path.IsPathRooted(trimmed))
+        {
+            return trimmed;
+        }
+
+        return trimmed.Equals("cmd", StringComparison.OrdinalIgnoreCase)
+               || trimmed.Equals("cmd.exe", StringComparison.OrdinalIgnoreCase)
+            ? @"%SystemRoot%\System32\cmd.exe"
+            : trimmed.Equals("explorer", StringComparison.OrdinalIgnoreCase)
+              || trimmed.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)
+                ? @"%SystemRoot%\explorer.exe"
+                : trimmed;
+    }
+
+    private static string CanonicalizeEnhanceCommandDefaultValue(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return command;
+        }
+
+        var leadingWhitespaceLength = command.Length - command.TrimStart().Length;
+        var leadingWhitespace = command[..leadingWhitespaceLength];
+        var trimmedStart = command[leadingWhitespaceLength..];
+
+        foreach (var (prefix, replacement) in new[]
+                 {
+                     ("cmd.exe ", @"%SystemRoot%\System32\cmd.exe "),
+                     ("cmd ", @"%SystemRoot%\System32\cmd.exe "),
+                     ("explorer.exe ", @"%SystemRoot%\explorer.exe "),
+                     ("explorer ", @"%SystemRoot%\explorer.exe ")
+                 })
+        {
+            if (trimmedStart.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var rest = trimmedStart[prefix.Length..];
+                return leadingWhitespace + replacement + rest;
+            }
+        }
+
+        return command;
+    }
+
+    private static string CanonicalizeEnhanceCommandArguments(string arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            return arguments;
+        }
+
+        return Regex.Replace(
+            arguments,
+            @"(?i)(^|[&|]\s*)start\s+explorer(?:\.exe)?(?=\s|$)",
+            match => $"{match.Groups[1].Value}start %SystemRoot%\\explorer.exe");
+    }
+
+    private static string ExpandEnvironmentVariablesPreservingSystemRoot(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value;
+        }
+
+        const string token = "\uF001";
+        var protectedValue = Regex.Replace(value, "%SystemRoot%", token, RegexOptions.IgnoreCase);
+        return Environment.ExpandEnvironmentVariables(protectedValue).Replace(token, "%SystemRoot%", StringComparison.Ordinal);
     }
 
     private static string CreateEnhanceCommandFile(XElement? parentElement, string cultureName)
