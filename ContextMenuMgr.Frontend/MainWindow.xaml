@@ -291,7 +291,7 @@
         <Grid Grid.Row="3" Margin="5,0,5,5">
             <modernNavigation:ModernNavigationView
                 x:Name="RootNavigation"
-                IsBackButtonVisible="Auto"
+                IsBackButtonVisible="Collapsed"
                 IsPaneOpen="True"
                 IsPaneToggleVisible="False"
                 OpenPaneLength="257"
