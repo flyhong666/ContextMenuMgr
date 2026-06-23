@@ -2661,7 +2661,9 @@ public sealed class ContextMenuRegistryCatalog
         {
             var verb = shellExecuteElement.Attribute("Verb")?.Value ?? "open";
             var windowStyle = int.TryParse(shellExecuteElement.Attribute("WindowStyle")?.Value, out var parsedStyle) ? parsedStyle : 1;
-            var directory = shellExecuteElement.Attribute("Directory")?.Value;
+            var directory = shellExecuteElement.Attribute("Directory") is { } directoryAttribute
+                ? Environment.ExpandEnvironmentVariables(directoryAttribute.Value)
+                : string.Empty;
             command = BuildShellExecuteCommand(fileName, arguments, verb, windowStyle, directory);
         }
         else
@@ -2690,6 +2692,7 @@ public sealed class ContextMenuRegistryCatalog
         var generatedDir = RuntimePaths.GeneratedProgramsDirectory;
         Directory.CreateDirectory(generatedDir);
 
+        var path = string.Empty;
         foreach (var createFileElement in parentElement.Elements("CreateFile").Where(element => ShouldIncludeNode(element, cultureName)))
         {
             var fileName = createFileElement.Attribute("FileName")?.Value;
@@ -2706,11 +2709,16 @@ public sealed class ContextMenuRegistryCatalog
                     ? Encoding.Default
                     : Encoding.Unicode;
 
+            if (string.IsNullOrEmpty(path))
+            {
+                path = filePath;
+            }
+
+            File.Delete(filePath);
             File.WriteAllText(filePath, content, encoding);
-            return filePath;
         }
 
-        return string.Empty;
+        return path;
     }
 
     private static string BuildShellExecuteCommand(
@@ -2721,9 +2729,9 @@ public sealed class ContextMenuRegistryCatalog
         string? directory)
     {
         arguments = arguments.Replace("\"", "\"\"");
-        directory = string.IsNullOrWhiteSpace(directory)
+        directory = directory is null
             ? Path.GetDirectoryName(ExtractExecutablePath(fileName))
-            : Environment.ExpandEnvironmentVariables(directory);
+            : directory;
 
         return "mshta vbscript:createobject(\"shell.application\").shellexecute"
             + $"(\"{fileName}\",\"{arguments}\",\"{directory}\",\"{verb}\",{windowStyle})(close)";

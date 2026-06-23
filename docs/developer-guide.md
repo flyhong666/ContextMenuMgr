@@ -119,6 +119,14 @@ ContextMenuRegistryMonitor 轮询快照
 
 传统菜单和 Win11 新菜单不是同一套模型。不要把 `PackagedCom` 项当作普通 `shell` / `shellex` 项处理。
 
+### Enhance Menus 字典
+
+`EnhanceMenusDic.xml` 中的内置增强菜单是静态 shell 命令字典。ContextMenuMgr 只负责把这些字典项安装、禁用或移除到当前前端用户的 `Software\Classes` 下；菜单项被启用后，运行时执行必须完全由注册表中的命令、系统工具和生成的 `.vbs` / `.bat` / `.cmd` 文件完成。
+
+增强菜单命令不得调用 `ContextMenuMgr` 前端、后端服务、TrayHost、Named Pipe、服务 RPC/IPC 或任何要求本程序仍在运行的宿主进程。迁移 BluePointLilac / ContextMenuManager 内置项时，应优先保持 `EnhanceMenusDic.xml` 的 `KeyName`、`SubKey`、`Command Default`、`ShellExecute`、`FileName`、`Arguments` 和 `CreateFile` 脚本内容 1:1；新增翻译节点只能影响显示文本，不能改变命令语义。
+
+当 `Command` 没有 `Default` 时，后端按 BluePointLilac 的规则由 `FileName` + `Arguments` 生成注册表默认值；`FileName` 或 `Arguments` 为空且包含 `CreateFile` 时，会写入 `RuntimePaths.GeneratedProgramsDirectory` 下的持久脚本文件。`.bat` / `.cmd` 使用系统默认编码，其它生成文件使用 Unicode。启用后的注册表命令必须直接指向系统工具或这些持久生成文件，而不是依赖后端服务继续运行。
+
 ## 6. 新菜单项检测与审核
 
 新增项审核不是单纯 UI 状态。流程是：
