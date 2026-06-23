@@ -17,6 +17,7 @@ internal sealed class FrontendAutostartLauncher
 {
     private const string FrontendPolicyKeyPath = @"Software\ContextMenuMgr\Frontend";
     private const string FrontendPolicyValueName = "StartWithWindows";
+    private const string ShowTrayIconPolicyValueName = "ShowTrayIcon";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly string _frontendExePath;
@@ -57,9 +58,11 @@ internal sealed class FrontendAutostartLauncher
             return true;
         }
 
+        var trayHostArguments = IsTrayIconVisibleForUser(userSid) ? string.Empty : "--hide-tray-icon";
+
         // The tray host lives in the user's session, so service-side code must
         // cross the session boundary with a user token before starting it.
-        return TryCreateUserProcess(targetSessionId, _trayHostExePath, string.Empty);
+        return TryCreateUserProcess(targetSessionId, _trayHostExePath, trayHostArguments);
     }
 
     /// <summary>
@@ -167,6 +170,23 @@ internal sealed class FrontendAutostartLauncher
         }
 
         return false;
+    }
+
+    private static bool IsTrayIconVisibleForUser(string userSid)
+    {
+        using var policyKey = Registry.Users.OpenSubKey($@"{userSid}\{FrontendPolicyKeyPath}", writable: false);
+        var policyValue = policyKey?.GetValue(ShowTrayIconPolicyValueName);
+        if (policyValue is int intValue)
+        {
+            return intValue != 0;
+        }
+
+        if (policyValue is string stringValue && int.TryParse(stringValue, out var parsed))
+        {
+            return parsed != 0;
+        }
+
+        return true;
     }
 
     private static int GetBestInteractiveSessionId()

@@ -18,10 +18,11 @@ internal sealed class NativeTrayHost : IDisposable
     private const int WM_LBUTTONUP = 0x0202;
     private const int WM_RBUTTONUP = 0x0205;
 
-    private const int NIF_MESSAGE = 0x00000001;
-    private const int NIF_ICON = 0x00000002;
-    private const int NIF_TIP = 0x00000004;
-    private const int NIF_INFO = 0x00000010;
+    private const uint NIF_MESSAGE = 0x00000001;
+    private const uint NIF_ICON = 0x00000002;
+    private const uint NIF_TIP = 0x00000004;
+    private const uint NIF_STATE = 0x00000008;
+    private const uint NIF_INFO = 0x00000010;
 
     private const int NIM_ADD = 0x00000000;
     private const int NIM_MODIFY = 0x00000001;
@@ -29,7 +30,8 @@ internal sealed class NativeTrayHost : IDisposable
     private const int NIM_SETVERSION = 0x00000004;
 
     private const int NOTIFYICON_VERSION_4 = 4;
-    private const int NIIF_INFO = 0x00000001;
+    private const uint NIIF_INFO = 0x00000001;
+    private const uint NIS_HIDDEN = 0x00000001;
 
     private const int NIN_BALLOONUSERCLICK = WM_USER + 5;
     private const int NIN_SELECT = WM_USER + 0;
@@ -68,7 +70,8 @@ internal sealed class NativeTrayHost : IDisposable
     private bool _initialized;
     private bool _disposed;
     private bool _trayIconAdded;
-    private DateTimeOffset? _pendingNotificationClickExpiryUtc;
+    private bool _trayIconVisible;
+    private bool _hasPendingNotificationClick;
 
     private string? _pendingBalloonTitle;
     private string? _pendingBalloonMessage;
@@ -83,6 +86,7 @@ internal sealed class NativeTrayHost : IDisposable
         string tooltip,
         string showMainWindowText,
         string exitText,
+        bool showTrayIcon,
         Action showMainWindow,
         Action exitApplication,
         Action balloonClicked)
@@ -91,6 +95,7 @@ internal sealed class NativeTrayHost : IDisposable
         _tooltip = tooltip;
         _showMainWindowText = showMainWindowText;
         _exitText = exitText;
+        _trayIconVisible = showTrayIcon;
         _showMainWindow = showMainWindow;
         _exitApplication = exitApplication;
         _balloonClicked = balloonClicked;
@@ -175,7 +180,7 @@ internal sealed class NativeTrayHost : IDisposable
 
         _pendingBalloonTitle = title;
         _pendingBalloonMessage = message;
-        _pendingNotificationClickExpiryUtc = DateTimeOffset.UtcNow.AddMinutes(2);
+        _hasPendingNotificationClick = true;
 
         if (!_trayIconAdded)
         {
@@ -184,6 +189,7 @@ internal sealed class NativeTrayHost : IDisposable
 
         var nid = CreateBaseNotifyIconData();
         nid.uFlags = NIF_INFO;
+        ApplyTrayIconState(ref nid);
         nid.dwInfoFlags = NIIF_INFO;
         nid.szInfoTitle = title;
         nid.szInfo = message;
@@ -222,7 +228,22 @@ internal sealed class NativeTrayHost : IDisposable
 
         var nid = CreateBaseNotifyIconData();
         nid.uFlags = NIF_TIP;
+        ApplyTrayIconState(ref nid);
         nid.szTip = _tooltip;
+        Shell_NotifyIcon(NIM_MODIFY, ref nid);
+    }
+
+    public void SetTrayIconVisible(bool visible)
+    {
+        _trayIconVisible = visible;
+        if (_hwnd == IntPtr.Zero || !_initialized || !_trayIconAdded)
+        {
+            return;
+        }
+
+        var nid = CreateBaseNotifyIconData();
+        nid.uFlags = NIF_STATE;
+        ApplyTrayIconState(ref nid);
         Shell_NotifyIcon(NIM_MODIFY, ref nid);
     }
 
@@ -257,6 +278,7 @@ internal sealed class NativeTrayHost : IDisposable
     {
         var nid = CreateBaseNotifyIconData();
         nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        ApplyTrayIconState(ref nid);
         nid.uCallbackMessage = TrayCallbackMessage;
         nid.hIcon = LoadTrayIconHandle();
         nid.szTip = _tooltip;
@@ -358,10 +380,18 @@ internal sealed class NativeTrayHost : IDisposable
         };
     }
 
+    private void ApplyTrayIconState(ref NOTIFYICONDATA nid)
+    {
+        nid.uFlags |= NIF_STATE;
+        nid.dwStateMask = NIS_HIDDEN;
+        nid.dwState = _trayIconVisible ? 0u : NIS_HIDDEN;
+    }
+
     private IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
         if (msg == _taskbarCreatedMessage)
         {
+            _trayIconAdded = false;
             TryCreateTrayIcon();
             return IntPtr.Zero;
         }
@@ -425,14 +455,12 @@ internal sealed class NativeTrayHost : IDisposable
 
     private bool TryHandlePendingNotificationClick()
     {
-        if (_pendingNotificationClickExpiryUtc is not { } expiresAtUtc
-            || expiresAtUtc <= DateTimeOffset.UtcNow)
+        if (!_hasPendingNotificationClick)
         {
-            _pendingNotificationClickExpiryUtc = null;
             return false;
         }
 
-        _pendingNotificationClickExpiryUtc = null;
+        _hasPendingNotificationClick = false;
         _balloonClicked();
         return true;
     }

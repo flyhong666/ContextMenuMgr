@@ -79,6 +79,15 @@
                     TextWrapping="Wrap" />
                 <ui:ToggleSwitch
                     Margin="0,16,0,0"
+                    Content="{Binding ShowTrayIconLabel}"
+                    IsChecked="{Binding ShowTrayIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <ui:TextBlock
+                    Margin="0,8,0,0"
+                    Opacity="0.72"
+                    Text="{Binding ShowTrayIconDescription}"
+                    TextWrapping="Wrap" />
+                <ui:ToggleSwitch
+                    Margin="0,16,0,0"
                     Content="{Binding KeepBackgroundAfterCloseLabel}"
                     IsChecked="{Binding KeepBackgroundAfterClose, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <ui:TextBlock

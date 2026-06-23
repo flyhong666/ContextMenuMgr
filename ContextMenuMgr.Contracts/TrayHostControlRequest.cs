@@ -14,4 +14,9 @@ public sealed record TrayHostControlRequest
     /// Gets or sets the shared runtime log level.
     /// </summary>
     public RuntimeLogLevel? LogLevel { get; init; }
+
+    /// <summary>
+    /// Gets or sets whether the TrayHost notification-area icon should be visible.
+    /// </summary>
+    public bool? ShowTrayIcon { get; init; }
 }

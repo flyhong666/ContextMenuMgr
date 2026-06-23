@@ -79,6 +79,14 @@ If you cannot answer these questions, stop and read the relevant docs or inspect
 - A Windows Service must not directly show UI. Launch TrayHost or Frontend through the interactive user session.
 - Restart Explorer must target the frontend user session. Do not blindly kill all `explorer.exe` processes.
 
+### Tray icon, notifications, and shell integration
+
+- For tray icon, notification, and shell integration work, use Win32/PInvoke only.
+- Do not introduce Windows App SDK, WinUI, AppNotificationManager, packaged activation, or Microsoft.WindowsAppSDK for tray notifications.
+- Do not change project TFMs to versioned Windows SDK TFMs such as `net10.0-windows10.0.xxxxx.0` for tray or notification work.
+- TrayHost is the user-session notification agent. The backend service must not show user notifications directly.
+- Hiding the tray icon must not remove or stop the TrayHost process; TrayHost must keep receiving backend notifications and handling notification activation.
+
 ### Frontend UI and WPF-UI
 
 - Frontend UI bugs are not automatically backend, registry, or service bugs.

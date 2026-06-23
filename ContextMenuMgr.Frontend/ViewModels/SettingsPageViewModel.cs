@@ -29,6 +29,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly ExplorerRestartStateService _explorerRestartState;
     private bool _suppressProtectionSync;
     private bool _suppressAutoStartSync;
+    private bool _suppressTrayIconSync;
     private bool _suppressWin11ContextMenuSync;
     private bool _suppressThemeSync;
     private bool _pendingRegistryProtectionEnable;
@@ -85,6 +86,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
         // Initialize with default values to avoid blocking UI thread
         AutoStartOnLogin = false;
+        ShowTrayIcon = _settingsService.Current.ShowTrayIcon;
         KeepBackgroundAfterClose = _settingsService.Current.KeepBackgroundAfterClose;
         LockNewContextMenuItems = _settingsService.Current.LockNewContextMenuItems;
         _suppressWin11ContextMenuSync = true;
@@ -142,6 +144,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public partial bool AutoStartOnLogin { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the TrayHost notification-area icon is visible.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowTrayIcon { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether background After Close.
     /// </summary>
     [ObservableProperty]
@@ -193,6 +201,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string AutoStartOnLoginLabel => _localization.Translate("Settings.StartWithWindows");
 
     public string AutoStartOnLoginDescription => _localization.Translate("Settings.StartWithWindows.Description");
+
+    public string ShowTrayIconLabel => _localization.Translate("Settings.ShowTrayIcon");
+
+    public string ShowTrayIconDescription => _localization.Translate("Settings.ShowTrayIcon.Description");
 
     public string KeepBackgroundAfterCloseLabel => _localization.Translate("Settings.KeepBackgroundAfterClose");
 
@@ -311,6 +323,16 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
 
         _ = ApplyAutoStartOnLoginAsync(value);
+    }
+
+    partial void OnShowTrayIconChanged(bool value)
+    {
+        if (_suppressTrayIconSync)
+        {
+            return;
+        }
+
+        _ = ApplyShowTrayIconAsync(value);
     }
 
     partial void OnKeepBackgroundAfterCloseChanged(bool value)
@@ -496,15 +518,22 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             AutoStartOnLogin = false;
             _suppressAutoStartSync = false;
 
+            _suppressTrayIconSync = true;
+            ShowTrayIcon = true;
+            _settingsService.UpdateShowTrayIcon(true);
+            _suppressTrayIconSync = false;
+
             // Use async version to avoid blocking UI thread
             try
             {
-                await _startupService.SetAutoStartEnabledAsync(false, CancellationToken.None);
+                await _startupService.SetAutoStartEnabledAsync(false, CancellationToken.None, showTrayIcon: true);
             }
             catch
             {
                 // Ignore errors during reset
             }
+
+            await TryApplyRuntimeTrayIconVisibilityAsync(true);
 
             if (_workspace.IsServiceInstalled())
             {
@@ -620,6 +649,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(StartupBehaviorTitle));
         OnPropertyChanged(nameof(AutoStartOnLoginLabel));
         OnPropertyChanged(nameof(AutoStartOnLoginDescription));
+        OnPropertyChanged(nameof(ShowTrayIconLabel));
+        OnPropertyChanged(nameof(ShowTrayIconDescription));
         OnPropertyChanged(nameof(KeepBackgroundAfterCloseLabel));
         OnPropertyChanged(nameof(KeepBackgroundAfterCloseDescription));
         OnPropertyChanged(nameof(ProtectionTitle));
@@ -913,7 +944,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         try
         {
             // Use async version to avoid blocking UI thread
-            await _startupService.SetAutoStartEnabledAsync(value, CancellationToken.None);
+            await _startupService.SetAutoStartEnabledAsync(value, CancellationToken.None, ShowTrayIcon);
             _settingsService.UpdateAutoStartOnLogin(value);
 
             if (_workspace.IsServiceInstalled())
@@ -936,6 +967,41 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             await FrontendMessageBox.ShowErrorAsync(
                 ex.Message,
                 _localization.Translate("StartupBehaviorTitle"));
+        }
+    }
+
+    private async Task ApplyShowTrayIconAsync(bool value)
+    {
+        var previous = _settingsService.Current.ShowTrayIcon;
+        _settingsService.UpdateShowTrayIcon(value);
+
+        try
+        {
+            await _startupService.SetTrayIconPolicyAsync(value, CancellationToken.None);
+            await TryApplyRuntimeTrayIconVisibilityAsync(value);
+        }
+        catch (Exception ex)
+        {
+            _settingsService.UpdateShowTrayIcon(previous);
+            _suppressTrayIconSync = true;
+            ShowTrayIcon = previous;
+            _suppressTrayIconSync = false;
+            await FrontendMessageBox.ShowErrorAsync(
+                ex.Message,
+                _localization.Translate("StartupBehaviorTitle"));
+        }
+    }
+
+    private async Task TryApplyRuntimeTrayIconVisibilityAsync(bool visible)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(800));
+            _ = await _trayHostProcessService.SetTrayIconVisibleAsync(visible, cts.Token);
+        }
+        catch
+        {
+            // TrayHost may not be running; the persisted setting applies next launch.
         }
     }
 }

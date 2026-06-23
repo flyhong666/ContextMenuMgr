@@ -143,9 +143,11 @@ public interface IBackendClient : IAsyncDisposable
 
     Task SetWin11ModernContextMenuDisabledAsync(bool disabled, CancellationToken cancellationToken);
 
-    Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken);
+    Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken, bool? showTrayIcon = null);
 
     Task<bool> GetAutoStartEnabledAsync(CancellationToken cancellationToken);
+
+    Task SetTrayIconPolicyAsync(bool showTrayIcon, CancellationToken cancellationToken);
 
     Task SetLogLevelAsync(RuntimeLogLevel logLevel, CancellationToken cancellationToken);
 }

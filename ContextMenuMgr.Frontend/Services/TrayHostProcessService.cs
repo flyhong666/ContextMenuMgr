@@ -14,6 +14,12 @@ public sealed class TrayHostProcessService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string _trayHostExecutablePath = Path.Combine(AppContext.BaseDirectory, "ContextMenuManagerPlus.TrayHost.exe");
+    private readonly FrontendSettingsService _settingsService;
+
+    public TrayHostProcessService(FrontendSettingsService settingsService)
+    {
+        _settingsService = settingsService;
+    }
 
     /// <summary>
     /// Executes is Running.
@@ -52,6 +58,7 @@ public sealed class TrayHostProcessService
             Process.Start(new ProcessStartInfo
             {
                 FileName = _trayHostExecutablePath,
+                Arguments = _settingsService.Current.ShowTrayIcon ? string.Empty : "--hide-tray-icon",
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(_trayHostExecutablePath) ?? AppContext.BaseDirectory
             });
@@ -91,6 +98,15 @@ public sealed class TrayHostProcessService
             },
             cancellationToken);
 
+    public async Task<bool> SetTrayIconVisibleAsync(bool visible, CancellationToken cancellationToken)
+        => await SendCommandAsync(
+            new TrayHostControlRequest
+            {
+                Command = TrayHostControlCommand.SetTrayIconVisibility,
+                ShowTrayIcon = visible
+            },
+            cancellationToken);
+
     private static async Task<bool> SendCommandAsync(TrayHostControlCommand command, CancellationToken cancellationToken)
         => await SendCommandAsync(new TrayHostControlRequest { Command = command }, cancellationToken);
 
@@ -99,7 +115,7 @@ public sealed class TrayHostProcessService
         var startedAt = DateTimeOffset.UtcNow;
         FrontendDebugLog.Operation(
             "FrontendOperation",
-            $"TrayHostCommandStart: Command={request.Command}, LogLevel={request.LogLevel}, Timestamp={startedAt:O}.");
+            $"TrayHostCommandStart: Command={request.Command}, LogLevel={request.LogLevel}, ShowTrayIcon={request.ShowTrayIcon}, Timestamp={startedAt:O}.");
 
         try
         {

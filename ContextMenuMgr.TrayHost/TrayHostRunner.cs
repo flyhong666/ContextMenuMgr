@@ -14,6 +14,7 @@ internal sealed class TrayHostRunner : IDisposable
     private readonly FrontendActivationService _frontendActivationService;
     private readonly TrayHostLogger _logger;
     private readonly TrayLocalizationService _localization;
+    private readonly bool _initialShowTrayIcon;
 
     private Mutex? _singleInstanceMutex;
     private bool _ownsMutex;
@@ -32,11 +33,13 @@ internal sealed class TrayHostRunner : IDisposable
     public TrayHostRunner(
         TrayBackendPipeClient backendPipeClient,
         FrontendActivationService frontendActivationService,
-        TrayHostLogger logger)
+        TrayHostLogger logger,
+        bool initialShowTrayIcon)
     {
         _backendPipeClient = backendPipeClient;
         _frontendActivationService = frontendActivationService;
         _logger = logger;
+        _initialShowTrayIcon = initialShowTrayIcon;
         _localization = new TrayLocalizationService();
     }
 
@@ -61,6 +64,7 @@ internal sealed class TrayHostRunner : IDisposable
                 _localization.Translate("Tray.Tooltip"),
                 _localization.Translate("Tray.ShowMainWindow"),
                 _localization.Translate("Tray.ExitFull"),
+                _initialShowTrayIcon,
                 ShowMainWindow,
                 RequestBackendShutdown,
                 OpenApprovals);
@@ -217,6 +221,11 @@ internal sealed class TrayHostRunner : IDisposable
         {
             _logger.Configure(request.LogLevel.Value);
             _ = _logger.LogAsync($"Tray host log level set to {request.LogLevel.Value}.");
+        }
+        else if (request is { Command: TrayHostControlCommand.SetTrayIconVisibility, ShowTrayIcon: not null })
+        {
+            _trayHost?.SetTrayIconVisible(request.ShowTrayIcon.Value);
+            _ = _logger.LogAsync($"Tray icon visibility set to {request.ShowTrayIcon.Value}.");
         }
 
         return Task.FromResult(new TrayHostControlResponse

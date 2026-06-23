@@ -28,6 +28,11 @@ public sealed class FrontendSettings
     public bool AutoStartOnLogin { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the TrayHost notification-area icon is visible.
+    /// </summary>
+    public bool ShowTrayIcon { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets a value indicating whether background After Close.
     /// </summary>
     public bool KeepBackgroundAfterClose { get; set; }

@@ -602,6 +602,12 @@ Continue anyway? (Not recommended)</value>
   <data name="Settings.StartWithWindows.Description" xml:space="preserve">
     <value>When enabled, the tray process starts automatically after user logon. The main window will not be opened automatically.</value>
   </data>
+  <data name="Settings.ShowTrayIcon" xml:space="preserve">
+    <value>Show system tray icon</value>
+  </data>
+  <data name="Settings.ShowTrayIcon.Description" xml:space="preserve">
+    <value>When disabled, the tray process keeps running and notifications still work, but the icon is hidden from the notification area.</value>
+  </data>
   <data name="Settings.KeepBackgroundAfterClose" xml:space="preserve">
     <value>Keep tray and backend running after closing the main window</value>
   </data>

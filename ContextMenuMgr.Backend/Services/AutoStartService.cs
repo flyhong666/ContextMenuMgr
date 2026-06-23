@@ -11,6 +11,7 @@ public sealed class AutoStartService
 {
     private const string PolicyKeyPath = @"Software\ContextMenuMgr\Frontend";
     private const string PolicyValueName = "StartWithWindows";
+    private const string ShowTrayIconPolicyValueName = "ShowTrayIcon";
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "ContextMenuManagerPlus.TrayHost";
 
@@ -28,7 +29,8 @@ public sealed class AutoStartService
         bool enabled,
         Guid? operationId,
         BackendUserContext? userContext,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool? showTrayIcon = null)
     {
         try
         {
@@ -56,6 +58,21 @@ public sealed class AutoStartService
                         writable: true,
                         result: "Success"),
                     cancellationToken);
+
+                if (showTrayIcon is not null)
+                {
+                    policyKey.SetValue(ShowTrayIconPolicyValueName, showTrayIcon.Value ? 1 : 0, RegistryValueKind.DWord);
+                    await _logger.LogAsync(
+                        DiagnosticLogFormatter.BuildRegistryOperationLog(
+                            "TrayIconPolicySetValue",
+                            policyFullPath,
+                            ShowTrayIconPolicyValueName,
+                            RegistryValueKind.DWord,
+                            showTrayIcon.Value ? 1 : 0,
+                            writable: true,
+                            result: "Success"),
+                        cancellationToken);
+                }
             }
 
             // Clear Run key (we don't auto-add to Run key anymore)
@@ -73,7 +90,7 @@ public sealed class AutoStartService
                     result: runValueExisted ? "Deleted" : "SkippedMissing"),
                 cancellationToken);
 
-            await _logger.LogAsync($"Auto-start set to {enabled} for {userContext.Sid}. PolicyPath={policyFullPath}, PolicyValueName={PolicyValueName}, PolicyValueKind={RegistryValueKind.DWord}, PolicyValueData={(enabled ? 1 : 0)}, RunKeyPath={runFullPath}, DeletedRunValueName={RunValueName}.", cancellationToken);
+            await _logger.LogAsync($"Auto-start set to {enabled} for {userContext.Sid}. PolicyPath={policyFullPath}, PolicyValueName={PolicyValueName}, PolicyValueKind={RegistryValueKind.DWord}, PolicyValueData={(enabled ? 1 : 0)}, ShowTrayIcon={(showTrayIcon?.ToString() ?? "<unchanged>")}, RunKeyPath={runFullPath}, DeletedRunValueName={RunValueName}.", cancellationToken);
             return new PipeResponse
             {
                 Success = true,
@@ -160,6 +177,62 @@ public sealed class AutoStartService
         catch (Exception ex)
         {
             await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to get auto-start status: {ex}", cancellationToken);
+            return Failure(ex.Message, operationId);
+        }
+    }
+
+    public async Task<PipeResponse> SetTrayIconPolicyAsync(
+        bool showTrayIcon,
+        Guid? operationId,
+        BackendUserContext? userContext,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (userContext is null)
+            {
+                return Failure("User context is required for tray icon policy configuration.", operationId);
+            }
+
+            var policyFullPath = DiagnosticLogFormatter.FormatUserHivePath(userContext, PolicyKeyPath);
+            using var userBaseKey = OpenUserRegistryRoot(userContext, writable: true);
+            using var policyKey = userBaseKey.OpenSubKey(PolicyKeyPath, writable: true)
+                               ?? userBaseKey.CreateSubKey(PolicyKeyPath, writable: true);
+            if (policyKey is null)
+            {
+                return Failure("Cannot open frontend policy key.", operationId);
+            }
+
+            policyKey.SetValue(ShowTrayIconPolicyValueName, showTrayIcon ? 1 : 0, RegistryValueKind.DWord);
+            await _logger.LogAsync(
+                DiagnosticLogFormatter.BuildRegistryOperationLog(
+                    "TrayIconPolicySetValue",
+                    policyFullPath,
+                    ShowTrayIconPolicyValueName,
+                    RegistryValueKind.DWord,
+                    showTrayIcon ? 1 : 0,
+                    writable: true,
+                    result: "Success"),
+                cancellationToken);
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"Tray icon policy set to {(showTrayIcon ? "visible" : "hidden")}.",
+                ClientOperationId = operationId
+            };
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            await _logger.LogAsync(RuntimeLogLevel.Warning, $"Permission denied setting tray icon policy: {ex}", cancellationToken);
+            return Failure(
+                "Cannot write to the registry key. The backend service may not have sufficient permissions. " +
+                "Please ensure the backend service is running with adequate privileges or run as administrator.",
+                operationId);
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to set tray icon policy: {ex}", cancellationToken);
             return Failure(ex.Message, operationId);
         }
     }

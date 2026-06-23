@@ -71,8 +71,16 @@ public sealed class FrontendStartupService
     /// <summary>
     /// Sets auto Start Enabled Async.
     /// </summary>
-    public async Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    public async Task SetAutoStartEnabledAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default,
+        bool? showTrayIcon = null)
     {
-        await _backendClient.SetAutoStartEnabledAsync(enabled, cancellationToken);
+        await _backendClient.SetAutoStartEnabledAsync(enabled, cancellationToken, showTrayIcon);
+    }
+
+    public async Task SetTrayIconPolicyAsync(bool showTrayIcon, CancellationToken cancellationToken = default)
+    {
+        await _backendClient.SetTrayIconPolicyAsync(showTrayIcon, cancellationToken);
     }
 }

@@ -628,13 +628,17 @@ public sealed class NamedPipeBackendClient : IBackendClient
     /// <summary>
     /// Sets auto start enabled Async.
     /// </summary>
-    public async Task SetAutoStartEnabledAsync(bool enabled, CancellationToken cancellationToken)
+    public async Task SetAutoStartEnabledAsync(
+        bool enabled,
+        CancellationToken cancellationToken,
+        bool? showTrayIcon = null)
     {
         await SendRequestAsync(
             new PipeRequest
             {
                 Command = PipeCommand.SetAutoStartEnabled,
-                AutoStartEnabled = enabled
+                AutoStartEnabled = enabled,
+                ShowTrayIcon = showTrayIcon
             },
             cancellationToken);
     }
@@ -652,6 +656,17 @@ public sealed class NamedPipeBackendClient : IBackendClient
             cancellationToken);
 
         return response.AutoStartEnabled ?? false;
+    }
+
+    public async Task SetTrayIconPolicyAsync(bool showTrayIcon, CancellationToken cancellationToken)
+    {
+        await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetTrayIconPolicy,
+                ShowTrayIcon = showTrayIcon
+            },
+            cancellationToken);
     }
 
     public async Task SetLogLevelAsync(RuntimeLogLevel logLevel, CancellationToken cancellationToken)
@@ -796,7 +811,7 @@ public sealed class NamedPipeBackendClient : IBackendClient
     }
 
     private static string BuildOperationStartLog(Guid correlationId, PipeRequest request)
-        => $"FrontendOperationStart: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, AutoStartEnabled={request.AutoStartEnabled}, Timestamp={DateTimeOffset.UtcNow:O}.";
+        => $"FrontendOperationStart: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, AutoStartEnabled={request.AutoStartEnabled}, ShowTrayIcon={request.ShowTrayIcon}, Timestamp={DateTimeOffset.UtcNow:O}.";
 
     private static string BuildOperationEndLog(Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
         => $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, ErrorCode={response.ErrorCode ?? "<none>"}, Message={response.Message}, ElapsedMs={elapsedMs}, HasItem={response.Item is not null}, HasSpecialItem={response.SpecialItem is not null}.";

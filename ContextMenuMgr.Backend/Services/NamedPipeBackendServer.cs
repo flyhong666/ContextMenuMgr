@@ -466,9 +466,16 @@ public sealed class NamedPipeBackendServer
                     request.AutoStartEnabled.Value,
                     request.ClientOperationId,
                     await ResolveFrontendUserContextAsync(stream, cancellationToken),
-                    cancellationToken),
+                    cancellationToken,
+                    request.ShowTrayIcon),
             PipeCommand.GetAutoStartEnabled
                 => await _autoStartService.GetAutoStartEnabledAsync(
+                    request.ClientOperationId,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken),
+                    cancellationToken),
+            PipeCommand.SetTrayIconPolicy when request.ShowTrayIcon is not null
+                => await _autoStartService.SetTrayIconPolicyAsync(
+                    request.ShowTrayIcon.Value,
                     request.ClientOperationId,
                     await ResolveFrontendUserContextAsync(stream, cancellationToken),
                     cancellationToken),
@@ -1004,13 +1011,13 @@ public sealed class NamedPipeBackendServer
     }
 
     private static string BuildRequestStartLog(Guid connectionId, Guid correlationId, PipeRequest request)
-        => $"PipeRequestStart: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, AutoStartEnabled={request.AutoStartEnabled}, ShellNewLock={request.ShellNewLock?.Lock}, Timestamp={DateTimeOffset.UtcNow:O}.";
+        => $"PipeRequestStart: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, AutoStartEnabled={request.AutoStartEnabled}, ShowTrayIcon={request.ShowTrayIcon}, ShellNewLock={request.ShellNewLock?.Lock}, Timestamp={DateTimeOffset.UtcNow:O}.";
 
     private static string BuildRequestEndLog(Guid connectionId, Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
         => $"PipeRequestEnd: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, Message={DiagnosticLogFormatter.FormatRegistryValueData(response.Message)}, ElapsedMs={elapsedMs}, HasItem={response.Item is not null}, HasSpecialItem={response.SpecialItem is not null}, ItemId={response.Item?.Id}, SpecialItemId={response.SpecialItem?.Id}.";
 
     private static string BuildOperationStartLog(Guid connectionId, Guid correlationId, PipeRequest request)
-        => $"BackendOperationStart: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, Decision={request.Decision}, ShellAttribute={request.ShellAttribute}, AutoStartEnabled={request.AutoStartEnabled}, Timestamp={DateTimeOffset.UtcNow:O}.";
+        => $"BackendOperationStart: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, ItemId={request.ItemId}, SpecialKind={request.SpecialKind}, SceneKind={request.SceneKind}, Enable={request.Enable}, Decision={request.Decision}, ShellAttribute={request.ShellAttribute}, AutoStartEnabled={request.AutoStartEnabled}, ShowTrayIcon={request.ShowTrayIcon}, Timestamp={DateTimeOffset.UtcNow:O}.";
 
     private static string BuildOperationEndLog(Guid connectionId, Guid correlationId, PipeRequest request, PipeResponse response, long elapsedMs)
         => $"BackendOperationEnd: ConnectionId={connectionId}, CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success={response.Success}, ErrorCode={response.ErrorCode ?? "<none>"}, Message={DiagnosticLogFormatter.FormatRegistryValueData(response.Message)}, ElapsedMs={elapsedMs}, ItemId={response.Item?.Id ?? request.ItemId}, SpecialItemId={response.SpecialItem?.Id}.";

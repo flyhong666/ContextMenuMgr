@@ -42,6 +42,7 @@ public enum PipeCommand
     SetWin11ModernContextMenuDisabled,
     SetAutoStartEnabled,
     GetAutoStartEnabled,
+    SetTrayIconPolicy,
     AnalyzeFileTypeContext,
     CreateSceneMenuItem,
     GetEnhanceMenuDefinitions,

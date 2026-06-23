@@ -128,6 +128,20 @@ public sealed class FrontendSettingsService
     }
 
     /// <summary>
+    /// Updates show Tray Icon.
+    /// </summary>
+    public void UpdateShowTrayIcon(bool showTrayIcon)
+    {
+        if (Current.ShowTrayIcon == showTrayIcon)
+        {
+            return;
+        }
+
+        Current.ShowTrayIcon = showTrayIcon;
+        Save();
+    }
+
+    /// <summary>
     /// Updates keep Background After Close.
     /// </summary>
     public void UpdateKeepBackgroundAfterClose(bool keepBackgroundAfterClose)

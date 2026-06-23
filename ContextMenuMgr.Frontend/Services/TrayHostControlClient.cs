@@ -34,6 +34,15 @@ public static class TrayHostControlClient
             },
             cancellationToken);
 
+    public static async Task<bool> TrySetTrayIconVisibleAsync(bool visible, CancellationToken cancellationToken)
+        => await TrySendRequestAsync(
+            new TrayHostControlRequest
+            {
+                Command = TrayHostControlCommand.SetTrayIconVisibility,
+                ShowTrayIcon = visible
+            },
+            cancellationToken);
+
     private static async Task<bool> TrySendCommandAsync(TrayHostControlCommand command, CancellationToken cancellationToken)
         => await TrySendRequestAsync(new TrayHostControlRequest { Command = command }, cancellationToken);
 

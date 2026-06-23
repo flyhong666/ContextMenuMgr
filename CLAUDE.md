@@ -21,6 +21,8 @@ Before changing code, identify which flow the task belongs to:
 
 Do not mix privilege, user SID, session ID, `HKCU`, `HKEY_USERS`, Registry Write Protection, ShellNew ACL Lock, ProbeHost, or the UAC bootstrapper.
 
+Tray icon, notification, and shell integration work must use Win32/PInvoke only. Do not introduce Windows App SDK, WinUI, AppNotificationManager, packaged activation, Microsoft.WindowsAppSDK, or versioned Windows SDK TFMs such as `net10.0-windows10.0.xxxxx.0`. TrayHost is the user-session notification agent, and hiding the tray icon must not remove the TrayHost process.
+
 Most detailed documents under `docs/` are written in Simplified Chinese. Do not skip them because of language. Read and translate them internally if needed.
 
 If file import is supported, treat the following as part of this file:

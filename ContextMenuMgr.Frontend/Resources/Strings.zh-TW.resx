@@ -602,6 +602,12 @@
   <data name="Settings.StartWithWindows.Description" xml:space="preserve">
     <value>啟用後，在使用者登入 Windows 時自動啟動系統匣處理程序，不會自動開啟主視窗。</value>
   </data>
+  <data name="Settings.ShowTrayIcon" xml:space="preserve">
+    <value>顯示系統匣圖示</value>
+  </data>
+  <data name="Settings.ShowTrayIcon.Description" xml:space="preserve">
+    <value>關閉後，系統匣處理程序仍會繼續執行並顯示通知，但圖示會從通知區域隱藏。</value>
+  </data>
   <data name="Settings.KeepBackgroundAfterClose" xml:space="preserve">
     <value>關閉主視窗後保留後端服務和系統匣處理程序</value>
   </data>
