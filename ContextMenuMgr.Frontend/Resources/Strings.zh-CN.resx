@@ -926,6 +926,9 @@
   <data name="TextCannotBeEmpty" xml:space="preserve">
     <value>菜单文本不能为空。</value>
   </data>
+  <data name="TargetPathCannotBeEmpty" xml:space="preserve">
+    <value>目标程序不能为空。</value>
+  </data>
   <data name="CommandCannotBeEmpty" xml:space="preserve">
     <value>命令不能为空。</value>
   </data>

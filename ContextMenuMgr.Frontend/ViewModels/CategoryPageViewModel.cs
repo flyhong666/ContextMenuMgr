@@ -14,7 +14,10 @@ namespace ContextMenuMgr.Frontend.ViewModels;
 /// </summary>
 public partial class CategoryPageViewModel : ObservableObject, IDisposable
 {
+    private const string DefaultCustomMenuItemKeyName = "CustomMenuItem";
+    private static readonly string[] SelectedObjectPlaceholders = ["%1", "%V", "%L", "%*"];
     private readonly ContextMenuWorkspaceService _workspace;
+    private readonly IBackendClient _backendClient;
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
@@ -27,6 +30,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     public CategoryPageViewModel(
         ContextMenuCategory category,
         ContextMenuWorkspaceService workspace,
+        IBackendClient backendClient,
         LocalizationService localization,
         FrontendSettingsService settingsService,
         ListPlaceholderDebugStateService placeholderDebug,
@@ -34,6 +38,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     {
         Category = category;
         _workspace = workspace;
+        _backendClient = backendClient;
         _localization = localization;
         _settingsService = settingsService;
         _placeholderDebug = placeholderDebug;
@@ -94,6 +99,8 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
 
     public string SearchLabel => _localization.Translate("SearchLabel");
 
+    public string AddMenuItemText => _localization.Translate("AddMenuItem");
+
     public string DeleteText => _localization.Translate("Delete");
 
     public string CancelText => _localization.Translate("DialogCancel");
@@ -146,6 +153,62 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
     }
 
     public bool ShowListPlaceholder => IsListLoading || HasListLoadFailure || IsListEmpty;
+
+    [RelayCommand]
+    private async Task AddMenuItemAsync()
+    {
+        var formData = await MenuItemFormDialog.ShowAddSceneMenuItemAsync(AddMenuItemText, _localization);
+        if (formData is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(formData.Name))
+        {
+            await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TextCannotBeEmpty"), AddMenuItemText);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(formData.TargetPath))
+        {
+            await FrontendMessageBox.ShowErrorAsync(_localization.Translate("TargetPathCannotBeEmpty"), AddMenuItemText);
+            return;
+        }
+
+        try
+        {
+            if (_settingsService.Current.LockNewContextMenuItems)
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return;
+            }
+
+            var request = new CreateSceneMenuItemRequest
+            {
+                SceneKind = ContextMenuSceneKind.CustomRegistryPath,
+                ScopeValue = GetScopeValue(Category),
+                ItemKind = SceneMenuItemKind.ShellVerb,
+                KeyName = CreateSafeKeyName(formData.Name),
+                DisplayName = formData.Name.Trim(),
+                Command = BuildCommandText(Category, formData.TargetPath, formData.Arguments),
+                Icon = string.IsNullOrWhiteSpace(formData.IconPath) ? null : formData.IconPath.Trim()
+            };
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _backendClient.CreateSceneMenuItemAsync(request, Guid.NewGuid(), cts.Token);
+            await _workspace.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            if (RegistryProtectionDialog.IsRegistryProtectionError(ex))
+            {
+                await RegistryProtectionDialog.ShowAsync(_localization);
+                return;
+            }
+
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, AddMenuItemText);
+        }
+    }
 
     [RelayCommand]
     private Task DeleteOrUndoAsync(ContextMenuItemViewModel? item)
@@ -309,6 +372,7 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PermanentDeleteText));
         OnPropertyChanged(nameof(RegistryMissingText));
         OnPropertyChanged(nameof(SearchLabel));
+        OnPropertyChanged(nameof(AddMenuItemText));
         OnPropertyChanged(nameof(DeleteText));
         OnPropertyChanged(nameof(CancelText));
         OnPropertyChanged(nameof(LoadingItemsText));
@@ -371,6 +435,61 @@ public partial class CategoryPageViewModel : ObservableObject, IDisposable
         ContextMenuCategory.RecycleBin => typeof(RecycleBinContextMenuPage),
         _ => typeof(FileContextMenuPage)
     };
+
+    private static string GetScopeValue(ContextMenuCategory category) => category switch
+    {
+        ContextMenuCategory.File => @"HKCR\*\shell",
+        ContextMenuCategory.Folder => @"HKCR\Folder\shell",
+        ContextMenuCategory.Directory => @"HKCR\Directory\shell",
+        ContextMenuCategory.DirectoryBackground => @"HKCR\Directory\Background\shell",
+        ContextMenuCategory.DesktopBackground => @"HKCR\DesktopBackground\shell",
+        ContextMenuCategory.AllFileSystemObjects => @"HKCR\AllFilesystemObjects\shell",
+        ContextMenuCategory.Drive => @"HKCR\Drive\shell",
+        ContextMenuCategory.Library => @"HKCR\LibraryFolder\shell",
+        ContextMenuCategory.Computer => @"HKCR\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\shell",
+        ContextMenuCategory.RecycleBin => @"HKCR\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\shell",
+        _ => @"HKCR\*\shell"
+    };
+
+    private static string BuildCommandText(ContextMenuCategory category, string targetPath, string? arguments)
+    {
+        var command = QuoteCommandPart(targetPath.Trim());
+        var normalizedArguments = arguments?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(normalizedArguments))
+        {
+            command += " " + normalizedArguments;
+        }
+
+        if (!ContainsSelectedObjectPlaceholder(normalizedArguments))
+        {
+            command += " " + QuoteCommandPart(GetDefaultSelectedObjectPlaceholder(category));
+        }
+
+        return command;
+    }
+
+    private static bool ContainsSelectedObjectPlaceholder(string arguments)
+    {
+        return SelectedObjectPlaceholders.Any(placeholder => arguments.Contains(placeholder, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetDefaultSelectedObjectPlaceholder(ContextMenuCategory category) => category switch
+    {
+        ContextMenuCategory.File or ContextMenuCategory.AllFileSystemObjects => "%1",
+        _ => "%V"
+    };
+
+    private static string QuoteCommandPart(string value)
+    {
+        return "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+    }
+
+    private static string CreateSafeKeyName(string displayName)
+    {
+        var invalidCharacters = new HashSet<char>(['\\', '/', '*', '?', '"', '<', '>', '|']);
+        var keyName = new string(displayName.Where(character => !char.IsControl(character) && !invalidCharacters.Contains(character)).ToArray()).Trim();
+        return string.IsNullOrWhiteSpace(keyName) ? DefaultCustomMenuItemKeyName : keyName;
+    }
 
     private static string SanitizeLogText(string? text)
     {

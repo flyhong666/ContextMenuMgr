@@ -8,107 +8,117 @@ namespace ContextMenuMgr.Frontend.ViewModels;
 /// </summary>
 public sealed class FileContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.File, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.File, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the all Objects Context Menu Page View Model.
 /// </summary>
 public sealed class AllObjectsContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.AllFileSystemObjects, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.AllFileSystemObjects, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the folder Context Menu Page View Model.
 /// </summary>
 public sealed class FolderContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.Folder, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.Folder, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the directory Context Menu Page View Model.
 /// </summary>
 public sealed class DirectoryContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.Directory, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.Directory, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the background Context Menu Page View Model.
 /// </summary>
 public sealed class BackgroundContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.DirectoryBackground, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.DirectoryBackground, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the desktop Context Menu Page View Model.
 /// </summary>
 public sealed class DesktopContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.DesktopBackground, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.DesktopBackground, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the drive Context Menu Page View Model.
 /// </summary>
 public sealed class DriveContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.Drive, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.Drive, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the library Context Menu Page View Model.
 /// </summary>
 public sealed class LibraryContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.Library, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.Library, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the computer Context Menu Page View Model.
 /// </summary>
 public sealed class ComputerContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.Computer, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.Computer, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);
 
 /// <summary>
 /// Represents the recycle Bin Context Menu Page View Model.
 /// </summary>
 public sealed class RecycleBinContextMenuPageViewModel(
     ContextMenuWorkspaceService workspace,
+    IBackendClient backendClient,
     LocalizationService localization,
     FrontendSettingsService settingsService,
     ListPlaceholderDebugStateService placeholderDebug,
     GlobalSearchNavigationFilterService globalSearchFilterService)
-    : CategoryPageViewModel(ContextMenuCategory.RecycleBin, workspace, localization, settingsService, placeholderDebug, globalSearchFilterService);
+    : CategoryPageViewModel(ContextMenuCategory.RecycleBin, workspace, backendClient, localization, settingsService, placeholderDebug, globalSearchFilterService);

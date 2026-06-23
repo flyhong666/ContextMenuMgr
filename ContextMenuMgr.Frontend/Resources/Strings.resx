@@ -926,6 +926,9 @@ Continue anyway? (Not recommended)</value>
   <data name="TextCannotBeEmpty" xml:space="preserve">
     <value>Menu text cannot be empty.</value>
   </data>
+  <data name="TargetPathCannotBeEmpty" xml:space="preserve">
+    <value>Target application cannot be empty.</value>
+  </data>
   <data name="CommandCannotBeEmpty" xml:space="preserve">
     <value>Command cannot be empty.</value>
   </data>

@@ -25,17 +25,34 @@
                     Margin="0,6,0,0"
                     Opacity="0.72"
                     Text="{Binding Description}" />
-                <StackPanel Margin="0,12,0,0">
-                    <ui:TextBlock
-                        Margin="0,0,0,6"
-                        FontSize="12"
-                        Opacity="0.72"
-                        Text="{Binding SearchLabel}" />
-                    <TextBox
-                        MinWidth="220"
-                        Padding="10,6"
-                        Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <ui:TextBlock
+                            Margin="0,0,0,6"
+                            FontSize="12"
+                            Opacity="0.72"
+                            Text="{Binding SearchLabel}" />
+                        <TextBox
+                            MinWidth="220"
+                            Padding="10,6"
+                            Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <ui:Button
+                        Grid.Column="1"
+                        Margin="12,20,0,0"
+                        Padding="14,6"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Command="{Binding AddMenuItemCommand}"
+                        Content="{Binding AddMenuItemText}"
+                        Icon="{ui:SymbolIcon Symbol=Add24}" />
+                </Grid>
             </StackPanel>
         </Border>
 

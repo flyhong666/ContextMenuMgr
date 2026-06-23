@@ -91,7 +91,7 @@ public sealed class FileTypeSceneMenuService
                     return preflight with { ClientOperationId = operationId };
                 }
 
-                WriteShellVerb(relativeRoot, keyName, request);
+                keyName = WriteShellVerb(relativeRoot, keyName, request);
             }
             else
             {
@@ -316,8 +316,9 @@ public sealed class FileTypeSceneMenuService
         await _stateStore.SaveAsync(states, cancellationToken);
     }
 
-    private void WriteShellVerb(string relativeRoot, string keyName, CreateSceneMenuItemRequest request)
+    private string WriteShellVerb(string relativeRoot, string keyName, CreateSceneMenuItemRequest request)
     {
+        keyName = CreateUniqueShellVerbKeyName(relativeRoot, keyName);
         var path = $@"HKEY_CLASSES_ROOT\{relativeRoot}\shell\{keyName}";
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
         {
@@ -338,6 +339,7 @@ public sealed class FileTypeSceneMenuService
         SetFlag(path, "ShowAsDisabledIfHidden", request.ShowAsDisabledIfHidden);
         Registry.SetValue($@"{path}\command", string.Empty, request.Command ?? string.Empty, RegistryValueKind.String);
         _logger.LogFireAndForget(DiagnosticLogFormatter.BuildRegistryOperationLog("WriteShellVerb", $@"{path}\command", null, RegistryValueKind.String, request.Command ?? string.Empty, writable: true, result: "SetValue Success"));
+        return keyName;
     }
 
     private void SetFlag(string path, string valueName, bool enabled)
@@ -387,7 +389,34 @@ public sealed class FileTypeSceneMenuService
             value = value.Replace(invalid.ToString(), string.Empty, StringComparison.Ordinal);
         }
 
-        return value.Trim();
+        var keyName = value.Trim();
+        return string.IsNullOrWhiteSpace(keyName) ? "CustomMenuItem" : keyName;
+    }
+
+    private string CreateUniqueShellVerbKeyName(string relativeRoot, string keyName)
+    {
+        var baseName = string.IsNullOrWhiteSpace(keyName) ? "CustomMenuItem" : keyName.Trim();
+        var candidate = baseName;
+        var index = 2;
+
+        while (ShellVerbKeyExists(relativeRoot, candidate))
+        {
+            candidate = $"{baseName}-{index}";
+            index++;
+        }
+
+        if (!string.Equals(candidate, keyName, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogFireAndForget($"CreateSceneMenuItemUniqueKey: RequestedKeyName={keyName}, ActualKeyName={candidate}.");
+        }
+
+        return candidate;
+    }
+
+    private static bool ShellVerbKeyExists(string relativeRoot, string keyName)
+    {
+        using var key = Registry.ClassesRoot.OpenSubKey($@"{relativeRoot}\shell\{keyName}", writable: false);
+        return key is not null;
     }
 
     private static string? NormalizeClassesRootRelativePath(string? value)

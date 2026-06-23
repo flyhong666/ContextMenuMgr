@@ -926,6 +926,9 @@
   <data name="TextCannotBeEmpty" xml:space="preserve">
     <value>功能表文字不能空白。</value>
   </data>
+  <data name="TargetPathCannotBeEmpty" xml:space="preserve">
+    <value>目標程式不能空白。</value>
+  </data>
   <data name="CommandCannotBeEmpty" xml:space="preserve">
     <value>命令不能為空。</value>
   </data>
