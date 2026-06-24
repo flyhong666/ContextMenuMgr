@@ -2586,7 +2586,7 @@ public sealed class ContextMenuRegistryCatalog
             using var userClasses = GetUserClassesRoot(userContext, writable: true);
             using var key = userClasses.CreateSubKey(registryPath, writable: true);
             var expandedDefaultValue = string.Equals(keyElement.Name.LocalName, "Command", StringComparison.OrdinalIgnoreCase)
-                ? ExpandEnvironmentVariablesPreservingSystemRoot(defaultValue)
+                ? ExpandEnhanceCommandEnvironmentVariables(defaultValue)
                 : Environment.ExpandEnvironmentVariables(defaultValue);
             key?.SetValue(string.Empty, expandedDefaultValue, RegistryValueKind.String);
         }
@@ -2626,7 +2626,7 @@ public sealed class ContextMenuRegistryCatalog
                 $"Unable to create per-user registry key: HKEY_USERS\\{userContext.Sid}\\{UserClassesPath}\\{registryPath}.");
         }
 
-        foreach (var valueNode in valueElement.Elements().Where(element => ShouldIncludeNode(element, cultureName)))
+        foreach (var valueNode in SelectLocalizedElements(valueElement.Elements(), cultureName))
         {
             foreach (var attribute in valueNode.Attributes())
             {
@@ -2695,7 +2695,7 @@ public sealed class ContextMenuRegistryCatalog
         var fileNameElement = commandElement.Element("FileName");
         var argumentsElement = commandElement.Element("Arguments");
         var shellExecuteElement = commandElement.Element("ShellExecute");
-        var powerShellScriptElement = commandElement.Elements("PowerShellScript").FirstOrDefault(element => ShouldIncludeNode(element, cultureName));
+        var powerShellScriptElement = SelectLocalizedElement(commandElement.Elements("PowerShellScript"), cultureName);
 
         if (powerShellScriptElement is not null)
         {
@@ -2752,8 +2752,8 @@ public sealed class ContextMenuRegistryCatalog
             }
             else if (!RequiresShellExecuteWrapper(shellExecuteElement))
             {
-                fileName = ExpandEnvironmentVariablesPreservingSystemRoot(rawFileName);
-                arguments = ExpandEnvironmentVariablesPreservingSystemRoot(rawArguments);
+                fileName = ExpandEnhanceCommandEnvironmentVariables(rawFileName);
+                arguments = ExpandEnhanceCommandEnvironmentVariables(rawArguments);
                 arguments = CanonicalizeEnhanceCommandArguments(arguments);
                 arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
                 command = BuildDirectEnhanceCommand(fileName, arguments);
@@ -2761,8 +2761,8 @@ public sealed class ContextMenuRegistryCatalog
             else
             {
                 wrapperReason = GetShellExecuteWrapperReason(shellExecuteElement);
-                fileName = ExpandEnvironmentVariablesPreservingSystemRoot(rawFileName);
-                arguments = ExpandEnvironmentVariablesPreservingSystemRoot(rawArguments);
+                fileName = ExpandEnhanceCommandEnvironmentVariables(rawFileName);
+                arguments = ExpandEnhanceCommandEnvironmentVariables(rawArguments);
                 arguments = CanonicalizeEnhanceCommandArguments(arguments);
                 arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
                 command = BuildShellExecuteCommand(fileName, arguments, verb, windowStyle, directory);
@@ -2771,8 +2771,8 @@ public sealed class ContextMenuRegistryCatalog
         }
         else
         {
-            fileName = ExpandEnvironmentVariablesPreservingSystemRoot(rawFileName);
-            arguments = ExpandEnvironmentVariablesPreservingSystemRoot(rawArguments);
+            fileName = ExpandEnhanceCommandEnvironmentVariables(rawFileName);
+            arguments = ExpandEnhanceCommandEnvironmentVariables(rawArguments);
             arguments = CanonicalizeEnhanceCommandArguments(arguments);
             arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
             command = BuildDirectEnhanceCommand(fileName, arguments);
@@ -2786,6 +2786,108 @@ public sealed class ContextMenuRegistryCatalog
             generatedCommandKind,
             generatedFileCreated,
             wrapperReason);
+    }
+
+    internal static int ValidateEnhanceMenuDictionary(string dictionaryPath, string? cultureName, TextWriter writer)
+    {
+        var normalizedCulture = NormalizeEnhanceCultureName(cultureName);
+        var document = XDocument.Load(dictionaryPath, LoadOptions.PreserveWhitespace);
+        var commandElements = document.Descendants("Command").ToList();
+        var flaggedCount = 0;
+
+        writer.WriteLine($"EnhanceMenus validation: Path={dictionaryPath}, Culture={normalizedCulture}, Commands={commandElements.Count}");
+        writer.WriteLine("ItemKey\tRegistryPath\tCommandKind\tFlags");
+
+        foreach (var commandElement in commandElements)
+        {
+            if (!ShouldIncludeNode(commandElement, normalizedCulture))
+            {
+                continue;
+            }
+
+            var itemKey = GetEnhanceCommandKeyName(commandElement);
+            var registryPath = GetEnhanceDiagnosticRegistryPath(commandElement);
+            var (commandKind, command) = CompileEnhanceDiagnosticCommand(commandElement, normalizedCulture);
+            var flags = GetEnhanceCommandLegacyFlags(command);
+
+            if (flags.Count > 0)
+            {
+                flaggedCount++;
+            }
+
+            writer.WriteLine($"{itemKey}\t{registryPath}\t{commandKind}\t{(flags.Count == 0 ? "OK" : string.Join(", ", flags))}");
+        }
+
+        writer.WriteLine(flaggedCount == 0
+            ? "EnhanceMenus validation passed: no flagged legacy command patterns."
+            : $"EnhanceMenus validation failed: {flaggedCount} command(s) contain flagged legacy patterns.");
+
+        return flaggedCount == 0 ? 0 : 2;
+    }
+
+    private static (string CommandKind, string Command) CompileEnhanceDiagnosticCommand(XElement commandElement, string cultureName)
+    {
+        var defaultValue = commandElement.Attribute("Default")?.Value;
+        if (!string.IsNullOrWhiteSpace(defaultValue))
+        {
+            var command = ExpandEnhanceCommandEnvironmentVariables(CanonicalizeEnhanceCommandDefaultValue(defaultValue));
+            return ("Default", command);
+        }
+
+        if (commandElement.Element("Value") is not null
+            && commandElement.Element("PowerShellScript") is null
+            && commandElement.Element("FileName") is null
+            && commandElement.Element("Arguments") is null)
+        {
+            return ("RegistryValuesOnly", string.Empty);
+        }
+
+        var compilation = CompileEnhanceCommandValue(commandElement, cultureName);
+        return (compilation.GeneratedCommandKind, compilation.Command);
+    }
+
+    private static string GetEnhanceDiagnosticRegistryPath(XElement commandElement)
+    {
+        var groupElement = commandElement.Ancestors("Group").FirstOrDefault();
+        var rootPath = groupElement?.Element("RegPath")?.Value?.Trim();
+        var keyParts = commandElement
+            .Ancestors()
+            .TakeWhile(element => !string.Equals(element.Name.LocalName, "Group", StringComparison.OrdinalIgnoreCase))
+            .Where(element => element.Attribute("KeyName") is not null)
+            .Reverse()
+            .Select(element => element.Attribute("KeyName")!.Value.Trim())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        keyParts.Add("command");
+        return string.IsNullOrWhiteSpace(rootPath)
+            ? string.Join(@"\", keyParts)
+            : rootPath + @"\shell\" + string.Join(@"\", keyParts);
+    }
+
+    private static IReadOnlyList<string> GetEnhanceCommandLegacyFlags(string command)
+    {
+        var flags = new List<string>();
+        AddFlagIfMatch(flags, command, @"(?i)\bmshta\b", "mshta");
+        AddFlagIfMatch(flags, command, @"(?i)\bvbscript:", "vbscript:");
+        AddFlagIfMatch(flags, command, @"(?i)\bWscript\.exe\b", "Wscript.exe");
+        AddFlagIfMatch(flags, command, @"(?i)\.vbs\b", ".vbs");
+        AddFlagIfMatch(flags, command, @"(?i)^\s*""?cmd(?:\.exe)?""?(?=\s|$)", "bare cmd");
+        AddFlagIfMatch(flags, command, @"(?i)^\s*""?explorer(?:\.exe)?""?(?=\s|$)", "bare explorer");
+        AddFlagIfMatch(flags, command, @"(?i)ContextMenuMgr", "ContextMenuMgr");
+        AddFlagIfMatch(flags, command, @"(?i)\bBackend\b", "Backend");
+        AddFlagIfMatch(flags, command, @"(?i)\bTrayHost\b", "TrayHost");
+        AddFlagIfMatch(flags, command, @"(?i)\bNamedPipe\b", "NamedPipe");
+        AddFlagIfMatch(flags, command, @"(?i)\bpipe\b", "pipe");
+        return flags;
+    }
+
+    private static void AddFlagIfMatch(List<string> flags, string command, string pattern, string flag)
+    {
+        if (Regex.IsMatch(command, pattern))
+        {
+            flags.Add(flag);
+        }
     }
 
     private sealed record EnhanceCommandCompilationResult(
@@ -2946,16 +3048,35 @@ public sealed class ContextMenuRegistryCatalog
             match => $@"{match.Groups[1].Value}start C:\Windows\\explorer.exe");
     }
 
-    private static string ExpandEnvironmentVariablesPreservingSystemRoot(string value)
+    private static string ExpandEnhanceCommandEnvironmentVariables(string value)
     {
         if (string.IsNullOrEmpty(value))
         {
             return value;
         }
 
-        const string token = "\uF001";
-        var protectedValue = Regex.Replace(value, @"C:\Windows", token, RegexOptions.IgnoreCase);
-        return Environment.ExpandEnvironmentVariables(protectedValue).Replace(token, @"C:\Windows", StringComparison.Ordinal);
+        var protectedTokens = new Dictionary<string, string>(StringComparer.Ordinal);
+        var protectedValue = Regex.Replace(value, @"C:\Windows", AddProtectedToken, RegexOptions.IgnoreCase);
+        protectedValue = Regex.Replace(
+            protectedValue,
+            @"%(TEMP|TMP|LOCALAPPDATA|APPDATA|USERPROFILE)%",
+            AddProtectedToken,
+            RegexOptions.IgnoreCase);
+
+        var expanded = Environment.ExpandEnvironmentVariables(protectedValue);
+        foreach (var (token, original) in protectedTokens)
+        {
+            expanded = expanded.Replace(token, original, StringComparison.Ordinal);
+        }
+
+        return expanded;
+
+        string AddProtectedToken(Match match)
+        {
+            var token = $"\uF001{protectedTokens.Count}\uF001";
+            protectedTokens[token] = match.Value;
+            return token;
+        }
     }
 
     private static string CreateEnhanceCommandFile(XElement? parentElement, string cultureName)
@@ -2969,7 +3090,7 @@ public sealed class ContextMenuRegistryCatalog
         Directory.CreateDirectory(generatedDir);
 
         var path = string.Empty;
-        foreach (var createFileElement in parentElement.Elements("CreateFile").Where(element => ShouldIncludeNode(element, cultureName)))
+        foreach (var createFileElement in SelectLocalizedElements(parentElement.Elements("CreateFile"), cultureName))
         {
             var fileName = createFileElement.Attribute("FileName")?.Value;
             var content = createFileElement.Attribute("Content")?.Value ?? string.Empty;
@@ -3262,6 +3383,71 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return MatchesCulture(element, cultureName);
+    }
+
+    internal static XElement? SelectLocalizedElement(IEnumerable<XElement> elements, string cultureName)
+    {
+        var candidates = elements.Where(IsValidLocalizedNode).ToList();
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        return candidates
+            .OrderByDescending(element => GetCultureSelectionRank(element, cultureName))
+            .FirstOrDefault();
+    }
+
+    private static IReadOnlyList<XElement> SelectLocalizedElements(IEnumerable<XElement> elements, string cultureName)
+    {
+        var candidates = elements.Where(IsValidLocalizedNode).ToList();
+        if (candidates.Count == 0)
+        {
+            return [];
+        }
+
+        var selected = candidates
+            .Where(element => IsNoCultureNode(element) || GetCultureSelectionRank(element, cultureName) > 0)
+            .OrderBy(element => GetCultureSelectionRank(element, cultureName))
+            .ToList();
+
+        return selected.Count > 0 ? selected : [candidates[0]];
+    }
+
+    private static bool IsValidLocalizedNode(XElement element)
+        => HasRequiredFiles(element) && MatchesOsVersion(element);
+
+    private static bool IsNoCultureNode(XElement element)
+        => string.IsNullOrWhiteSpace(element.Element("Culture")?.Value);
+
+    private static int GetCultureSelectionRank(XElement element, string cultureName)
+    {
+        var culture = element.Element("Culture")?.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(culture))
+        {
+            return 1;
+        }
+
+        if (string.Equals(culture, cultureName, StringComparison.OrdinalIgnoreCase))
+        {
+            return 3;
+        }
+
+        try
+        {
+            var elementCulture = CultureInfo.GetCultureInfo(culture);
+            var requestedCulture = CultureInfo.GetCultureInfo(cultureName);
+            return string.Equals(
+                elementCulture.TwoLetterISOLanguageName,
+                requestedCulture.TwoLetterISOLanguageName,
+                StringComparison.OrdinalIgnoreCase)
+                    ? 2
+                    : 0;
+        }
+        catch (CultureNotFoundException)
+        {
+            return 0;
+        }
     }
 
     private static bool HasRequiredFiles(XElement element)

@@ -206,19 +206,8 @@ Tip属性为鼠标悬浮在开关上时的提示信息，从每个Item节点开�
                 </Value>
                 <SubKey>
                   <Command>
-                    <FileName>wscript.exe</FileName>
-                    <Arguments>
-                      <CreateFile FileName="ShowFileExtensions.vbs" Content="
-                        Dim wsh
-                        On Error Resume Next
-                        Set wsh = CreateObject(&quot;WScript.Shell&quot;)
-                        path = &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\HideFileExt&quot;
-                        value = 1
-                        If wsh.RegRead(path) = value Then value = 0
-                        wsh.RegWrite path, value, &quot;REG_DWORD&quot;
-                        wsh.SendKeys &quot;{F5}&quot;
-                        Set wsh = Nothing" />
-                    </Arguments>
+                    <FileName>powershell.exe</FileName>
+                    <Arguments>-NoProfile -ExecutionPolicy Bypass -Command "&amp; { $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; $name = 'HideFileExt'; $props = Get-ItemProperty -LiteralPath $key -Name $name -ErrorAction SilentlyContinue; $current = if ($props) { $props.PSObject.Properties[$name].Value } else { $null }; $next = if ($current -eq 1) { 0 } else { 1 }; Set-ItemProperty -LiteralPath $key -Name $name -Type DWord -Value $next; try { $shell = New-Object -ComObject Shell.Application; @($shell.Windows()) | ForEach-Object { try { $_.Refresh() } catch {} } } catch {} }"</Arguments>
                   </Command>
                 </SubKey>
               </Item0>
@@ -235,19 +224,8 @@ Tip属性为鼠标悬浮在开关上时的提示信息，从每个Item节点开�
                 </Value>
                 <SubKey>
                   <Command>
-                    <FileName>wscript.exe</FileName>
-                    <Arguments>
-                      <CreateFile FileName="ShowHiddenFiles.vbs" Content="
-                        Dim wsh
-                        On Error Resume Next
-                        Set wsh = CreateObject(&quot;WScript.Shell&quot;)
-                        path = &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Hidden&quot;
-                        value = 1
-                        If wsh.RegRead(path) = value Then value = 2
-                        wsh.RegWrite path, value, &quot;REG_DWORD&quot;
-                        wsh.SendKeys &quot;{F5}&quot;
-                        Set wsh = Nothing" />
-                    </Arguments>
+                    <FileName>powershell.exe</FileName>
+                    <Arguments>-NoProfile -ExecutionPolicy Bypass -Command "&amp; { $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; $name = 'Hidden'; $props = Get-ItemProperty -LiteralPath $key -Name $name -ErrorAction SilentlyContinue; $current = if ($props) { $props.PSObject.Properties[$name].Value } else { $null }; $next = if ($current -eq 1) { 2 } else { 1 }; Set-ItemProperty -LiteralPath $key -Name $name -Type DWord -Value $next; try { $shell = New-Object -ComObject Shell.Application; @($shell.Windows()) | ForEach-Object { try { $_.Refresh() } catch {} } } catch {} }"</Arguments>
                   </Command>
                 </SubKey>
               </Item1>
@@ -263,19 +241,8 @@ Tip属性为鼠标悬浮在开关上时的提示信息，从每个Item节点开�
                 </Value>
                 <SubKey>
                   <Command>
-                    <FileName>wscript.exe</FileName>
-                    <Arguments>
-                      <CreateFile FileName="ShowSuperHidden.vbs" Content="
-                        Dim wsh
-                        On Error Resume Next
-                        Set wsh = CreateObject(&quot;WScript.Shell&quot;)
-                        path = &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\ShowSuperHidden&quot;
-                        value = 1
-                        If wsh.RegRead(path) = value Then value = 0
-                        wsh.RegWrite path, value, &quot;REG_DWORD&quot;
-                        wsh.SendKeys &quot;{F5}&quot;
-                        Set wsh = Nothing" />
-                    </Arguments>
+                    <FileName>powershell.exe</FileName>
+                    <Arguments>-NoProfile -ExecutionPolicy Bypass -Command "&amp; { $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; $name = 'ShowSuperHidden'; $props = Get-ItemProperty -LiteralPath $key -Name $name -ErrorAction SilentlyContinue; $current = if ($props) { $props.PSObject.Properties[$name].Value } else { $null }; $next = if ($current -eq 1) { 0 } else { 1 }; Set-ItemProperty -LiteralPath $key -Name $name -Type DWord -Value $next; try { $shell = New-Object -ComObject Shell.Application; @($shell.Windows()) | ForEach-Object { try { $_.Refresh() } catch {} } } catch {} }"</Arguments>
                   </Command>
                 </SubKey>
               </Item2>
@@ -1167,8 +1134,8 @@ Tip属性为鼠标悬浮在开关上时的提示信息，从每个Item节点开�
         <SubKey>
           <Command>
             <ShellExecute WindowStyle="0" />
-            <FileName>C:\Windows\System32\cmd.exe</FileName>
-            <Arguments>/c cd %temp% &amp; del BatteryReport.html &amp; powercfg /batteryreport /output BatteryReport.html &amp; start BatteryReport.html</Arguments>
+            <FileName>powershell.exe</FileName>
+            <Arguments>-NoProfile -ExecutionPolicy Bypass -Command "&amp; { $out = Join-Path $env:TEMP 'BatteryReport.html'; Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue; powercfg /batteryreport /output $out; Start-Process $out }"</Arguments>
           </Command>
         </SubKey>
       </Item>
