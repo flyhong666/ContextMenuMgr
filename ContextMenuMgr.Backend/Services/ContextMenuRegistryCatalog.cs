@@ -2675,11 +2675,13 @@ public sealed class ContextMenuRegistryCatalog
         logger?.LogFireAndForget(
             "EnhanceCommandCompile: "
             + $"KeyName={GetEnhanceCommandKeyName(commandElement)}, "
+            + $"RegistryPath={registryPath}, "
             + $"FileName={compilation.FileName}, "
-            + $"HasShellExecute={compilation.HasShellExecute}, "
-            + $"ShellExecuteVerb={compilation.ShellExecuteVerb}, "
-            + $"DirectCommandEmitted={compilation.DirectCommandEmitted}, "
-            + $"WrapperReason={compilation.WrapperReason}.");
+            + $"Verb={compilation.ShellExecuteVerb}, "
+            + $"GeneratedCommandKind={compilation.GeneratedCommandKind}, "
+            + $"GeneratedFileCreated={compilation.GeneratedFileCreated}, "
+            + $"WrapperReason={compilation.WrapperReason}, "
+            + $"FinalCommand={compilation.Command}.");
 
         EnableBackupPrivilege();
 
@@ -2693,29 +2695,46 @@ public sealed class ContextMenuRegistryCatalog
         var fileNameElement = commandElement.Element("FileName");
         var argumentsElement = commandElement.Element("Arguments");
         var shellExecuteElement = commandElement.Element("ShellExecute");
+        var powerShellScriptElement = commandElement.Elements("PowerShellScript").FirstOrDefault(element => ShouldIncludeNode(element, cultureName));
+
+        if (powerShellScriptElement is not null)
+        {
+            var script = GetDirectElementText(powerShellScriptElement).Trim();
+            var runtimeArgument = powerShellScriptElement.Attribute("Argument")?.Value?.Trim();
+            var elevatedCommand = BuildElevatedPowerShellCommand(script, runtimeArgument);
+            return new EnhanceCommandCompilationResult(
+                elevatedCommand,
+                "powershell.exe",
+                shellExecuteElement is not null,
+                shellExecuteElement?.Attribute("Verb")?.Value?.Trim() ?? string.Empty,
+                "ElevatedPowerShellBlock",
+                false,
+                string.Empty);
+        }
 
         var fileName = fileNameElement?.Value?.Trim();
         var arguments = argumentsElement?.Value?.Trim();
+        var generatedFileCreated = false;
 
         if (string.IsNullOrWhiteSpace(fileName))
         {
             fileName = CreateEnhanceCommandFile(fileNameElement, cultureName);
+            generatedFileCreated = !string.IsNullOrWhiteSpace(fileName);
         }
 
         if (string.IsNullOrWhiteSpace(arguments))
         {
             arguments = CreateEnhanceCommandFile(argumentsElement, cultureName);
+            generatedFileCreated = generatedFileCreated || !string.IsNullOrWhiteSpace(arguments);
         }
 
         fileName = CanonicalizeEnhanceExecutableFileName(fileName);
-        fileName = ExpandEnvironmentVariablesPreservingSystemRoot(fileName ?? string.Empty);
-        arguments = ExpandEnvironmentVariablesPreservingSystemRoot(arguments ?? string.Empty);
-        arguments = CanonicalizeEnhanceCommandArguments(arguments);
-        arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
+        var rawFileName = fileName ?? string.Empty;
+        var rawArguments = arguments ?? string.Empty;
 
         string command;
-        var directCommandEmitted = false;
         var wrapperReason = string.Empty;
+        var generatedCommandKind = "Direct";
         var shellExecuteVerb = shellExecuteElement?.Attribute("Verb")?.Value?.Trim() ?? string.Empty;
         if (shellExecuteElement is not null)
         {
@@ -2724,29 +2743,48 @@ public sealed class ContextMenuRegistryCatalog
             var directory = shellExecuteElement.Attribute("Directory") is { } directoryAttribute
                 ? Environment.ExpandEnvironmentVariables(directoryAttribute.Value)
                 : string.Empty;
-            if (!RequiresShellExecuteWrapper(shellExecuteElement))
+            if (string.Equals(verb, "runas", StringComparison.OrdinalIgnoreCase))
             {
+                command = BuildPowerShellRunAsCommand(
+                    rawFileName,
+                    $"{argumentsElement?.Attribute("Prefix")?.Value}{rawArguments}{argumentsElement?.Attribute("Suffix")?.Value}");
+                generatedCommandKind = "PowerShellRunAs";
+            }
+            else if (!RequiresShellExecuteWrapper(shellExecuteElement))
+            {
+                fileName = ExpandEnvironmentVariablesPreservingSystemRoot(rawFileName);
+                arguments = ExpandEnvironmentVariablesPreservingSystemRoot(rawArguments);
+                arguments = CanonicalizeEnhanceCommandArguments(arguments);
+                arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
                 command = BuildDirectEnhanceCommand(fileName, arguments);
-                directCommandEmitted = true;
             }
             else
             {
                 wrapperReason = GetShellExecuteWrapperReason(shellExecuteElement);
+                fileName = ExpandEnvironmentVariablesPreservingSystemRoot(rawFileName);
+                arguments = ExpandEnvironmentVariablesPreservingSystemRoot(rawArguments);
+                arguments = CanonicalizeEnhanceCommandArguments(arguments);
+                arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
                 command = BuildShellExecuteCommand(fileName, arguments, verb, windowStyle, directory);
+                generatedCommandKind = "LegacyMshta";
             }
         }
         else
         {
+            fileName = ExpandEnvironmentVariablesPreservingSystemRoot(rawFileName);
+            arguments = ExpandEnvironmentVariablesPreservingSystemRoot(rawArguments);
+            arguments = CanonicalizeEnhanceCommandArguments(arguments);
+            arguments = $"{argumentsElement?.Attribute("Prefix")?.Value}{arguments}{argumentsElement?.Attribute("Suffix")?.Value}";
             command = BuildDirectEnhanceCommand(fileName, arguments);
-            directCommandEmitted = true;
         }
 
         return new EnhanceCommandCompilationResult(
             command,
-            fileName,
+            fileName ?? string.Empty,
             shellExecuteElement is not null,
             shellExecuteVerb,
-            directCommandEmitted,
+            generatedCommandKind,
+            generatedFileCreated,
             wrapperReason);
     }
 
@@ -2755,7 +2793,8 @@ public sealed class ContextMenuRegistryCatalog
         string FileName,
         bool HasShellExecute,
         string ShellExecuteVerb,
-        bool DirectCommandEmitted,
+        string GeneratedCommandKind,
+        bool GeneratedFileCreated,
         string WrapperReason);
 
     private static bool RequiresShellExecuteWrapper(XElement shellExecuteElement)
@@ -2956,6 +2995,170 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return path;
+    }
+
+    private static string GetDirectElementText(XElement element)
+        => string.Concat(element.Nodes().OfType<XText>().Select(node => node.Value));
+
+    private static string BuildPowerShellRunAsCommand(string fileName, string arguments)
+    {
+        var runtimeArguments = GetRuntimePlaceholderArguments(arguments);
+        var script = "& { "
+                     + BuildPowerShellParamList(runtimeArguments)
+                     + $"Start-Process -Verb RunAs -FilePath {QuotePowerShellSingleQuotedString(fileName)}";
+        if (!string.IsNullOrWhiteSpace(arguments))
+        {
+            script += $" -ArgumentList ({BuildPowerShellStringExpression(arguments, runtimeArguments)})";
+        }
+
+        script += " }";
+        return BuildPowerShellCommand(script, runtimeArguments);
+    }
+
+    private static string BuildElevatedPowerShellCommand(string script, string? runtimeArgument)
+    {
+        var runtimeArguments = string.IsNullOrWhiteSpace(runtimeArgument)
+            ? []
+            : new[] { runtimeArgument };
+
+        var innerScript = runtimeArguments.Length > 0
+            ? $"& {{ param($p); {script} }}"
+            : $"& {{ {script} }}";
+        var innerScriptExpression = BuildPowerShellStringExpression(innerScript, []);
+        var innerCommandLineExpression = string.Join(
+            " + ",
+            QuotePowerShellSingleQuotedString("-NoProfile -ExecutionPolicy Bypass -Command "),
+            "[char]34",
+            innerScriptExpression,
+            "[char]34");
+
+        if (runtimeArguments.Length > 0)
+        {
+            innerCommandLineExpression += " + ' ' + [char]34 + $p0 + [char]34";
+        }
+
+        var outerScript = "& { "
+                          + BuildPowerShellParamList(runtimeArguments)
+                          + "Start-Process powershell.exe -Verb RunAs -ArgumentList ("
+                          + innerCommandLineExpression
+                          + ") }";
+        return BuildPowerShellCommand(outerScript, runtimeArguments);
+    }
+
+    private static string BuildPowerShellCommand(string script, IReadOnlyList<string> runtimeArguments)
+    {
+        var command = $"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"{script}\"";
+        foreach (var argument in runtimeArguments)
+        {
+            command += $" \"{argument}\"";
+        }
+
+        return command;
+    }
+
+    private static string BuildPowerShellParamList(IReadOnlyList<string> runtimeArguments)
+    {
+        if (runtimeArguments.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return "param("
+               + string.Join(",", Enumerable.Range(0, runtimeArguments.Count).Select(index => $"$p{index}"))
+               + ");";
+    }
+
+    private static string BuildPowerShellStringExpression(string value, IReadOnlyList<string> runtimeArguments)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "''";
+        }
+
+        var parts = new List<string>();
+        var index = 0;
+        while (index < value.Length)
+        {
+            var placeholderIndex = -1;
+            var placeholderValue = string.Empty;
+            var placeholderVariable = string.Empty;
+            for (var i = 0; i < runtimeArguments.Count; i++)
+            {
+                var candidate = runtimeArguments[i];
+                var candidateIndex = value.IndexOf(candidate, index, StringComparison.OrdinalIgnoreCase);
+                if (candidateIndex >= 0 && (placeholderIndex < 0 || candidateIndex < placeholderIndex))
+                {
+                    placeholderIndex = candidateIndex;
+                    placeholderValue = candidate;
+                    placeholderVariable = $"$p{i}";
+                }
+            }
+
+            var nextLiteralEnd = placeholderIndex >= 0 ? placeholderIndex : value.Length;
+            AddPowerShellLiteralExpressionParts(parts, value[index..nextLiteralEnd]);
+            if (placeholderIndex < 0)
+            {
+                break;
+            }
+
+            parts.Add(placeholderVariable);
+            index = placeholderIndex + placeholderValue.Length;
+        }
+
+        return parts.Count == 0 ? "''" : string.Join(" + ", parts);
+    }
+
+    private static void AddPowerShellLiteralExpressionParts(List<string> parts, string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        var start = 0;
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (value[i] != '"')
+            {
+                continue;
+            }
+
+            if (i > start)
+            {
+                parts.Add(QuotePowerShellSingleQuotedString(value[start..i]));
+            }
+
+            parts.Add("[char]34");
+            start = i + 1;
+        }
+
+        if (start < value.Length)
+        {
+            parts.Add(QuotePowerShellSingleQuotedString(value[start..]));
+        }
+    }
+
+    private static string QuotePowerShellSingleQuotedString(string value)
+        => $"'{(value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal)}'";
+
+    private static string[] GetRuntimePlaceholderArguments(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return [];
+        }
+
+        var result = new List<string>();
+        foreach (var placeholder in new[] { "%1", "%v" })
+        {
+            if (value.Contains(placeholder, StringComparison.OrdinalIgnoreCase)
+                && !result.Contains(placeholder, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(placeholder);
+            }
+        }
+
+        return result.ToArray();
     }
 
     private static string BuildShellExecuteCommand(

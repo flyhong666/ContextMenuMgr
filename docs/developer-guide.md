@@ -125,11 +125,11 @@ ContextMenuRegistryMonitor 轮询快照
 
 增强菜单字典的源码只保留在 `ContextMenuMgr.Frontend/Resources/EnhanceMenusDic.xml`。前端构建时会把它复制到输出目录，前端读取该文件并把选中项的定义 XML 传给后端；后端不维护第二份增强菜单字典，也不在运行时重新读取项目内的字典副本。
 
-增强菜单命令不得调用 `ContextMenuMgr` 前端、后端服务、TrayHost、Named Pipe、服务 RPC/IPC 或任何要求本程序仍在运行的宿主进程。迁移 BluePointLilac / ContextMenuManager 内置项时，应优先保持 `EnhanceMenusDic.xml` 的 `KeyName`、`SubKey`、`Command Default`、`ShellExecute`、`FileName`、`Arguments` 和 `CreateFile` 脚本内容 1:1；新增翻译节点只能影响显示文本，不能改变命令语义。
+增强菜单命令不得调用 `ContextMenuMgr` 前端、后端服务、TrayHost、Named Pipe、服务 RPC/IPC 或任何要求本程序仍在运行的宿主进程。迁移 BluePointLilac / ContextMenuManager 内置项时，应优先保持 `EnhanceMenusDic.xml` 的 `KeyName`、`SubKey`、`Command Default`、`ShellExecute`、`FileName`、`Arguments`、`PowerShellScript` 和 `CreateFile` 脚本内容语义一致；新增翻译节点只能影响显示文本，不能改变命令语义。
 
-当 `Command` 没有 `Default` 时，后端按 BluePointLilac 的规则由 `FileName` + `Arguments` 生成注册表默认值；`FileName` 或 `Arguments` 为空且包含 `CreateFile` 时，会写入 `RuntimePaths.GeneratedProgramsDirectory` 下的持久脚本文件。`.bat` / `.cmd` 使用系统默认编码，其它生成文件使用 Unicode。启用后的注册表命令必须直接指向系统工具或这些持久生成文件，而不是依赖后端服务继续运行。
+当 `Command` 没有 `Default` 时，后端按 BluePointLilac 的规则由 `FileName` + `Arguments` 生成注册表默认值；`FileName` 或 `Arguments` 为空且包含 `CreateFile` 时，会写入 `RuntimePaths.GeneratedProgramsDirectory` 下的持久脚本文件。`.bat` / `.cmd` 使用系统默认编码，其它生成文件（包括 `.ps1`）使用 Unicode。启用后的注册表命令必须直接指向系统工具或这些持久生成文件，而不是依赖后端服务继续运行。
 
-`ShellExecute` 只在确实需要 ShellExecute 专属行为时才保留旧的 `mshta vbscript:createobject("shell.application").shellexecute(...)` 包装，例如 `Verb="runas"`、显式非空 `Directory` 或未知 ShellExecute 属性。空 `<ShellExecute/>`、`Verb="open"`，以及只有 `WindowStyle` 的增强菜单项会直接写成 `<FileName> <Arguments>`，避免多层 XML / C# / 注册表 / mshta / VBScript 转义导致简单命令失效。`runas` / 管理员增强菜单项暂时仍走旧包装，后续需要单独设计现代启动策略。
+`ShellExecute` 只在确实需要 ShellExecute 专属行为时才保留旧的 `mshta vbscript:createobject("shell.application").shellexecute(...)` 包装，例如显式非空 `Directory` 或未知 ShellExecute 属性。空 `<ShellExecute/>`、`Verb="open"`，以及只有 `WindowStyle` 的增强菜单项会直接写成 `<FileName> <Arguments>`，避免多层 XML / C# / 注册表 / mshta / VBScript 转义导致简单命令失效。`Verb="runas"` / 管理员增强菜单项默认编译为独立的 `powershell.exe ... Start-Process -Verb RunAs ...` 命令；复杂管理员动作可在字典中使用 `PowerShellScript`，由后端生成提升后的 PowerShell command block。启用后的命令仍然只依赖系统工具、注册表命令值和必要的持久生成脚本，不依赖 ContextMenuMgr 前端、后端、TrayHost 或 pipe。
 
 增强菜单字典和后端写入层会把直接作为可执行文件使用的裸 `cmd` / `cmd.exe` 规范化为 `C:\Windows\System32\cmd.exe`，把裸 `explorer` / `explorer.exe` 规范化为 `C:\Windows\explorer.exe`；`Command Default` 只在命令开头是这些安全前缀时改写可执行文件部分。`Arguments` 和生成脚本中直接启动 Explorer 的低风险位置也应使用 `C:\Windows\explorer.exe`，但不要把 `taskkill /im explorer.exe`、`tskill explorer`、图标引用或进程名匹配参数误改成路径。写入普通 `MUIVerb` 等可见标签时会移除 Win32 菜单加速键 `&`，但保留 `&&` 表示的字面量 `&`，并且不处理 `@shell32.dll,-...` 这类资源引用。
 
