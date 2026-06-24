@@ -251,6 +251,9 @@ public sealed class FrontendSettingsService
 
             var json = File.ReadAllText(_settingsPath);
             var settings = JsonSerializer.Deserialize<FrontendSettings>(json, JsonOptions) ?? new FrontendSettings();
+            // TODO: ContextMenuItemNotes are registry item-bound runtime data.
+            // Keep pure preferences portable, but move notes to host-bound state
+            // or clear them on portable foreign-host detection in a follow-up.
             settings.ContextMenuItemNotes = settings.ContextMenuItemNotes is null
                 ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 : new Dictionary<string, string>(settings.ContextMenuItemNotes, StringComparer.OrdinalIgnoreCase);

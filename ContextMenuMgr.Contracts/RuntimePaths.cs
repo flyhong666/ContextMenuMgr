@@ -40,6 +40,13 @@ public static class RuntimePaths
 
     public static string DeletedBackupsDirectory => Path.Combine(RootDirectory, "DeletedBackups");
 
+    public static string QuarantineDirectory => Path.Combine(RootDirectory, "Quarantine");
+
+    public static string HostIdentityPath => Path.Combine(RootDirectory, "host-identity.json");
+
+    public static string GetHostScopedDeletedBackupsDirectory(string hostPrefix)
+        => Path.Combine(DeletedBackupsDirectory, GetSafeHostPrefix(hostPrefix));
+
     public static string DataDirectory => RootDirectory;
 
     public static string BackendProtectionSettingsPath => Path.Combine(DataDirectory, "backend-protection-settings.json");
@@ -105,4 +112,18 @@ public static class RuntimePaths
     public static string LegacyBackendProtectionSettingsPath { get; } = Path.Combine(
         LegacyProgramDataDataDirectory,
         "backend-protection-settings.json");
+
+    private static string GetSafeHostPrefix(string hostPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(hostPrefix))
+        {
+            return "unknown-host";
+        }
+
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var safeChars = hostPrefix
+            .Where(ch => !invalidChars.Contains(ch))
+            .ToArray();
+        return safeChars.Length == 0 ? "unknown-host" : new string(safeChars);
+    }
 }

@@ -1415,6 +1415,18 @@ public sealed class ContextMenuRegistryCatalog
 
         try
         {
+            if (RuntimePaths.PackageKind == RuntimePackageKind.Portable
+                && (!_stateStore.IsCurrentHostIdentityVerified || !_backupService.IsCurrentHostBackupPath(state.BackupFilePath)))
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    $"BackupRestoreBlockedForeignHost: ItemId={itemId}, BackupFilePath={state.BackupFilePath}, StateStoreHostVerified={_stateStore.IsCurrentHostIdentityVerified}.",
+                    cancellationToken);
+                return CreateFailure(
+                    "This backup belongs to a different Windows installation or user profile and cannot be restored safely.",
+                    state.ToDeletedEntry("The backup file belongs to a different Windows installation or user profile."));
+            }
+
             await _backupService.RestoreBackupAsync(state.BackupFilePath, cancellationToken);
             _backupService.DeleteBackupFile(state.BackupFilePath);
 
@@ -1813,11 +1825,17 @@ public sealed class ContextMenuRegistryCatalog
         };
     }
 
-    private static string? GetDeletedConsistencyIssue(PersistedContextMenuState state)
+    private string? GetDeletedConsistencyIssue(PersistedContextMenuState state)
     {
         if (string.IsNullOrWhiteSpace(state.BackupFilePath) || !File.Exists(state.BackupFilePath))
         {
             return "The backup file for this deleted item is missing.";
+        }
+
+        if (RuntimePaths.PackageKind == RuntimePackageKind.Portable
+            && !_backupService.IsCurrentHostBackupPath(state.BackupFilePath))
+        {
+            return "The backup file belongs to a different Windows installation or user profile.";
         }
 
         return null;

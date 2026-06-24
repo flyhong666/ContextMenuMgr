@@ -1014,6 +1014,12 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     {
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
+            if (notification.Kind == PipeNotificationKind.ServiceMessage
+                && !string.IsNullOrWhiteSpace(notification.Message))
+            {
+                ServiceAttentionText = notification.Message;
+            }
+
             if (notification.Item is not null)
             {
                 if (notification.Kind == PipeNotificationKind.ItemDetected

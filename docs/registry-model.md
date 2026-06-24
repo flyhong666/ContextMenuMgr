@@ -114,7 +114,9 @@ Recycle Bin 页面额外投影一个虚拟传统项 `special:recyclebin:pintohom
 
 ## 7. 删除、恢复与备份
 
-删除不总是“立即永久删除”。`RegistryBackupService` 在删除前通过 `reg.exe export` 导出注册表备份，备份文件保存在 `RuntimePaths.DeletedBackupsDirectory`。Installer 包下这是 `%ProgramData%\ContextMenuMgr\DeletedBackups`；Portable 包下这是 `<应用目录>\Data\DeletedBackups`。
+删除不总是“立即永久删除”。`RegistryBackupService` 在删除前通过 `reg.exe export` 导出注册表备份。Installer 包下备份保存在 `%ProgramData%\ContextMenuMgr\DeletedBackups`；Portable 包下备份保存在当前 host identity 前缀对应的 `<应用目录>\Data\DeletedBackups\<host-prefix>`。host identity 由 Windows `MachineGuid` 和前端用户 SID 的 SHA-256 指纹表示，JSON 和目录名只保存指纹/前缀，不保存原始 MachineGuid 或 SID。
+
+Portable 包被复制到另一台 Windows 或另一个用户配置文件时，旧 `DeletedBackups` 不再可信。启动时后端会把当前 host 前缀之外的备份移动到 `Data\Quarantine\foreign-host-...`；恢复删除项时也只允许导入当前 host-scoped backup 目录中的 `.reg` 文件。其它路径会返回“属于不同 Windows 安装或用户配置文件，不能安全恢复”的错误。
 
 | 操作 | 说明 |
 | --- | --- |

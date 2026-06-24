@@ -62,8 +62,12 @@ public sealed class BackendRuntime : IDisposable
         logger.LogFireAndForget(
             $"RuntimePackage: PackageKind={RuntimePaths.PackageKind}, RootDirectory={RuntimePaths.RootDirectory}, LogsDirectory={RuntimePaths.LogsDirectory}, DataDirectory={RuntimePaths.DataDirectory}");
 
+        BackendEmergencyLogger.Log("CreateDefault: creating RuntimeHostIdentityProvider.");
+        var hostIdentityProvider = new RuntimeHostIdentityProvider(logger);
+        BackendEmergencyLogger.Log("CreateDefault: RuntimeHostIdentityProvider created.");
+
         BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuStateStore.");
-        var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath, logger);
+        var stateStore = new ContextMenuStateStore(RuntimePaths.StateDatabasePath, logger, hostIdentityProvider);
         BackendEmergencyLogger.Log("CreateDefault: ContextMenuStateStore created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating BackendProtectionSettingsStore.");
@@ -71,7 +75,7 @@ public sealed class BackendRuntime : IDisposable
         BackendEmergencyLogger.Log("CreateDefault: BackendProtectionSettingsStore created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating RegistryBackupService.");
-        var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory, logger);
+        var backupService = new RegistryBackupService(RuntimePaths.DeletedBackupsDirectory, logger, hostIdentityProvider);
         BackendEmergencyLogger.Log("CreateDefault: RegistryBackupService created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuRegistryCatalog.");
@@ -109,6 +113,16 @@ public sealed class BackendRuntime : IDisposable
         BackendEmergencyLogger.Log("CreateDefault: creating NamedPipeBackendServer.");
         var pipeServer = new NamedPipeBackendServer(catalog, specialMenuService, windows11BlocksService, win11ClassicContextMenuService, autoStartService, fileTypeSceneMenuService, explorerRestartService, logger);
         BackendEmergencyLogger.Log("CreateDefault: NamedPipeBackendServer created.");
+        stateStore.PortableHostMismatchDetected += (_, message) =>
+        {
+            pipeServer.BroadcastNotification(
+                new BackendNotification
+                {
+                    Kind = PipeNotificationKind.ServiceMessage,
+                    Message = message,
+                    Timestamp = DateTimeOffset.UtcNow
+                });
+        };
 
         BackendEmergencyLogger.Log("CreateDefault: creating FrontendAutostartLauncher.");
         var frontendAutostartLauncher = new FrontendAutostartLauncher(AppContext.BaseDirectory);

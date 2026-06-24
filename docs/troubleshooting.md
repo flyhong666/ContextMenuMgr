@@ -16,6 +16,10 @@
 
 `RuntimePaths` 通过应用目录中的 `ContextMenuMgr.package.json` 明确识别包类型，缺失或无效时按 Installer 处理。Installer 根目录为 `%ProgramData%\ContextMenuMgr`；Portable 根目录为 `<应用目录>\Data`。`frontend-settings.json`、`context-menu-state.json`、`backend-protection-settings.json`、`DeletedBackups` 和 `Logs` 都从该根目录派生。旧版本可能使用 `%LOCALAPPDATA%\ContextMenuMgr`、`%ProgramData%\ContextMenuMgr` 或 `%ProgramData%\ContextMenuMgr\Data`，当前代码保留 copy-only 迁移/兼容路径常量；排查历史安装时可以同时检查这些旧位置。
 
+Portable 包中 `frontend-settings.json` 的语言、主题、颜色等纯偏好可以跨设备保留，但 `context-menu-state.json` 和 `DeletedBackups` 属于设备/用户绑定的注册表运行时状态。后端用 Windows `MachineGuid` 和前端用户 SID 计算 SHA-256 指纹，只把指纹写入 JSON，不保存原始 MachineGuid 或 SID。复制 portable `Data` 到另一台 Windows 或另一个用户配置文件后，旧状态会被移动到 `Data\Quarantine\foreign-host-...`，后端从新的空本地主机状态开始运行。
+
+不要把另一个 Windows 安装或用户配置文件里的 `.reg` 删除备份导入当前系统。Portable 模式下恢复只接受当前 host-scoped `DeletedBackups` 目录里的备份；其它目录或旧指纹下的备份会被隔离或拒绝，并记录 `BackupRestoreBlockedForeignHost`。
+
 ## 1. 前端无法连接后端
 
 | 项目 | 内容 |
