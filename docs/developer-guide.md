@@ -119,6 +119,8 @@ ContextMenuRegistryMonitor 轮询快照
 
 传统菜单和 Win11 新菜单不是同一套模型。不要把 `PackagedCom` 项当作普通 `shell` / `shellex` 项处理。
 
+文件类型页的 Custom Extension 场景会基于前端用户上下文解析扩展名关联的 class roots，而不是只扫描 `SystemFileAssociations.<ext>` 和 `.<ext>`。它会包含直接关联的默认 ProgID、`OpenWithProgids`、以及当前用户 `FileExts` 的 `UserChoice` / `OpenWithProgids`，并只枚举存在传统菜单子键的候选 root。用户级关联读取必须使用 `HKEY_USERS\<sid>`；例如 `.ps1` 可以通过机器级默认 ProgID 扫描到 PowerShell 7 注册在 `Microsoft.PowerShellScript.1\shell` 下的 verb，同时保持真实 ProgID 路径用于后续启用、禁用和删除。
+
 ### Enhance Menus 字典
 
 `EnhanceMenusDic.xml` 中的内置增强菜单是静态 shell 命令字典。ContextMenuMgr 只负责把这些字典项安装、禁用或移除到当前前端用户的 `Software\Classes` 下；菜单项被启用后，运行时执行必须完全由注册表中的命令、系统工具和生成的 `.vbs` / `.bat` / `.cmd` 文件完成。

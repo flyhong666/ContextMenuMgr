@@ -328,7 +328,11 @@ public sealed class NamedPipeBackendServer
                 {
                     Success = true,
                     Message = "Scene snapshot loaded.",
-                    Items = await _catalog.GetSceneSnapshotAsync(request.SceneKind.Value, request.ScopeValue, cancellationToken)
+                    Items = await _catalog.GetSceneSnapshotAsync(
+                        request.SceneKind.Value,
+                        request.ScopeValue,
+                        cancellationToken,
+                        await ResolveFrontendUserContextAsync(stream, cancellationToken))
                 },
             PipeCommand.SetEnhanceMenuItemEnabled when request.ScopeValue is not null && request.DefinitionXml is not null && request.Enable is not null
                 => await HandleSetEnhanceMenuItemEnabledAsync(request, stream, cancellationToken),

@@ -23,6 +23,12 @@ public sealed class ContextMenuRegistryCatalog
     private const string RecycleBinPinToHomeRegistryPath = @"HKEY_CLASSES_ROOT\Folder\shell\pintohome";
     private const string RecycleBinPinToHomeSourceRootPath = @"Folder\shell";
     private const string RecycleBinParsingNameExclusion = @"System.ParsingName:<>""::{645FF040-5081-101B-9F08-00AA002F954E}""";
+    private static readonly string[] ContextMenuSubRootRelativePaths =
+    [
+        "shell",
+        @"shellex\ContextMenuHandlers",
+        @"shellex\-ContextMenuHandlers"
+    ];
 
     private static readonly RegistryRootDescriptor[] MonitoredRoots =
     [
@@ -161,11 +167,13 @@ public sealed class ContextMenuRegistryCatalog
     public async Task<IReadOnlyList<ContextMenuEntry>> GetSceneSnapshotAsync(
         ContextMenuSceneKind sceneKind,
         string? scopeValue,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        BackendUserContext? userContext = null)
     {
-        var roots = GetSceneRoots(sceneKind, scopeValue).ToArray();
+        var roots = GetSceneRoots(sceneKind, scopeValue, userContext).ToArray();
         if (roots.Length == 0)
         {
+            await LogCustomExtensionSceneDiagnosticsAsync(sceneKind, scopeValue, userContext, roots, [], cancellationToken);
             return [];
         }
 
@@ -174,11 +182,13 @@ public sealed class ContextMenuRegistryCatalog
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var snapshot = await BuildSnapshotAsync(
-            EnumerateEntries(roots),
+            EnumerateEntries(roots, userContext),
             state => includedRootPaths.Contains(state.SourceRootPath),
             persistDiscoveredStates: false,
             persistSnapshotUpdates: false,
             cancellationToken);
+
+        await LogCustomExtensionSceneDiagnosticsAsync(sceneKind, scopeValue, userContext, roots, snapshot, cancellationToken);
 
         return snapshot
             .Select(static entry => entry with
@@ -1683,20 +1693,20 @@ public sealed class ContextMenuRegistryCatalog
     public PipeResponse SetDocumentIconProvider(BackendUserContext userContext, DocumentIconProvider provider)
         => _officeCoexistenceDetector.SetDocumentIconProvider(userContext, provider);
 
-    private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots)
+    private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots, BackendUserContext? userContext = null)
     {
         foreach (var root in roots)
         {
-            foreach (var item in EnumerateRoot(root))
+            foreach (var item in EnumerateRoot(root, userContext))
             {
                 yield return item;
             }
         }
     }
 
-    private IEnumerable<ContextMenuEntry> EnumerateRoot(RegistryRootDescriptor root)
+    private IEnumerable<ContextMenuEntry> EnumerateRoot(RegistryRootDescriptor root, BackendUserContext? userContext = null)
     {
-        foreach (var instance in EnumerateRootInstances())
+        foreach (var instance in EnumerateRootInstances(root.InstanceScope, userContext))
         {
             using var baseKey = instance.OpenBaseKey(root.RelativePath);
             if (baseKey is null)
@@ -3887,7 +3897,7 @@ public sealed class ContextMenuRegistryCatalog
             AccessControlType.Deny);
     }
 
-    private static IEnumerable<RegistryRootDescriptor> GetSceneRoots(ContextMenuSceneKind sceneKind, string? scopeValue)
+    private static IEnumerable<RegistryRootDescriptor> GetSceneRoots(ContextMenuSceneKind sceneKind, string? scopeValue, BackendUserContext? userContext)
     {
         return sceneKind switch
         {
@@ -3895,7 +3905,7 @@ public sealed class ContextMenuRegistryCatalog
             ContextMenuSceneKind.UwpShortcut => CreateShellSceneRoots(ContextMenuCategory.File, "Launcher.ImmersiveApplication"),
             ContextMenuSceneKind.ExeFile => CreateShellSceneRoots(ContextMenuCategory.File, "exefile"),
             ContextMenuSceneKind.UnknownType => CreateShellSceneRoots(ContextMenuCategory.File, "Unknown"),
-            ContextMenuSceneKind.CustomExtension => CreateCustomExtensionRoots(scopeValue),
+            ContextMenuSceneKind.CustomExtension => CreateCustomExtensionRoots(scopeValue, userContext),
             ContextMenuSceneKind.PerceivedType => CreatePerceivedTypeRoots(scopeValue),
             ContextMenuSceneKind.DirectoryType => CreateDirectoryTypeRoots(scopeValue),
             ContextMenuSceneKind.CustomRegistryPath => CreateCustomRegistryPathRoots(scopeValue),
@@ -3903,46 +3913,46 @@ public sealed class ContextMenuRegistryCatalog
         };
     }
 
-    private static IEnumerable<RegistryRootDescriptor> CreateShellSceneRoots(ContextMenuCategory category, string basePath)
+    private static IEnumerable<RegistryRootDescriptor> CreateShellSceneRoots(
+        ContextMenuCategory category,
+        string basePath,
+        RegistryRootInstanceScope instanceScope = RegistryRootInstanceScope.AllKnownInstances,
+        string? diagnosticSource = null)
     {
-        yield return new RegistryRootDescriptor(category, $@"{basePath}\shell", ContextMenuEntryKind.ShellVerb);
-        yield return new RegistryRootDescriptor(category, $@"{basePath}\shellex\ContextMenuHandlers", ContextMenuEntryKind.ShellExtension);
+        yield return new RegistryRootDescriptor(
+            category,
+            $@"{basePath}\shell",
+            ContextMenuEntryKind.ShellVerb,
+            InstanceScope: instanceScope,
+            DiagnosticSource: diagnosticSource);
+        yield return new RegistryRootDescriptor(
+            category,
+            $@"{basePath}\shellex\ContextMenuHandlers",
+            ContextMenuEntryKind.ShellExtension,
+            InstanceScope: instanceScope,
+            DiagnosticSource: diagnosticSource);
         yield return new RegistryRootDescriptor(
             category,
             $@"{basePath}\shellex\-ContextMenuHandlers",
             ContextMenuEntryKind.ShellExtension,
             $@"{basePath}\shellex\ContextMenuHandlers",
-            true);
+            true,
+            instanceScope,
+            diagnosticSource);
     }
 
-    private static IEnumerable<RegistryRootDescriptor> CreateCustomExtensionRoots(string? scopeValue)
+    private static IEnumerable<RegistryRootDescriptor> CreateCustomExtensionRoots(string? scopeValue, BackendUserContext? userContext)
     {
-        var extension = NormalizeExtension(scopeValue);
-        if (string.IsNullOrWhiteSpace(extension))
+        foreach (var associatedRoot in ResolveAssociatedClassRootsForExtension(scopeValue, userContext))
         {
-            yield break;
-        }
-
-        foreach (var root in CreateShellSceneRoots(ContextMenuCategory.File, $@"SystemFileAssociations\{extension}"))
-        {
-            yield return root;
-        }
-
-        foreach (var root in CreateShellSceneRoots(ContextMenuCategory.File, extension))
-        {
-            yield return root;
-        }
-
-        using var extensionKey = Registry.ClassesRoot.OpenSubKey(extension, writable: false);
-        var progId = extensionKey?.GetValue(null)?.ToString();
-        if (string.IsNullOrWhiteSpace(progId))
-        {
-            yield break;
-        }
-
-        foreach (var root in CreateShellSceneRoots(ContextMenuCategory.File, progId))
-        {
-            yield return root;
+            foreach (var root in CreateShellSceneRoots(
+                         ContextMenuCategory.File,
+                         associatedRoot.ClassRoot,
+                         RegistryRootInstanceScope.MachineAndFrontendUser,
+                         associatedRoot.SourcesText))
+            {
+                yield return root;
+            }
         }
     }
 
@@ -4007,6 +4017,148 @@ public sealed class ContextMenuRegistryCatalog
         {
             yield return root;
         }
+    }
+
+    internal static IReadOnlyList<AssociatedClassRoot> ResolveAssociatedClassRootsForExtension(
+        string? scopeValue,
+        BackendUserContext? userContext)
+    {
+        var extension = NormalizeExtension(scopeValue);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return [];
+        }
+
+        var roots = new Dictionary<string, AssociatedClassRootBuilder>(StringComparer.OrdinalIgnoreCase);
+        AddAssociatedClassRoot(roots, $@"SystemFileAssociations\{extension}", AssociatedClassRootSource.SystemFileAssociations);
+        AddAssociatedClassRoot(roots, extension, AssociatedClassRootSource.ExtensionKey);
+
+        if (userContext is not null)
+        {
+            using var userClasses = OpenUserClassesRootForRead(userContext);
+            ReadExtensionDefaultProgId(userClasses, extension, AssociatedClassRootSource.DefaultProgIdUser, roots);
+            ReadExtensionOpenWithProgIds(userClasses, extension, AssociatedClassRootSource.ExtensionOpenWithProgidsUser, roots);
+
+            using var fileExtsKey = OpenUserFileExtsExtensionKey(userContext, extension);
+            ReadUserChoiceProgId(fileExtsKey, roots);
+            ReadFileExtsOpenWithProgIds(fileExtsKey, roots);
+        }
+
+        using (var machineClasses = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes", writable: false))
+        {
+            ReadExtensionDefaultProgId(machineClasses, extension, AssociatedClassRootSource.DefaultProgIdMachine, roots);
+            ReadExtensionOpenWithProgIds(machineClasses, extension, AssociatedClassRootSource.ExtensionOpenWithProgidsMachine, roots);
+        }
+
+        return roots.Values
+            .Where(builder => HasAnyContextMenuSubkey(builder.ClassRoot, userContext))
+            .Select(static builder => builder.ToAssociatedClassRoot())
+            .OrderBy(static root => root.ClassRoot, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static void ReadExtensionDefaultProgId(
+        RegistryKey? classesRoot,
+        string extension,
+        AssociatedClassRootSource source,
+        IDictionary<string, AssociatedClassRootBuilder> roots)
+    {
+        using var extensionKey = classesRoot?.OpenSubKey(extension, writable: false);
+        var progId = extensionKey?.GetValue(null)?.ToString();
+        AddAssociatedClassRoot(roots, progId, source);
+    }
+
+    private static void ReadExtensionOpenWithProgIds(
+        RegistryKey? classesRoot,
+        string extension,
+        AssociatedClassRootSource source,
+        IDictionary<string, AssociatedClassRootBuilder> roots)
+    {
+        using var openWithProgIdsKey = classesRoot?.OpenSubKey($@"{extension}\OpenWithProgids", writable: false);
+        foreach (var progId in openWithProgIdsKey?.GetValueNames() ?? [])
+        {
+            AddAssociatedClassRoot(roots, progId, source);
+        }
+    }
+
+    private static void ReadUserChoiceProgId(
+        RegistryKey? fileExtsExtensionKey,
+        IDictionary<string, AssociatedClassRootBuilder> roots)
+    {
+        using var userChoiceKey = fileExtsExtensionKey?.OpenSubKey("UserChoice", writable: false);
+        AddAssociatedClassRoot(
+            roots,
+            userChoiceKey?.GetValue("ProgId")?.ToString(),
+            AssociatedClassRootSource.FileExtsUserChoice);
+    }
+
+    private static void ReadFileExtsOpenWithProgIds(
+        RegistryKey? fileExtsExtensionKey,
+        IDictionary<string, AssociatedClassRootBuilder> roots)
+    {
+        using var openWithProgIdsKey = fileExtsExtensionKey?.OpenSubKey("OpenWithProgids", writable: false);
+        foreach (var progId in openWithProgIdsKey?.GetValueNames() ?? [])
+        {
+            AddAssociatedClassRoot(roots, progId, AssociatedClassRootSource.FileExtsOpenWithProgids);
+        }
+    }
+
+    private static void AddAssociatedClassRoot(
+        IDictionary<string, AssociatedClassRootBuilder> roots,
+        string? classRoot,
+        AssociatedClassRootSource source)
+    {
+        var normalized = NormalizeClassesRootRelativePath(classRoot);
+        if (string.IsNullOrWhiteSpace(normalized)
+            || (normalized.Contains('\\', StringComparison.Ordinal)
+                && source != AssociatedClassRootSource.SystemFileAssociations)
+            || normalized.Equals("Applications", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (!roots.TryGetValue(normalized, out var builder))
+        {
+            builder = new AssociatedClassRootBuilder(normalized);
+            roots[normalized] = builder;
+        }
+
+        builder.AddSource(source);
+    }
+
+    private static bool HasAnyContextMenuSubkey(string classRoot, BackendUserContext? userContext)
+    {
+        return HasAnyContextMenuSubkeyInClassesRoot(Registry.LocalMachine, @"SOFTWARE\Classes", classRoot)
+               || (userContext is not null
+                   && HasAnyContextMenuSubkeyInClassesRoot(Registry.Users, $@"{userContext.Sid}\Software\Classes", classRoot));
+    }
+
+    private static bool HasAnyContextMenuSubkeyInClassesRoot(RegistryKey hive, string classesBasePath, string classRoot)
+    {
+        foreach (var relativeSubPath in ContextMenuSubRootRelativePaths)
+        {
+            using var key = hive.OpenSubKey($@"{classesBasePath}\{classRoot}\{relativeSubPath}", writable: false);
+            if (key is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static RegistryKey? OpenUserClassesRootForRead(BackendUserContext userContext)
+    {
+        using var userBaseKey = Registry.Users.OpenSubKey(userContext.Sid, writable: false);
+        return userBaseKey?.OpenSubKey(UserClassesPath, writable: false);
+    }
+
+    private static RegistryKey? OpenUserFileExtsExtensionKey(BackendUserContext userContext, string extension)
+    {
+        using var userBaseKey = Registry.Users.OpenSubKey(userContext.Sid, writable: false);
+        return userBaseKey?.OpenSubKey(
+            $@"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{extension}",
+            writable: false);
     }
 
     private static string? NormalizeExtension(string? value)
@@ -4137,6 +4289,61 @@ public sealed class ContextMenuRegistryCatalog
                || entry.BackendRegistryPath.Contains(@"\-ContextMenuHandlers\", StringComparison.OrdinalIgnoreCase);
     }
 
+    private async Task LogCustomExtensionSceneDiagnosticsAsync(
+        ContextMenuSceneKind sceneKind,
+        string? scopeValue,
+        BackendUserContext? userContext,
+        IReadOnlyList<RegistryRootDescriptor> roots,
+        IReadOnlyList<ContextMenuEntry> entries,
+        CancellationToken cancellationToken)
+    {
+        if (sceneKind != ContextMenuSceneKind.CustomExtension)
+        {
+            return;
+        }
+
+        var extension = NormalizeExtension(scopeValue) ?? string.Empty;
+        var associatedRoots = roots
+            .Select(static root => TrimContextMenuSubRoot(root.StableRelativePath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static root => root, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var rootSources = roots
+            .GroupBy(static root => TrimContextMenuSubRoot(root.StableRelativePath), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var sources = group
+                    .Select(static root => root.DiagnosticSource)
+                    .Where(static source => !string.IsNullOrWhiteSpace(source))
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
+                var count = entries.Count(entry => group.Any(root => string.Equals(entry.SourceRootPath, root.StableRelativePath, StringComparison.OrdinalIgnoreCase)));
+                var itemKeys = entries
+                    .Where(entry => group.Any(root => string.Equals(entry.SourceRootPath, root.StableRelativePath, StringComparison.OrdinalIgnoreCase)))
+                    .Select(static entry => entry.KeyName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(static key => key, StringComparer.OrdinalIgnoreCase);
+                return $"Root={group.Key}, Sources={string.Join("|", sources)}, EntryCount={count}, Items={string.Join("|", itemKeys)}";
+            });
+
+        await _logger.LogAsync(
+            $"CustomExtensionSceneSnapshot: Extension={extension}, FrontendSid={DiagnosticLogFormatter.FormatSid(userContext)}, AssociatedRoots={string.Join("|", associatedRoots)}, RootDetails=[{string.Join("; ", rootSources)}].",
+            cancellationToken);
+    }
+
+    private static string TrimContextMenuSubRoot(string relativePath)
+    {
+        foreach (var suffix in ContextMenuSubRootRelativePaths)
+        {
+            if (relativePath.EndsWith($@"\{suffix}", StringComparison.OrdinalIgnoreCase))
+            {
+                return relativePath[..^(suffix.Length + 1)];
+            }
+        }
+
+        return relativePath;
+    }
+
     private static ContextMenuCategory DetermineCategoryFromPath(string stableRelativePath)
     {
         var match = MonitoredRoots.FirstOrDefault(root =>
@@ -4172,12 +4379,27 @@ public sealed class ContextMenuRegistryCatalog
         return ContextMenuCategory.File;
     }
 
-    private static IEnumerable<RegistryRootInstance> EnumerateRootInstances()
+    private static IEnumerable<RegistryRootInstance> EnumerateRootInstances(
+        RegistryRootInstanceScope scope = RegistryRootInstanceScope.AllKnownInstances,
+        BackendUserContext? userContext = null)
     {
         yield return new RegistryRootInstance(
             Registry.LocalMachine,
             @"SOFTWARE\Classes",
             @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes");
+
+        if (scope == RegistryRootInstanceScope.MachineAndFrontendUser)
+        {
+            if (userContext is not null)
+            {
+                yield return new RegistryRootInstance(
+                    Registry.Users,
+                    $@"{userContext.Sid}\Software\Classes",
+                    $@"HKEY_USERS\{userContext.Sid}\Software\Classes");
+            }
+
+            yield break;
+        }
 
         foreach (var userSid in Registry.Users.GetSubKeyNames()
                      .Where(static sid => sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
@@ -4325,12 +4547,60 @@ public sealed class ContextMenuRegistryCatalog
         string RelativePath,
         ContextMenuEntryKind EntryKind,
         string? StableRelativePath = null,
-        bool IsDisabledContainer = false)
+        bool IsDisabledContainer = false,
+        RegistryRootInstanceScope InstanceScope = RegistryRootInstanceScope.AllKnownInstances,
+        string? DiagnosticSource = null)
     {
         /// <summary>
         /// Gets the stable Relative Path.
         /// </summary>
         public string StableRelativePath { get; } = StableRelativePath ?? RelativePath;
+    }
+
+    internal sealed record AssociatedClassRoot(string ClassRoot, IReadOnlyList<AssociatedClassRootSource> Sources)
+    {
+        public string SourcesText => string.Join("|", Sources);
+    }
+
+    internal enum AssociatedClassRootSource
+    {
+        SystemFileAssociations,
+        ExtensionKey,
+        DefaultProgIdUser,
+        DefaultProgIdMachine,
+        ExtensionOpenWithProgidsUser,
+        ExtensionOpenWithProgidsMachine,
+        FileExtsUserChoice,
+        FileExtsOpenWithProgids
+    }
+
+    private enum RegistryRootInstanceScope
+    {
+        AllKnownInstances,
+        MachineAndFrontendUser
+    }
+
+    private sealed class AssociatedClassRootBuilder
+    {
+        private readonly List<AssociatedClassRootSource> _sources = [];
+
+        public AssociatedClassRootBuilder(string classRoot)
+        {
+            ClassRoot = classRoot;
+        }
+
+        public string ClassRoot { get; }
+
+        public void AddSource(AssociatedClassRootSource source)
+        {
+            if (!_sources.Contains(source))
+            {
+                _sources.Add(source);
+            }
+        }
+
+        public AssociatedClassRoot ToAssociatedClassRoot()
+            => new(ClassRoot, _sources.ToArray());
     }
 
     private sealed record RegistryRootInstance(

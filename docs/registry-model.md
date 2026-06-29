@@ -112,6 +112,10 @@ Recycle Bin 页面额外投影一个虚拟传统项 `special:recyclebin:pintohom
 
 传统分类页支持通过前端的 `CreateSceneMenuItem` 入口创建自定义 classic 菜单项。分类页把当前 `ContextMenuCategory` 映射为 `ContextMenuSceneKind.CustomRegistryPath` 和对应的 HKCR scene root（例如 `HKCR\*\shell`、`HKCR\Directory\shell`、`HKCR\Drive\shell`），再通过 Backend Pipe 交给 `FileTypeSceneMenuService.CreateSceneMenuItemAsync` 写入 `shell\<verb>\command`。首版只创建普通 shell verb 命令：前端负责生成带引号的命令行并追加 `%1` 或 `%V` 选中对象占位符，后端负责 Registry Write Protection preflight、创建不覆盖已有项的唯一 key、通知 Shell 关联变更，并在状态库中抑制本次新建项检测，避免把用户主动创建的项标为待审核。本入口不创建 ShellEx handler、不复制 CommandStore 引用，也不创建子菜单。
 
+文件类型页的 Custom Extension 场景不是只扫描扩展名本身。后端会用前端用户上下文解析该扩展名直接关联的 class roots，并只枚举实际存在 `shell`、`shellex\ContextMenuHandlers` 或 `shellex\-ContextMenuHandlers` 的候选 root。候选来源包括 `SystemFileAssociations.<ext>`、直接 `.<ext>` key、用户与机器级扩展名默认 ProgID、用户与机器级 `OpenWithProgids`、以及当前用户 `FileExts\<ext>\UserChoice\ProgId` / `FileExts\<ext>\OpenWithProgids`。用户级读取必须走 `HKEY_USERS\<sid>`，不能用服务进程的 `HKCU` 或 `HKCR` 合并视图推断当前用户。
+
+例如 PowerShell 7 可把 `.ps1` 的 “Run with PowerShell 7” 注册到 `HKLM\SOFTWARE\Classes\Microsoft.PowerShellScript.1\Shell\PowerShell7x64`。Custom Extension `.ps1` 页面应通过 `.ps1` 的关联 ProgID 扫描到 `Microsoft.PowerShellScript.1\shell`，并把条目的真实来源保持为 `Microsoft.PowerShellScript.1\shell\PowerShell7x64`，这样禁用、恢复、删除和编辑仍写回实际 ProgID 路径，而不是误写到 `.ps1\shell`。
+
 ## 7. 删除、恢复与备份
 
 删除不总是“立即永久删除”。`RegistryBackupService` 在删除前通过 `reg.exe export` 导出注册表备份。Installer 包下备份保存在 `%ProgramData%\ContextMenuMgr\DeletedBackups`；Portable 包下备份保存在当前 host identity 前缀对应的 `<应用目录>\Data\DeletedBackups\<host-prefix>`。host identity 由 Windows `MachineGuid` 和前端用户 SID 的 SHA-256 指纹表示，JSON 和目录名只保存指纹/前缀，不保存原始 MachineGuid 或 SID。
