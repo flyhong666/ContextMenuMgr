@@ -986,6 +986,15 @@
   <data name="OtherRulesPageTitle" xml:space="preserve">
     <value>其他規則</value>
   </data>
+  <data name="OtherRulesTabLoadFailed" xml:space="preserve">
+    <value>載入失敗。請點擊重新整理後重試。{0}</value>
+  </data>
+  <data name="OtherRulesTabLoadCanceled" xml:space="preserve">
+    <value>載入已取消。</value>
+  </data>
+  <data name="OtherRulesClickRefreshToRetry" xml:space="preserve">
+    <value>載入失敗。請點擊重新整理後重試。</value>
+  </data>
   <data name="SceneLnkFileTitle" xml:space="preserve">
     <value>捷徑</value>
   </data>

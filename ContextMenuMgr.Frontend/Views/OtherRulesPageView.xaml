@@ -41,7 +41,8 @@
         <TabControl
             x:Name="MainTabControl"
             Margin="0,8,0,0"
-            Background="Transparent">
+            Background="Transparent"
+            SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
             <TabItem Tag="EnhanceMenus">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">

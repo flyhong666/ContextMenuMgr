@@ -986,6 +986,15 @@ Continue anyway? (Not recommended)</value>
   <data name="OtherRulesPageTitle" xml:space="preserve">
     <value>Other Rules</value>
   </data>
+  <data name="OtherRulesTabLoadFailed" xml:space="preserve">
+    <value>Failed to load. Click Refresh to retry. {0}</value>
+  </data>
+  <data name="OtherRulesTabLoadCanceled" xml:space="preserve">
+    <value>Load canceled.</value>
+  </data>
+  <data name="OtherRulesClickRefreshToRetry" xml:space="preserve">
+    <value>Failed to load. Click Refresh to retry.</value>
+  </data>
   <data name="SceneLnkFileTitle" xml:space="preserve">
     <value>Shortcut (.lnk)</value>
   </data>

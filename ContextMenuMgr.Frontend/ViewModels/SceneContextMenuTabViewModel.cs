@@ -22,6 +22,12 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     private readonly FrontendSettingsService _settingsService;
     private readonly ContextMenuSceneKind _sceneKind;
     private readonly string? _fixedScopeValue;
+    private readonly object _refreshSync = new();
+    private readonly CancellationTokenSource _disposeCts = new();
+    private Task? _refreshTask;
+    private int _refreshGeneration;
+    private bool _hasLoaded;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SceneContextMenuTabViewModel"/> class.
@@ -72,7 +78,7 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
 
         if (!string.IsNullOrWhiteSpace(_fixedScopeValue))
         {
-            _ = RefreshAsync();
+            ObserveFireAndForget(EnsureLoadedAsync(), "FixedScopeInitialRefreshAsync");
         }
     }
 
@@ -203,7 +209,7 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         if (value is not null)
         {
             ScopeValue = value.Value;
-            _ = RefreshAsync();
+            ObserveFireAndForget(RefreshAsync(), "SelectedOptionRefreshAsync");
         }
     }
 
@@ -236,7 +242,40 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     /// Refreshes async.
     /// </summary>
     [RelayCommand]
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
+    {
+        return StartRefreshAsync(markLoaded: true);
+    }
+
+    public Task EnsureLoadedAsync()
+    {
+        lock (_refreshSync)
+        {
+            if (_hasLoaded)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        return StartRefreshAsync(markLoaded: true);
+    }
+
+    private Task StartRefreshAsync(bool markLoaded)
+    {
+        lock (_refreshSync)
+        {
+            if (_refreshTask is { IsCompleted: false })
+            {
+                return _refreshTask;
+            }
+
+            var generation = ++_refreshGeneration;
+            _refreshTask = RefreshCoreAsync(generation, markLoaded);
+            return _refreshTask;
+        }
+    }
+
+    private async Task RefreshCoreAsync(int generation, bool markLoaded)
     {
         var scopeValue = ResolveScopeValue();
         if (RequiresScopeValue() && string.IsNullOrWhiteSpace(scopeValue))
@@ -249,21 +288,59 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         IsBusy = true;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var snapshot = await _backendClient.GetSceneSnapshotAsync(_sceneKind, scopeValue, cts.Token);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, _disposeCts.Token);
+            var snapshot = await _backendClient.GetSceneSnapshotAsync(_sceneKind, scopeValue, linkedCts.Token);
+            if (!IsCurrentRefreshGeneration(generation))
+            {
+                FrontendDebugLog.Info(
+                    "SceneContextMenuTabViewModel",
+                    $"RefreshAsync stale result ignored. SceneKind={_sceneKind}, Generation={generation}.");
+                return;
+            }
+
             ApplySnapshot(snapshot);
             EmptyText = snapshot.Count == 0
                 ? _localization.Translate("SceneNoItems")
                 : string.Empty;
+            if (markLoaded)
+            {
+                _hasLoaded = true;
+            }
+        }
+        catch (OperationCanceledException ex) when (_disposeCts.IsCancellationRequested || !IsCurrentRefreshGeneration(generation))
+        {
+            FrontendDebugLog.Info(
+                "SceneContextMenuTabViewModel",
+                $"RefreshAsync canceled benignly. SceneKind={_sceneKind}, Generation={generation}, Message={ex.Message}");
+        }
+        catch (ObjectDisposedException ex) when (_disposed)
+        {
+            FrontendDebugLog.Info(
+                "SceneContextMenuTabViewModel",
+                $"RefreshAsync skipped during disposal. SceneKind={_sceneKind}, Generation={generation}, Message={ex.Message}");
+        }
+        catch (OperationCanceledException ex)
+        {
+            FrontendDebugLog.Warning(
+                "SceneContextMenuTabViewModel",
+                $"RefreshAsync canceled by timeout or caller. SceneKind={_sceneKind}, Generation={generation}, Message={ex.Message}");
+            EmptyText = _localization.Translate("OtherRulesClickRefreshToRetry");
         }
         catch (Exception ex)
         {
+            FrontendDebugLog.Warning(
+                "SceneContextMenuTabViewModel",
+                $"RefreshAsync failed. SceneKind={_sceneKind}, Generation={generation}, Message={ex.Message}");
             ApplySnapshot([]);
-            EmptyText = _localization.Format("BackendUnavailableStatus", ex.Message);
+            EmptyText = _localization.Format("OtherRulesTabLoadFailed", ex.Message);
         }
         finally
         {
-            IsBusy = false;
+            if (IsCurrentRefreshGeneration(generation))
+            {
+                IsBusy = false;
+            }
         }
     }
 
@@ -540,12 +617,63 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     /// </summary>
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _disposeCts.Cancel();
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _localization.LanguageChanged -= OnLanguageChanged;
         Items.CollectionChanged -= OnItemsCollectionChanged;
         foreach (var item in Items)
         {
             item.PropertyChanged -= OnItemPropertyChanged;
+        }
+    }
+
+    private bool IsCurrentRefreshGeneration(int generation)
+    {
+        lock (_refreshSync)
+        {
+            return generation == _refreshGeneration && !_disposed;
+        }
+    }
+
+    private void ObserveFireAndForget(Task task, string operationName)
+    {
+        if (task.IsCompletedSuccessfully)
+        {
+            return;
+        }
+
+        _ = ObserveFireAndForgetAsync(task, operationName);
+    }
+
+    private async Task ObserveFireAndForgetAsync(Task task, string operationName)
+    {
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException ex)
+        {
+            FrontendDebugLog.Info(
+                "SceneContextMenuTabViewModel",
+                $"{operationName} canceled. SceneKind={_sceneKind}, Message={ex.Message}");
+        }
+        catch (ObjectDisposedException ex)
+        {
+            FrontendDebugLog.Info(
+                "SceneContextMenuTabViewModel",
+                $"{operationName} skipped during disposal. SceneKind={_sceneKind}, Message={ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning(
+                "SceneContextMenuTabViewModel",
+                $"{operationName} failed. SceneKind={_sceneKind}, Message={ex.Message}");
         }
     }
 }

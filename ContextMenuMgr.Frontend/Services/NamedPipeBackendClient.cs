@@ -19,6 +19,7 @@ public sealed class NamedPipeBackendClient : IBackendClient
     private CancellationTokenSource? _notificationLoopCts;
     private Task? _notificationLoopTask;
     private bool _isConnected;
+    private bool _disposed;
 
     public event EventHandler<BackendNotification>? NotificationReceived;
 
@@ -674,6 +675,7 @@ public sealed class NamedPipeBackendClient : IBackendClient
     /// </summary>
     public ValueTask DisposeAsync()
     {
+        _disposed = true;
         CancellationTokenSource? notificationLoopCts;
         Task? notificationLoopTask;
         lock (_notificationSync)
@@ -685,7 +687,6 @@ public sealed class NamedPipeBackendClient : IBackendClient
         }
 
         notificationLoopCts?.Cancel();
-        _sendLock.Dispose();
         return notificationLoopTask is null
             ? DisposeNotificationLoopAsync(notificationLoopCts, null)
             : DisposeNotificationLoopAsync(notificationLoopCts, notificationLoopTask);
@@ -693,6 +694,11 @@ public sealed class NamedPipeBackendClient : IBackendClient
 
     private async Task<PipeResponse> SendRequestAsync(PipeRequest request, CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            throw new OperationCanceledException("The backend client is shutting down.");
+        }
+
         await _sendLock.WaitAsync(cancellationToken);
         var stopwatch = Stopwatch.StartNew();
         var correlationId = Guid.Empty;
@@ -781,6 +787,39 @@ public sealed class NamedPipeBackendClient : IBackendClient
                 "FrontendOperation",
                 $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success=false, Error=Timeout, ElapsedMs={stopwatch.ElapsedMilliseconds}.");
             FrontendDebugLog.Warning("NamedPipeBackendClient", $"SendRequestAsync timed out for {request.Command}: {ex.Message}");
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            stopwatch.Stop();
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success=false, Error=Canceled, ElapsedMs={stopwatch.ElapsedMilliseconds}.");
+            FrontendDebugLog.Info(
+                "NamedPipeBackendClient",
+                $"SendRequestAsync canceled for {request.Command}. Disposed={_disposed}, CancellationRequested={cancellationToken.IsCancellationRequested}, Message={ex.Message}");
+            throw;
+        }
+        catch (ObjectDisposedException ex) when (_disposed || cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success=false, Error=Disposed, ElapsedMs={stopwatch.ElapsedMilliseconds}.");
+            FrontendDebugLog.Info(
+                "NamedPipeBackendClient",
+                $"SendRequestAsync disposed while {request.Command} was in flight. Disposed={_disposed}, CancellationRequested={cancellationToken.IsCancellationRequested}, Message={ex.Message}");
+            throw;
+        }
+        catch (IOException ex) when (_disposed || cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            FrontendDebugLog.Operation(
+                "FrontendOperation",
+                $"FrontendOperationEnd: CorrelationId={correlationId}, Command={request.Command}, ClientOperationId={request.ClientOperationId}, Success=false, Error=PipeClosedDuringCancellation, ElapsedMs={stopwatch.ElapsedMilliseconds}.");
+            FrontendDebugLog.Info(
+                "NamedPipeBackendClient",
+                $"SendRequestAsync pipe closed during cancellation/shutdown for {request.Command}: {ex.Message}");
             throw;
         }
         catch (Exception ex)

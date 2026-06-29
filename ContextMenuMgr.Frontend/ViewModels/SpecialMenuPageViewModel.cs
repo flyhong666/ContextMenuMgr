@@ -22,6 +22,12 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     private readonly string _titleKey;
     private readonly string _descriptionKey;
     private readonly Dictionary<string, bool> _winXExpandedStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _refreshSync = new();
+    private readonly CancellationTokenSource _disposeCts = new();
+    private Task? _refreshTask;
+    private int _refreshGeneration;
+    private bool _hasLoaded;
+    private bool _disposed;
     private bool _suppressShellNewLockSync;
     private bool _suppressDropEffectSync;
 
@@ -71,7 +77,6 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         _placeholderDebug.PropertyChanged += OnPlaceholderDebugPropertyChanged;
         Items.CollectionChanged += OnItemsCollectionChanged;
         WinXGroups.CollectionChanged += OnWinXGroupsCollectionChanged;
-        _ = RefreshAsync();
     }
 
     public SpecialMenuKind Kind { get; }
@@ -206,7 +211,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _ = SetShellNewOrderLockAsync(oldValue, newValue);
+        ObserveFireAndForget(SetShellNewOrderLockAsync(oldValue, newValue), "SetShellNewOrderLockAsync");
     }
 
     partial void OnSelectedDropEffectChanged(DefaultDropEffect oldValue, DefaultDropEffect newValue)
@@ -216,26 +221,98 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _ = SetDefaultDropEffectAsync(oldValue, newValue);
+        ObserveFireAndForget(SetDefaultDropEffectAsync(oldValue, newValue), "SetDefaultDropEffectAsync");
     }
 
     [RelayCommand]
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
+    {
+        return StartRefreshAsync(markLoaded: true);
+    }
+
+    public Task EnsureLoadedAsync()
+    {
+        lock (_refreshSync)
+        {
+            if (_hasLoaded)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        return StartRefreshAsync(markLoaded: true);
+    }
+
+    private Task StartRefreshAsync(bool markLoaded)
+    {
+        lock (_refreshSync)
+        {
+            if (_refreshTask is { IsCompleted: false })
+            {
+                return _refreshTask;
+            }
+
+            var generation = ++_refreshGeneration;
+            _refreshTask = RefreshCoreAsync(generation, markLoaded);
+            return _refreshTask;
+        }
+    }
+
+    private async Task RefreshCoreAsync(int generation, bool markLoaded)
     {
         IsBusy = true;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            ApplySnapshot(await _backendClient.GetSpecialMenuSnapshotAsync(Kind, cts.Token));
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, _disposeCts.Token);
+            var snapshot = await _backendClient.GetSpecialMenuSnapshotAsync(Kind, linkedCts.Token);
+            if (!IsCurrentRefreshGeneration(generation))
+            {
+                FrontendDebugLog.Info(
+                    "SpecialMenuPageViewModel",
+                    $"RefreshAsync stale result ignored. Kind={Kind}, Generation={generation}.");
+                return;
+            }
+
+            ApplySnapshot(snapshot);
             StatusText = string.Empty;
+            if (markLoaded)
+            {
+                _hasLoaded = true;
+            }
+        }
+        catch (OperationCanceledException ex) when (_disposeCts.IsCancellationRequested || !IsCurrentRefreshGeneration(generation))
+        {
+            FrontendDebugLog.Info(
+                "SpecialMenuPageViewModel",
+                $"RefreshAsync canceled benignly. Kind={Kind}, Generation={generation}, Message={ex.Message}");
+        }
+        catch (ObjectDisposedException ex) when (_disposed)
+        {
+            FrontendDebugLog.Info(
+                "SpecialMenuPageViewModel",
+                $"RefreshAsync skipped during disposal. Kind={Kind}, Generation={generation}, Message={ex.Message}");
+        }
+        catch (OperationCanceledException ex)
+        {
+            FrontendDebugLog.Warning(
+                "SpecialMenuPageViewModel",
+                $"RefreshAsync canceled by timeout or caller. Kind={Kind}, Generation={generation}, Message={ex.Message}");
+            StatusText = _localization.Translate("OtherRulesClickRefreshToRetry");
         }
         catch (Exception ex)
         {
-            StatusText = ex.Message;
+            FrontendDebugLog.Warning(
+                "SpecialMenuPageViewModel",
+                $"RefreshAsync failed. Kind={Kind}, Generation={generation}, Message={ex.Message}");
+            StatusText = _localization.Format("OtherRulesTabLoadFailed", ex.Message);
         }
         finally
         {
-            IsBusy = false;
+            if (IsCurrentRefreshGeneration(generation))
+            {
+                IsBusy = false;
+            }
         }
     }
 
@@ -956,7 +1033,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     {
         if (Kind == SpecialMenuKind.WinX)
         {
-            _ = RefreshAsync();
+            ObserveFireAndForget(RefreshAsync(), "WinXUpsertRefreshAsync");
             return;
         }
 
@@ -1006,7 +1083,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         {
             if (Kind == SpecialMenuKind.WinX)
             {
-                _ = RefreshAsync();
+                ObserveFireAndForget(RefreshAsync(), "WinXNotificationRefreshAsync");
                 return;
             }
 
@@ -1412,11 +1489,62 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _disposeCts.Cancel();
         _backendClient.NotificationReceived -= OnNotificationReceived;
         _localization.LanguageChanged -= OnLanguageChanged;
         _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
         Items.CollectionChanged -= OnItemsCollectionChanged;
         WinXGroups.CollectionChanged -= OnWinXGroupsCollectionChanged;
+    }
+
+    private bool IsCurrentRefreshGeneration(int generation)
+    {
+        lock (_refreshSync)
+        {
+            return generation == _refreshGeneration && !_disposed;
+        }
+    }
+
+    private void ObserveFireAndForget(Task task, string operationName)
+    {
+        if (task.IsCompletedSuccessfully)
+        {
+            return;
+        }
+
+        _ = ObserveFireAndForgetAsync(task, operationName);
+    }
+
+    private async Task ObserveFireAndForgetAsync(Task task, string operationName)
+    {
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException ex)
+        {
+            FrontendDebugLog.Info(
+                "SpecialMenuPageViewModel",
+                $"{operationName} canceled. Kind={Kind}, Message={ex.Message}");
+        }
+        catch (ObjectDisposedException ex)
+        {
+            FrontendDebugLog.Info(
+                "SpecialMenuPageViewModel",
+                $"{operationName} skipped during disposal. Kind={Kind}, Message={ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning(
+                "SpecialMenuPageViewModel",
+                $"{operationName} failed. Kind={Kind}, Message={ex.Message}");
+        }
     }
 }
 

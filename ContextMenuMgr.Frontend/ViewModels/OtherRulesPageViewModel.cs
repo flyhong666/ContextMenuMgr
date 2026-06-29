@@ -18,6 +18,7 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
     private readonly EnhanceMenuRuleService _enhanceMenuRuleService;
     private readonly IconPreviewService _iconPreviewService;
     private readonly ExplorerRestartStateService _explorerRestartState;
+    private readonly HashSet<int> _loadedBackendTabIndexes = [];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OtherRulesPageViewModel"/> class.
@@ -57,7 +58,6 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
         CustomRegistryPathTab.ConfigureTextSelector(
             localization.Translate("SceneRegistryPathSelectorLabel"),
             @"HKCR\*\shell");
-        _ = CustomRegistryPathTab.RefreshAsync();
 
         DragDropTab = new SpecialMenuPageViewModel(
             SpecialMenuKind.DragDrop,
@@ -153,7 +153,68 @@ public partial class OtherRulesPageViewModel : ObservableObject, IDisposable
 
     public string NoSelectionText => _localization.Translate("NoRuleGroupSelected");
 
+    [ObservableProperty]
+    public partial int SelectedTabIndex { get; set; }
+
     partial void OnSelectedEnhanceGroupChanged(EnhanceMenuGroupViewModel? value) { }
+
+    partial void OnSelectedTabIndexChanged(int value)
+    {
+        ObserveTabLoad(EnsureSelectedTabLoadedAsync(), $"OtherRulesTabSelection:{value}");
+    }
+
+    public Task EnsureSelectedTabLoadedAsync()
+    {
+        return EnsureTabLoadedAsync(SelectedTabIndex);
+    }
+
+    private Task EnsureTabLoadedAsync(int tabIndex)
+    {
+        if (!_loadedBackendTabIndexes.Add(tabIndex))
+        {
+            return Task.CompletedTask;
+        }
+
+        return tabIndex switch
+        {
+            2 => CustomRegistryPathTab.EnsureLoadedAsync(),
+            3 => DragDropTab.EnsureLoadedAsync(),
+            4 => CommandStoreTab.EnsureLoadedAsync(),
+            5 => GuidBlockTab.EnsureLoadedAsync(),
+            6 => IeMenuTab.EnsureLoadedAsync(),
+            _ => Task.CompletedTask
+        };
+    }
+
+    private static void ObserveTabLoad(Task task, string operationName)
+    {
+        if (task.IsCompletedSuccessfully)
+        {
+            return;
+        }
+
+        _ = ObserveTabLoadAsync(task, operationName);
+    }
+
+    private static async Task ObserveTabLoadAsync(Task task, string operationName)
+    {
+        try
+        {
+            await task;
+        }
+        catch (OperationCanceledException ex)
+        {
+            FrontendDebugLog.Info("OtherRulesPageViewModel", $"{operationName} canceled: {ex.Message}");
+        }
+        catch (ObjectDisposedException ex)
+        {
+            FrontendDebugLog.Info("OtherRulesPageViewModel", $"{operationName} skipped during disposal: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("OtherRulesPageViewModel", $"{operationName} failed: {ex.Message}");
+        }
+    }
 
     private void RefreshDefinitions(
         DetailedEditRuleService detailedEditRuleService,
