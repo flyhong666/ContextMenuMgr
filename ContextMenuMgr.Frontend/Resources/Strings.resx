@@ -162,6 +162,12 @@
   <data name="RestartExplorerFailed" xml:space="preserve">
     <value>Failed to restart File Explorer.</value>
   </data>
+  <data name="RefreshIconCache" xml:space="preserve">
+    <value>Clear icon cache</value>
+  </data>
+  <data name="RefreshIconCacheFailed" xml:space="preserve">
+    <value>Refresh icon cache failed</value>
+  </data>
   <data name="SearchLabel" xml:space="preserve">
     <value>Filter</value>
   </data>
@@ -209,6 +215,30 @@
   </data>
   <data name="Windows11PendingApprovalTag" xml:space="preserve">
     <value>Win11 new menu</value>
+  </data>
+  <data name="WpsOfficeAssociationHijackTitle" xml:space="preserve">
+    <value>WPS Office changed document file associations</value>
+  </data>
+  <data name="WpsOfficeIconHijackTitle" xml:space="preserve">
+    <value>WPS Office changed document icons</value>
+  </data>
+  <data name="WpsOfficeAssociationHijackSummary" xml:space="preserve">
+    <value>{0} affected format(s): {1}</value>
+  </data>
+  <data name="WpsOfficeIconHijackSummary" xml:space="preserve">
+    <value>{0} affected icon override(s): {1}</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionPdfTitle" xml:space="preserve">
+    <value>WPS Office injected a PDF new-menu item</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionPptxAiTitle" xml:space="preserve">
+    <value>WPS Office injected a PPTX AI new-menu item</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionTitle" xml:space="preserve">
+    <value>WPS Office injected a new-menu item: {0}</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionSummary" xml:space="preserve">
+    <value>Injected class: {0}; command: {1}</value>
   </data>
   <data name="ServiceNotesTitle" xml:space="preserve">
     <value>Service Notes</value>
@@ -1309,6 +1339,15 @@ Continue anyway? (Not recommended)</value>
   </data>
   <data name="DefaultDropEffect" xml:space="preserve">
     <value>Default drop effect</value>
+  </data>
+  <data name="DocumentIconProvider" xml:space="preserve">
+    <value>Document icon provider</value>
+  </data>
+  <data name="DocumentIconProviderDescription" xml:space="preserve">
+    <value>Switches document icons only. Default apps are not changed.</value>
+  </data>
+  <data name="DocumentIconProviderChangedHint" xml:space="preserve">
+    <value>To make the icon change take effect for a file type, set that file type's default app to the selected Office suite. If it still does not take effect, try the Clear icon cache button above.</value>
   </data>
   <data name="SystemLevelItems" xml:space="preserve">
     <value>System-level items</value>

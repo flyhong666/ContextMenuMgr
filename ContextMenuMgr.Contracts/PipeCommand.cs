@@ -50,5 +50,8 @@ public enum PipeCommand
     SetLogLevel,
     RequestShutdown,
     RestartExplorer,
-    RepairRuntimeDataAcl
+    RepairRuntimeDataAcl,
+    GetOfficeSuiteCoexistenceStatus,
+    GetWpsOfficePendingApprovals,
+    SetDocumentIconProvider
 }

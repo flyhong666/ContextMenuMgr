@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -52,7 +53,12 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         _workspace.PendingApprovalDetected += OnPendingApprovalDetected;
         _workspace.PropertyChanged += OnWorkspacePropertyChanged;
         _workspace.Items.CollectionChanged += OnWorkspaceItemsCollectionChanged;
+        _workspace.WpsOfficeApprovalItems.CollectionChanged += OnWorkspaceItemsCollectionChanged;
         foreach (var item in _workspace.Items)
+        {
+            item.PropertyChanged += OnWorkspaceItemPropertyChanged;
+        }
+        foreach (var item in _workspace.WpsOfficeApprovalItems)
         {
             item.PropertyChanged += OnWorkspaceItemPropertyChanged;
         }
@@ -126,7 +132,11 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public bool NeedsExplorerRestart => _explorerRestartState.NeedsRestart;
 
+    public bool NeedsIconCacheRefresh => _explorerRestartState.NeedsIconCacheRefresh;
+
     public string RestartExplorerText => _localization.Translate("RestartExplorer");
+
+    public string RefreshIconCacheText => _localization.Translate("RefreshIconCache");
 
     public string GlobalSearchPlaceholder => _localization.Translate("GlobalSearchPlaceholder");
 
@@ -173,7 +183,12 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         _workspace.PendingApprovalDetected -= OnPendingApprovalDetected;
         _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
         _workspace.Items.CollectionChanged -= OnWorkspaceItemsCollectionChanged;
+        _workspace.WpsOfficeApprovalItems.CollectionChanged -= OnWorkspaceItemsCollectionChanged;
         foreach (var item in _workspace.Items)
+        {
+            item.PropertyChanged -= OnWorkspaceItemPropertyChanged;
+        }
+        foreach (var item in _workspace.WpsOfficeApprovalItems)
         {
             item.PropertyChanged -= OnWorkspaceItemPropertyChanged;
         }
@@ -217,6 +232,41 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             await FrontendMessageBox.ShowErrorAsync(
                 ex.Message,
                 _localization.Translate("RestartExplorerFailed"));
+        }
+    }
+
+    [RelayCommand]
+    private async Task RefreshIconCacheAsync()
+    {
+        try
+        {
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/d /c " + BuildIconCacheRefreshCommand(),
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                WindowStyle = ProcessWindowStyle.Hidden
+            });
+
+            if (process is null)
+            {
+                throw new InvalidOperationException("Failed to start icon-cache refresh script.");
+            }
+
+            await process.WaitForExitAsync();
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"Icon-cache refresh script exited with code {process.ExitCode}.");
+            }
+
+            _explorerRestartState.ClearIconCacheRefresh();
+        }
+        catch (Exception ex)
+        {
+            await FrontendMessageBox.ShowErrorAsync(
+                ex.Message,
+                _localization.Translate("RefreshIconCacheFailed"));
         }
     }
 
@@ -299,6 +349,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ApprovalsTitle));
         OnPropertyChanged(nameof(SettingsTitle));
         OnPropertyChanged(nameof(RestartExplorerText));
+        OnPropertyChanged(nameof(RefreshIconCacheText));
         OnPropertyChanged(nameof(LegacyContextMenuItemsName));
         OnPropertyChanged(nameof(GlobalSearchPlaceholder));
         OnPropertyChanged(nameof(GlobalSearchNoResults));
@@ -326,11 +377,17 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         {
             OnPropertyChanged(nameof(NeedsExplorerRestart));
         }
+
+        if (e.PropertyName == nameof(ExplorerRestartStateService.NeedsIconCacheRefresh))
+        {
+            OnPropertyChanged(nameof(NeedsIconCacheRefresh));
+        }
     }
 
     private void UpdateApprovalBadge()
     {
-        var count = _workspace.Items.Count(static item => item.IsPendingApproval);
+        var count = _workspace.Items.Count(static item => item.IsPendingApproval)
+                    + _workspace.WpsOfficeApprovalItems.Count(static item => item.IsPendingApproval);
         _approvalsBadge.Value = count > 0 ? count.ToString() : string.Empty;
         _approvalsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -393,6 +450,26 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         return (text ?? string.Empty)
             .Replace("\r", "\\r", StringComparison.Ordinal)
             .Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    private static string BuildIconCacheRefreshCommand()
+    {
+        return string.Join(
+            " & ",
+            "taskkill /f /im explorer.exe",
+            "attrib -h -s -r \"%userprofile%\\AppData\\Local\\IconCache.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\IconCache.db\"",
+            "attrib /s /d -h -s -r \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\*\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_32.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_96.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_102.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_256.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_1024.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_idx.db\"",
+            "del /f \"%userprofile%\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_sr.db\"",
+            "reg delete \"HKEY_CLASSES_ROOT\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\TrayNotify\" /v IconStreams /f",
+            "reg delete \"HKEY_CLASSES_ROOT\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\TrayNotify\" /v PastIconsStream /f",
+            "start explorer");
     }
 
     private void OnPendingApprovalDetected(object? sender, ContextMenuEntry e)

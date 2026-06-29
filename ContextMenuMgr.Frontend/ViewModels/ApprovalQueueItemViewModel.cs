@@ -60,6 +60,8 @@ public partial class ApprovalQueueItemViewModel : ObservableObject
 
     public string Notes => PrimaryItem.Notes;
 
+    public string? NotesToolTip => PrimaryItem.NotesToolTip;
+
     public bool ShowNotes => PrimaryItem.ShowNotes;
 
     public System.Windows.Media.ImageSource? IconSource => PrimaryItem.IconSource;

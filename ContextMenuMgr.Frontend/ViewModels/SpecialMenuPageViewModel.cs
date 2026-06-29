@@ -25,11 +25,14 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
     private readonly object _refreshSync = new();
     private readonly CancellationTokenSource _disposeCts = new();
     private Task? _refreshTask;
+    private Task? _autoRefreshTask;
     private int _refreshGeneration;
     private bool _hasLoaded;
     private bool _disposed;
     private bool _suppressShellNewLockSync;
     private bool _suppressDropEffectSync;
+    private bool _suppressDocumentIconProviderSync;
+    private bool _hasDocumentIconProviderChanged;
 
     public SpecialMenuPageViewModel(
         SpecialMenuKind kind,
@@ -65,6 +68,9 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         PermanentDeleteText = _localization.Translate("PermanentDelete");
         CancelText = _localization.Translate("DialogCancel");
         DropEffectLabel = _localization.Translate("DefaultDropEffect");
+        DocumentIconProviderLabel = _localization.Translate("DocumentIconProvider");
+        DocumentIconProviderDescription = _localization.Translate("DocumentIconProviderDescription");
+        DocumentIconProviderChangedHint = _localization.Translate("DocumentIconProviderChangedHint");
         DropEffectOptions =
         [
             DefaultDropEffect.Default,
@@ -141,6 +147,30 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial DefaultDropEffect SelectedDropEffect { get; set; }
+
+    [ObservableProperty]
+    public partial string DocumentIconProviderLabel { get; set; }
+
+    [ObservableProperty]
+    public partial string DocumentIconProviderDescription { get; set; }
+
+    [ObservableProperty]
+    public partial string DocumentIconProviderChangedHint { get; set; }
+
+    public string MicrosoftOfficeLabel => "Microsoft Office";
+
+    public string WpsOfficeLabel => "WPS Office";
+
+    [ObservableProperty]
+    public partial DocumentIconProvider SelectedDocumentIconProvider { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsWpsDocumentIconProviderSelected { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowDocumentIconProvider { get; set; }
+
+    public bool ShowDocumentIconProviderChangedHint => ShowDocumentIconProvider && _hasDocumentIconProviderChanged;
 
     [ObservableProperty]
     public partial bool IsShellNewOrderLocked { get; set; }
@@ -224,6 +254,33 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         ObserveFireAndForget(SetDefaultDropEffectAsync(oldValue, newValue), "SetDefaultDropEffectAsync");
     }
 
+    partial void OnSelectedDocumentIconProviderChanged(DocumentIconProvider oldValue, DocumentIconProvider newValue)
+    {
+        if (_suppressDocumentIconProviderSync || oldValue == newValue)
+        {
+            return;
+        }
+
+        IsWpsDocumentIconProviderSelected = newValue == DocumentIconProvider.WpsOffice;
+    }
+
+    partial void OnIsWpsDocumentIconProviderSelectedChanged(bool oldValue, bool newValue)
+    {
+        if (_suppressDocumentIconProviderSync || oldValue == newValue || !ShowDocumentIconProvider)
+        {
+            return;
+        }
+
+        var oldProvider = oldValue ? DocumentIconProvider.WpsOffice : DocumentIconProvider.MicrosoftOffice;
+        var newProvider = newValue ? DocumentIconProvider.WpsOffice : DocumentIconProvider.MicrosoftOffice;
+        ObserveFireAndForget(SetDocumentIconProviderAsync(oldProvider, newProvider), "SetDocumentIconProviderAsync");
+    }
+
+    partial void OnShowDocumentIconProviderChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowDocumentIconProviderChangedHint));
+    }
+
     [RelayCommand]
     public Task RefreshAsync()
     {
@@ -236,6 +293,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         {
             if (_hasLoaded)
             {
+                StartAutoRefreshLoop();
                 return Task.CompletedTask;
             }
         }
@@ -243,7 +301,7 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         return StartRefreshAsync(markLoaded: true);
     }
 
-    private Task StartRefreshAsync(bool markLoaded)
+    private Task StartRefreshAsync(bool markLoaded, bool showBusy = true)
     {
         lock (_refreshSync)
         {
@@ -253,14 +311,18 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             }
 
             var generation = ++_refreshGeneration;
-            _refreshTask = RefreshCoreAsync(generation, markLoaded);
+            _refreshTask = RefreshCoreAsync(generation, markLoaded, showBusy);
             return _refreshTask;
         }
     }
 
-    private async Task RefreshCoreAsync(int generation, bool markLoaded)
+    private async Task RefreshCoreAsync(int generation, bool markLoaded, bool showBusy)
     {
-        IsBusy = true;
+        if (showBusy)
+        {
+            IsBusy = true;
+        }
+
         try
         {
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -274,12 +336,23 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            ApplySnapshot(snapshot);
-            StatusText = string.Empty;
-            if (markLoaded)
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                _hasLoaded = true;
-            }
+                if (!IsCurrentRefreshGeneration(generation))
+                {
+                    return;
+                }
+
+                ApplySnapshot(snapshot);
+                StatusText = string.Empty;
+                if (markLoaded)
+                {
+                    _hasLoaded = true;
+                    StartAutoRefreshLoop();
+                }
+            });
+
+            await RefreshOfficeCoexistenceStatusAsync(linkedCts.Token);
         }
         catch (OperationCanceledException ex) when (_disposeCts.IsCancellationRequested || !IsCurrentRefreshGeneration(generation))
         {
@@ -298,18 +371,24 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             FrontendDebugLog.Warning(
                 "SpecialMenuPageViewModel",
                 $"RefreshAsync canceled by timeout or caller. Kind={Kind}, Generation={generation}, Message={ex.Message}");
-            StatusText = _localization.Translate("OtherRulesClickRefreshToRetry");
+            if (showBusy)
+            {
+                StatusText = _localization.Translate("OtherRulesClickRefreshToRetry");
+            }
         }
         catch (Exception ex)
         {
             FrontendDebugLog.Warning(
                 "SpecialMenuPageViewModel",
                 $"RefreshAsync failed. Kind={Kind}, Generation={generation}, Message={ex.Message}");
-            StatusText = _localization.Format("OtherRulesTabLoadFailed", ex.Message);
+            if (showBusy)
+            {
+                StatusText = _localization.Format("OtherRulesTabLoadFailed", ex.Message);
+            }
         }
         finally
         {
-            if (IsCurrentRefreshGeneration(generation))
+            if (showBusy && IsCurrentRefreshGeneration(generation))
             {
                 IsBusy = false;
             }
@@ -1107,6 +1186,11 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         PermanentDeleteText = _localization.Translate("PermanentDelete");
         CancelText = _localization.Translate("DialogCancel");
         DropEffectLabel = _localization.Translate("DefaultDropEffect");
+        DocumentIconProviderLabel = _localization.Translate("DocumentIconProvider");
+        DocumentIconProviderDescription = _localization.Translate("DocumentIconProviderDescription");
+        DocumentIconProviderChangedHint = _localization.Translate("DocumentIconProviderChangedHint");
+        OnPropertyChanged(nameof(MicrosoftOfficeLabel));
+        OnPropertyChanged(nameof(WpsOfficeLabel));
         foreach (var item in Items)
         {
             item.RefreshLocalization();
@@ -1189,6 +1273,85 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
             finally
             {
                 _suppressDropEffectSync = false;
+            }
+
+            await FrontendMessageBox.ShowErrorAsync(ex.Message, Title);
+        }
+    }
+
+    private async Task RefreshOfficeCoexistenceStatusAsync(CancellationToken cancellationToken)
+    {
+        if (Kind != SpecialMenuKind.ShellNew)
+        {
+            ShowDocumentIconProvider = false;
+            return;
+        }
+
+        try
+        {
+            var status = await _backendClient.GetOfficeSuiteCoexistenceStatusAsync(cancellationToken);
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                ShowDocumentIconProvider = status?.IsCoexistenceActive == true;
+                if (status?.CurrentDocumentIconProvider is not { } provider)
+                {
+                    return;
+                }
+
+                _suppressDocumentIconProviderSync = true;
+                try
+                {
+                    SelectedDocumentIconProvider = provider;
+                    IsWpsDocumentIconProviderSelected = provider == DocumentIconProvider.WpsOffice;
+                }
+                finally
+                {
+                    _suppressDocumentIconProviderSync = false;
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning(
+                "SpecialMenuPageViewModel",
+                $"RefreshOfficeCoexistenceStatusAsync failed. Kind={Kind}, Message={ex.Message}");
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => ShowDocumentIconProvider = false);
+        }
+    }
+
+    private async Task SetDocumentIconProviderAsync(DocumentIconProvider oldValue, DocumentIconProvider newValue)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var status = await _backendClient.SetDocumentIconProviderAsync(newValue, cts.Token);
+            _suppressDocumentIconProviderSync = true;
+            try
+            {
+                SelectedDocumentIconProvider = status?.CurrentDocumentIconProvider ?? newValue;
+                IsWpsDocumentIconProviderSelected = SelectedDocumentIconProvider == DocumentIconProvider.WpsOffice;
+            }
+            finally
+            {
+                _suppressDocumentIconProviderSync = false;
+            }
+
+            await RefreshAsync();
+            _hasDocumentIconProviderChanged = true;
+            _explorerRestartState.MarkIconCacheRefreshRequired();
+            OnPropertyChanged(nameof(ShowDocumentIconProviderChangedHint));
+        }
+        catch (Exception ex)
+        {
+            _suppressDocumentIconProviderSync = true;
+            try
+            {
+                SelectedDocumentIconProvider = oldValue;
+                IsWpsDocumentIconProviderSelected = oldValue == DocumentIconProvider.WpsOffice;
+            }
+            finally
+            {
+                _suppressDocumentIconProviderSync = false;
             }
 
             await FrontendMessageBox.ShowErrorAsync(ex.Message, Title);
@@ -1501,6 +1664,40 @@ public partial class SpecialMenuPageViewModel : ObservableObject, IDisposable
         _placeholderDebug.PropertyChanged -= OnPlaceholderDebugPropertyChanged;
         Items.CollectionChanged -= OnItemsCollectionChanged;
         WinXGroups.CollectionChanged -= OnWinXGroupsCollectionChanged;
+    }
+
+    private void StartAutoRefreshLoop()
+    {
+        if (_autoRefreshTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        var token = _disposeCts.Token;
+        _autoRefreshTask = Task.Run(() => AutoRefreshLoopAsync(token), token);
+    }
+
+    private async Task AutoRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await timer.WaitForNextTickAsync(cancellationToken);
+                await StartRefreshAsync(markLoaded: false, showBusy: false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                FrontendDebugLog.Warning(
+                    "SpecialMenuPageViewModel",
+                    $"AutoRefreshLoopAsync failed. Kind={Kind}, Message={ex.Message}");
+            }
+        }
     }
 
     private bool IsCurrentRefreshGeneration(int generation)

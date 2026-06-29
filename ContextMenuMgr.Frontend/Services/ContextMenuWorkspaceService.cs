@@ -21,8 +21,13 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     private readonly TrayHostProcessService _trayHostProcessService;
     private readonly HashSet<string> _seenPendingApprovalIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _seenChangedItemIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _seenWpsOfficeApprovalIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
+    private readonly SemaphoreSlim _wpsOfficeApprovalRefreshLock = new(1, 1);
+    private CancellationTokenSource? _wpsOfficeApprovalRefreshCts;
+    private Task? _wpsOfficeApprovalRefreshTask;
     private bool _pendingApprovalBaselineInitialized;
+    private bool _wpsOfficeApprovalBaselineInitialized;
     private bool _notificationsInitialized;
     private bool _fullyInitialized;
     private bool _uiStateActive;
@@ -60,6 +65,8 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     /// Gets the items.
     /// </summary>
     public ObservableCollection<ContextMenuItemViewModel> Items { get; } = [];
+
+    public ObservableCollection<ContextMenuItemViewModel> WpsOfficeApprovalItems { get; } = [];
 
     /// <summary>
     /// Gets the notifications.
@@ -111,6 +118,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                 await SyncBackendLogLevelAsync();
                 await SyncTrayHostLogLevelAsync();
                 await EnsureNotificationConnectionAsync();
+                StartWpsOfficeApprovalRefreshLoop();
                 _uiStateActive = true;
                 await RefreshAsync();
                 _fullyInitialized = true;
@@ -152,6 +160,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                 await SyncBackendLogLevelAsync();
                 await SyncTrayHostLogLevelAsync();
                 await EnsureNotificationConnectionAsync();
+                StartWpsOfficeApprovalRefreshLoop();
                 return;
             }
 
@@ -182,6 +191,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             // The frontend works from a backend-authored snapshot so every page
             // stays consistent after a single refresh pass.
             ApplySnapshot(snapshot);
+            await RefreshWpsOfficeApprovalsAsync();
             UpdateServiceAttention(ServiceAttentionState.None);
             ConnectionStatus = _localization.Translate("ConnectedStatus");
         }
@@ -390,9 +400,18 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var updated = await _backendClient.ApplyDecisionAsync(itemId, decision, cts.Token);
+            var isWpsOfficeApproval = IsWpsOfficeApprovalItemId(itemId);
             if (updated is not null)
             {
-                UpsertItem(updated);
+                if (isWpsOfficeApproval)
+                {
+                    UpsertWpsOfficeApprovalItem(updated);
+                }
+                else
+                {
+                    UpsertItem(updated);
+                }
+
                 RemoveApprovalNotifications(itemId);
             }
             else
@@ -405,6 +424,11 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
 
                 await RefreshAsync();
             }
+
+            if (isWpsOfficeApproval)
+            {
+                await RefreshWpsOfficeApprovalsAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -413,6 +437,34 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             await FrontendMessageBox.ShowErrorAsync(
                 _localization.Format("DecisionApplyFailedStatus", ex.Message),
                 _localization.Translate("WindowTitle"));
+        }
+    }
+
+    public async Task RefreshWpsOfficeApprovalsAsync()
+    {
+        if (!await _wpsOfficeApprovalRefreshLock.WaitAsync(TimeSpan.FromSeconds(1)))
+        {
+            return;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var snapshot = await _backendClient.GetWpsOfficePendingApprovalsAsync(cts.Token);
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                () => ApplyWpsOfficeApprovalSnapshot(snapshot));
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning(
+                "ContextMenuWorkspaceService",
+                $"RefreshWpsOfficeApprovalsAsync failed: {ex.Message}");
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                static () => { });
+        }
+        finally
+        {
+            _wpsOfficeApprovalRefreshLock.Release();
         }
     }
 
@@ -637,8 +689,59 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        _wpsOfficeApprovalRefreshCts?.Cancel();
+        if (_wpsOfficeApprovalRefreshTask is not null)
+        {
+            try
+            {
+                await _wpsOfficeApprovalRefreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        _wpsOfficeApprovalRefreshCts?.Dispose();
+        _wpsOfficeApprovalRefreshLock.Dispose();
         _backendClient.NotificationReceived -= OnBackendNotificationReceived;
         await _backendClient.DisposeAsync();
+    }
+
+    private void StartWpsOfficeApprovalRefreshLoop()
+    {
+        if (_wpsOfficeApprovalRefreshTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        _wpsOfficeApprovalRefreshCts?.Cancel();
+        _wpsOfficeApprovalRefreshCts?.Dispose();
+        _wpsOfficeApprovalRefreshCts = new CancellationTokenSource();
+        var token = _wpsOfficeApprovalRefreshCts.Token;
+        _wpsOfficeApprovalRefreshTask = Task.Run(() => WpsOfficeApprovalRefreshLoopAsync(token), token);
+    }
+
+    private async Task WpsOfficeApprovalRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await timer.WaitForNextTickAsync(cancellationToken);
+                await RefreshWpsOfficeApprovalsAsync();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                FrontendDebugLog.Warning(
+                    "ContextMenuWorkspaceService",
+                    $"WpsOfficeApprovalRefreshLoopAsync failed: {ex.Message}");
+            }
+        }
     }
 
     private async Task<bool> EnsureBackendReadyAsync(bool suppressBootstrapPrompt)
@@ -831,7 +934,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             }
             else
             {
-                Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService, _settingsService));
+                Items.Add(CreateItemViewModel(entry));
             }
         }
 
@@ -842,6 +945,58 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         }
 
         UpdateNotifications(snapshot);
+    }
+
+    private void ApplyWpsOfficeApprovalSnapshot(IReadOnlyList<ContextMenuEntry> snapshot)
+    {
+        var existing = WpsOfficeApprovalItems.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+        var pendingItems = snapshot.Where(static entry => entry.IsPendingApproval).ToArray();
+        var currentPendingIds = pendingItems
+            .Select(static item => item.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in pendingItems)
+        {
+            if (existing.Remove(entry.Id, out var item))
+            {
+                item.Update(entry);
+            }
+            else
+            {
+                WpsOfficeApprovalItems.Add(CreateItemViewModel(entry));
+            }
+        }
+
+        foreach (var removed in existing.Values.ToList())
+        {
+            removed.Dispose();
+            WpsOfficeApprovalItems.Remove(removed);
+        }
+
+        if (!_wpsOfficeApprovalBaselineInitialized)
+        {
+            foreach (var itemId in currentPendingIds)
+            {
+                _seenWpsOfficeApprovalIds.Add(itemId);
+            }
+
+            _wpsOfficeApprovalBaselineInitialized = true;
+        }
+        else
+        {
+            foreach (var item in pendingItems)
+            {
+                if (_seenWpsOfficeApprovalIds.Add(item.Id))
+                {
+                    PendingApprovalDetected?.Invoke(this, item);
+                }
+            }
+        }
+
+        foreach (var staleId in _seenWpsOfficeApprovalIds.Where(id => !currentPendingIds.Contains(id)).ToList())
+        {
+            _seenWpsOfficeApprovalIds.Remove(staleId);
+        }
     }
 
     private void UpdateNotifications(IEnumerable<ContextMenuEntry> snapshot)
@@ -928,7 +1083,24 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             return;
         }
 
-        Items.Add(new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService, _settingsService));
+        Items.Add(CreateItemViewModel(entry));
+    }
+
+    private void UpsertWpsOfficeApprovalItem(ContextMenuEntry entry)
+    {
+        var existing = WpsOfficeApprovalItems.FirstOrDefault(item => string.Equals(item.Id, entry.Id, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            existing.Update(entry);
+            return;
+        }
+
+        WpsOfficeApprovalItems.Add(CreateItemViewModel(entry));
+    }
+
+    private ContextMenuItemViewModel CreateItemViewModel(ContextMenuEntry entry)
+    {
+        return new ContextMenuItemViewModel(entry, _localization, _iconPreviewService, _itemActionsService, SetEnabledAsync, SetShellAttributeAsync, SetDisplayTextAsync, AcknowledgeItemStateAsync, SetCommandTextAsync, _deepAnalysisService, _settingsService);
     }
 
     private void RemoveItem(string itemId)
@@ -938,6 +1110,13 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         {
             existing.Dispose();
             Items.Remove(existing);
+        }
+
+        var existingWpsApproval = WpsOfficeApprovalItems.FirstOrDefault(item => string.Equals(item.Id, itemId, StringComparison.OrdinalIgnoreCase));
+        if (existingWpsApproval is not null)
+        {
+            existingWpsApproval.Dispose();
+            WpsOfficeApprovalItems.Remove(existingWpsApproval);
         }
     }
 
@@ -989,6 +1168,10 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         ServiceAttentionState.Installing => _localization.Translate("SystemServiceInstallingBanner"),
         _ => string.Empty
     };
+
+    private static bool IsWpsOfficeApprovalItemId(string? itemId)
+        => !string.IsNullOrWhiteSpace(itemId)
+           && itemId.StartsWith("special:wps-", StringComparison.OrdinalIgnoreCase);
 
     private void ClearMenuLoadFailure()
     {

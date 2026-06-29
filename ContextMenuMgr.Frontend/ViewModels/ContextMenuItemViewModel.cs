@@ -69,10 +69,25 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public ContextMenuCategory Category => Entry.Category;
 
-    public string DisplayName => string.Equals(Entry.Id, "special:recyclebin:pintohome", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(Entry.DisplayName, "RecycleBinPinToQuickAccess", StringComparison.Ordinal)
-        ? _localization.Translate("RecycleBinPinToQuickAccess")
-        : Entry.DisplayName;
+    public string DisplayName
+    {
+        get
+        {
+            if (string.Equals(Entry.Id, "special:recyclebin:pintohome", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Entry.DisplayName, "RecycleBinPinToQuickAccess", StringComparison.Ordinal))
+            {
+                return _localization.Translate("RecycleBinPinToQuickAccess");
+            }
+
+            return Entry.Id switch
+            {
+                "special:wps-office-association:document-formats" => _localization.Translate("WpsOfficeAssociationHijackTitle"),
+                "special:wps-office-icon:document-icons" => _localization.Translate("WpsOfficeIconHijackTitle"),
+                _ when IsWpsShellNewInjection => GetWpsShellNewInjectionTitle(),
+                _ => Entry.DisplayName
+            };
+        }
+    }
 
     public string KeyName => Entry.KeyName;
 
@@ -84,7 +99,22 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public string RegistryPath => Entry.RegistryPath;
 
-    public string Notes => Entry.Notes ?? string.Empty;
+    public string Notes => Entry.Id switch
+    {
+        "special:wps-office-association:document-formats" => _localization.Format(
+            "WpsOfficeAssociationHijackSummary",
+            GetWpsAffectedCount(),
+            GetWpsAffectedList("extension")),
+        "special:wps-office-icon:document-icons" => _localization.Format(
+            "WpsOfficeIconHijackSummary",
+            GetWpsAffectedCount(),
+            GetWpsAffectedList("progId")),
+        _ when IsWpsShellNewInjection => _localization.Format(
+            "WpsOfficeShellNewInjectionSummary",
+            Entry.KeyName,
+            GetWpsShellNewCommandSummary()),
+        _ => Entry.Notes ?? string.Empty
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUserNote))]
@@ -98,6 +128,14 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         : string.Empty;
 
     public bool ShowNotes => !string.IsNullOrWhiteSpace(Entry.Notes);
+
+    public string? NotesToolTip => !string.IsNullOrWhiteSpace(Entry.DetectedChangeDetails)
+        && !string.Equals(Entry.DetectedChangeDetails, Notes, StringComparison.Ordinal)
+            ? Entry.DetectedChangeDetails
+            : null;
+
+    private bool IsWpsShellNewInjection
+        => Entry.Id.StartsWith("special:wps-shellnew-injection:", StringComparison.OrdinalIgnoreCase);
 
     public ImageSource? IconSource => _iconPreviewService.GetIcon(Entry.IconPath, Entry.IconIndex, Entry.FilePath);
 
@@ -519,6 +557,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RegistryPath));
         OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(ShowNotes));
+        OnPropertyChanged(nameof(NotesToolTip));
         OnPropertyChanged(nameof(IconSource));
         OnPropertyChanged(nameof(HasIcon));
         OnPropertyChanged(nameof(ShowKeyName));
@@ -877,6 +916,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(ShowNotes));
+        OnPropertyChanged(nameof(NotesToolTip));
         OnPropertyChanged(nameof(KeyName));
         OnPropertyChanged(nameof(CategoryName));
         OnPropertyChanged(nameof(StateLabel));
@@ -998,5 +1038,91 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         return lastSeparatorIndex >= 0
             ? normalized[(lastSeparatorIndex + 1)..]
             : normalized;
+    }
+
+    private string GetWpsAffectedCount()
+    {
+        var details = Entry.DetectedChangeDetails;
+        if (string.IsNullOrWhiteSpace(details))
+        {
+            return "0";
+        }
+
+        const string marker = "affectedCount=";
+        var start = details.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return "0";
+        }
+
+        start += marker.Length;
+        var end = details.IndexOf(';', start);
+        return details[start..(end < 0 ? details.Length : end)].Trim();
+    }
+
+    private string GetWpsAffectedList(string key)
+    {
+        var details = Entry.DetectedChangeDetails;
+        if (string.IsNullOrWhiteSpace(details))
+        {
+            return string.Empty;
+        }
+
+        var marker = $"{key}=";
+        var values = details
+            .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => ExtractDetailValue(part, marker))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return values.Length == 0 ? string.Empty : string.Join(", ", values);
+    }
+
+    private string GetWpsShellNewInjectionTitle()
+    {
+        if (Entry.KeyName.Contains("pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localization.Translate("WpsOfficeShellNewInjectionPdfTitle");
+        }
+
+        if (Entry.KeyName.Contains("pptx", StringComparison.OrdinalIgnoreCase)
+            && Entry.KeyName.Contains("aicreate", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localization.Translate("WpsOfficeShellNewInjectionPptxAiTitle");
+        }
+
+        return _localization.Format("WpsOfficeShellNewInjectionTitle", Entry.KeyName);
+    }
+
+    private string GetWpsShellNewCommandSummary()
+    {
+        var command = Entry.CommandText;
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            command = ExtractDetailValue(Entry.DetectedChangeDetails ?? string.Empty, "shellNewCommand=");
+        }
+
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return string.Empty;
+        }
+
+        return command.Contains("ksolaunch.exe", StringComparison.OrdinalIgnoreCase)
+            ? "ksolaunch.exe"
+            : command;
+    }
+
+    private static string? ExtractDetailValue(string detail, string marker)
+    {
+        var start = detail.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        start += marker.Length;
+        var end = detail.IndexOf(',', start);
+        return detail[start..(end < 0 ? detail.Length : end)].Trim();
     }
 }

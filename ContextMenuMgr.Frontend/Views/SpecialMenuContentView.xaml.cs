@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using ContextMenuMgr.Frontend.ViewModels;
 
 namespace ContextMenuMgr.Frontend.Views;
 
@@ -13,5 +14,23 @@ public partial class SpecialMenuContentView : UserControl
     public SpecialMenuContentView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
     }
+
+    private async void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (DataContext is not SpecialMenuPageViewModel viewModel)
+        {
+            return;
+        }
+
+        try
+        {
+            await viewModel.RefreshAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
 }

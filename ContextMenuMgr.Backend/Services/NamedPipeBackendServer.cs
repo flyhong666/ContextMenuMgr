@@ -319,7 +319,9 @@ public sealed class NamedPipeBackendServer
             {
                 Success = true,
                 Message = "Snapshot loaded.",
-                Items = await _catalog.GetSnapshotAsync(cancellationToken)
+                Items = await _catalog.GetSnapshotAsync(
+                    cancellationToken,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken))
             },
             PipeCommand.GetSceneSnapshot when request.SceneKind is not null
                 => new PipeResponse
@@ -474,6 +476,25 @@ public sealed class NamedPipeBackendServer
                     request.ClientOperationId,
                     await ResolveFrontendUserContextAsync(stream, cancellationToken),
                     cancellationToken),
+            PipeCommand.GetOfficeSuiteCoexistenceStatus
+                => new PipeResponse
+                {
+                    Success = true,
+                    Message = "Office suite co-existence status loaded.",
+                    OfficeSuiteCoexistence = _catalog.GetOfficeSuiteCoexistenceStatus(
+                        await ResolveFrontendUserContextAsync(stream, cancellationToken))
+                },
+            PipeCommand.GetWpsOfficePendingApprovals
+                => new PipeResponse
+                {
+                    Success = true,
+                    Message = "WPS Office pending approvals loaded.",
+                    Items = await _catalog.GetWpsOfficePendingApprovalsAsync(
+                        cancellationToken,
+                        await ResolveFrontendUserContextAsync(stream, cancellationToken))
+                },
+            PipeCommand.SetDocumentIconProvider when request.DocumentIconProvider is not null
+                => await HandleSetDocumentIconProviderAsync(request.DocumentIconProvider.Value, stream, cancellationToken),
             _ => new PipeResponse
             {
                 Success = false,
@@ -493,6 +514,24 @@ public sealed class NamedPipeBackendServer
             request.Enable.GetValueOrDefault(),
             cancellationToken,
             userContext);
+    }
+
+    private async Task<PipeResponse> HandleSetDocumentIconProviderAsync(
+        DocumentIconProvider provider,
+        NamedPipeServerStream stream,
+        CancellationToken cancellationToken)
+    {
+        var userContext = await ResolveFrontendUserContextAsync(stream, cancellationToken);
+        if (userContext is null)
+        {
+            return new PipeResponse
+            {
+                Success = false,
+                Message = "Cannot change document icons: frontend user context is not available."
+            };
+        }
+
+        return _catalog.SetDocumentIconProvider(userContext, provider);
     }
 
     private async Task<PipeResponse> HandleSetEnhanceMenuItemEnabledAsync(

@@ -192,6 +192,17 @@
                     Visibility="{Binding NeedsExplorerRestart, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <ui:Button
                     Height="32"
+                    MinWidth="108"
+                    Margin="0,0,8,0"
+                    Padding="14,6"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Appearance="Primary"
+                    Command="{Binding RefreshIconCacheCommand}"
+                    Content="{Binding RefreshIconCacheText}"
+                    Icon="{ui:SymbolIcon Symbol=ArrowSync24}"
+                    Visibility="{Binding NeedsIconCacheRefresh, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <ui:Button
+                    Height="32"
                     MinWidth="92"
                     Padding="14,6"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True"

@@ -32,7 +32,12 @@ public partial class ApprovalsPageViewModel : ObservableObject, IDisposable
         _localization.LanguageChanged += OnLanguageChanged;
         _navigationState.ApprovalsRequested += OnApprovalsRequested;
         _workspace.Items.CollectionChanged += OnItemsCollectionChanged;
+        _workspace.WpsOfficeApprovalItems.CollectionChanged += OnItemsCollectionChanged;
         foreach (var item in _workspace.Items)
+        {
+            item.PropertyChanged += OnItemPropertyChanged;
+        }
+        foreach (var item in _workspace.WpsOfficeApprovalItems)
         {
             item.PropertyChanged += OnItemPropertyChanged;
         }
@@ -42,6 +47,7 @@ public partial class ApprovalsPageViewModel : ObservableObject, IDisposable
         ItemsView.SortDescriptions.Add(new SortDescription(nameof(ApprovalQueueItemViewModel.DisplayName), ListSortDirection.Ascending));
         RefreshLocalizedText();
         RebuildItems();
+        ObserveFireAndForget(_workspace.RefreshWpsOfficeApprovalsAsync(), "RefreshWpsOfficeApprovalsAsync");
     }
 
     /// <summary>
@@ -252,6 +258,7 @@ public partial class ApprovalsPageViewModel : ObservableObject, IDisposable
     private void RebuildItems()
     {
         var grouped = _workspace.Items
+            .Concat(_workspace.WpsOfficeApprovalItems)
             .Where(static item => item.IsPendingApproval)
             .GroupBy(CreateApprovalGroupKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => new ApprovalQueueItemViewModel(group.ToArray(), _localization))
@@ -280,7 +287,12 @@ public partial class ApprovalsPageViewModel : ObservableObject, IDisposable
         _localization.LanguageChanged -= OnLanguageChanged;
         _navigationState.ApprovalsRequested -= OnApprovalsRequested;
         _workspace.Items.CollectionChanged -= OnItemsCollectionChanged;
+        _workspace.WpsOfficeApprovalItems.CollectionChanged -= OnItemsCollectionChanged;
         foreach (var item in _workspace.Items)
+        {
+            item.PropertyChanged -= OnItemPropertyChanged;
+        }
+        foreach (var item in _workspace.WpsOfficeApprovalItems)
         {
             item.PropertyChanged -= OnItemPropertyChanged;
         }
@@ -288,6 +300,7 @@ public partial class ApprovalsPageViewModel : ObservableObject, IDisposable
 
     private void OnApprovalsRequested(object? sender, EventArgs e)
     {
+        ObserveFireAndForget(_workspace.RefreshWpsOfficeApprovalsAsync(), "RefreshWpsOfficeApprovalsAsync");
         ApplyFocusRequest();
     }
 
@@ -301,5 +314,17 @@ public partial class ApprovalsPageViewModel : ObservableObject, IDisposable
         SelectedItem = Items.FirstOrDefault(
             approval => approval.SourceItems.Any(
                 sourceItem => string.Equals(sourceItem.Id, _navigationState.FocusItemId, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static async void ObserveFireAndForget(Task task, string operationName)
+    {
+        try
+        {
+            await task;
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("ApprovalsPageViewModel", $"{operationName} failed: {ex.Message}");
+        }
     }
 }

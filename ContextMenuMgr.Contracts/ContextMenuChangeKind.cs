@@ -9,5 +9,8 @@ public enum ContextMenuChangeKind
     Added = 1,
     Removed = 2,
     Modified = 3,
-    Reappeared = 4
+    Reappeared = 4,
+    WpsOfficeAssociationHijack = 100,
+    WpsOfficeIconHijack = 101,
+    WpsOfficeShellNewInjection = 102
 }

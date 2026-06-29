@@ -148,4 +148,12 @@ public interface IBackendClient : IAsyncDisposable
     Task SetTrayIconPolicyAsync(bool showTrayIcon, CancellationToken cancellationToken);
 
     Task SetLogLevelAsync(RuntimeLogLevel logLevel, CancellationToken cancellationToken);
+
+    Task<OfficeSuiteCoexistenceStatus?> GetOfficeSuiteCoexistenceStatusAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ContextMenuEntry>> GetWpsOfficePendingApprovalsAsync(CancellationToken cancellationToken);
+
+    Task<OfficeSuiteCoexistenceStatus?> SetDocumentIconProviderAsync(
+        DocumentIconProvider provider,
+        CancellationToken cancellationToken);
 }

@@ -162,6 +162,12 @@
   <data name="RestartExplorerFailed" xml:space="preserve">
     <value>重启资源管理器失败。</value>
   </data>
+  <data name="RefreshIconCache" xml:space="preserve">
+    <value>清空图标缓存</value>
+  </data>
+  <data name="RefreshIconCacheFailed" xml:space="preserve">
+    <value>刷新图标缓存失败</value>
+  </data>
   <data name="SearchLabel" xml:space="preserve">
     <value>筛选</value>
   </data>
@@ -209,6 +215,30 @@
   </data>
   <data name="Windows11PendingApprovalTag" xml:space="preserve">
     <value>Win11 新菜单</value>
+  </data>
+  <data name="WpsOfficeAssociationHijackTitle" xml:space="preserve">
+    <value>WPS Office 修改了文档格式关联</value>
+  </data>
+  <data name="WpsOfficeIconHijackTitle" xml:space="preserve">
+    <value>WPS Office 修改了文档图标</value>
+  </data>
+  <data name="WpsOfficeAssociationHijackSummary" xml:space="preserve">
+    <value>受影响格式 {0} 个：{1}</value>
+  </data>
+  <data name="WpsOfficeIconHijackSummary" xml:space="preserve">
+    <value>受影响图标覆盖 {0} 个：{1}</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionPdfTitle" xml:space="preserve">
+    <value>WPS Office 注入了 PDF 新建菜单项</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionPptxAiTitle" xml:space="preserve">
+    <value>WPS Office 注入了 PPTX AI 新建菜单项</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionTitle" xml:space="preserve">
+    <value>WPS Office 注入了新建菜单项：{0}</value>
+  </data>
+  <data name="WpsOfficeShellNewInjectionSummary" xml:space="preserve">
+    <value>注入类：{0}；命令：{1}</value>
   </data>
   <data name="ServiceNotesTitle" xml:space="preserve">
     <value>服务说明</value>
@@ -1309,6 +1339,15 @@
   </data>
   <data name="DefaultDropEffect" xml:space="preserve">
     <value>默认拖放效果</value>
+  </data>
+  <data name="DocumentIconProvider" xml:space="preserve">
+    <value>文档图标来源</value>
+  </data>
+  <data name="DocumentIconProviderDescription" xml:space="preserve">
+    <value>仅切换文档图标，不修改默认打开方式。</value>
+  </data>
+  <data name="DocumentIconProviderChangedHint" xml:space="preserve">
+    <value>要让对应文件类型成功切换图标，请将该文件类型的默认打开方式设置为当前选择的 Office 应用。如果修改后仍然没有生效，可以尝试点击上方的清空图标缓存按钮。</value>
   </data>
   <data name="SystemLevelItems" xml:space="preserve">
     <value>系统级项目</value>

@@ -74,6 +74,7 @@ public sealed class ContextMenuRegistryCatalog
     private readonly RegistryBackupService _backupService;
     private readonly BackendProtectionSettingsStore _protectionSettingsStore;
     private readonly Windows11ContextMenuCatalog _windows11Catalog;
+    private readonly OfficeSuiteCoexistenceDetector _officeCoexistenceDetector;
     private volatile bool _interactiveSessionObserved;
     private volatile bool _interactiveSessionSnapshotSettled;
 
@@ -91,6 +92,7 @@ public sealed class ContextMenuRegistryCatalog
         _backupService = backupService;
         _protectionSettingsStore = protectionSettingsStore;
         _windows11Catalog = new Windows11ContextMenuCatalog();
+        _officeCoexistenceDetector = new OfficeSuiteCoexistenceDetector(logger);
     }
 
     /// <summary>
@@ -100,7 +102,26 @@ public sealed class ContextMenuRegistryCatalog
     {
         return await BuildSnapshotAsync(
             await EnumerateActualEntriesAsync(cancellationToken, userContext),
-            static state => MonitoredStableRootPaths.Contains(state.SourceRootPath) || state.IsWindows11ContextMenu,
+            static state => MonitoredStableRootPaths.Contains(state.SourceRootPath)
+                            || state.IsWindows11ContextMenu,
+            persistDiscoveredStates: true,
+            persistSnapshotUpdates: true,
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ContextMenuEntry>> GetWpsOfficePendingApprovalsAsync(
+        CancellationToken cancellationToken = default,
+        BackendUserContext? userContext = null)
+    {
+        if (userContext is null)
+        {
+            return [];
+        }
+
+        var entries = _officeCoexistenceDetector.DetectSyntheticEntries(userContext);
+        return await BuildSnapshotAsync(
+            entries,
+            static state => IsWpsOfficeSyntheticSource(state.SourceRootPath),
             persistDiscoveredStates: true,
             persistSnapshotUpdates: true,
             cancellationToken);
@@ -263,9 +284,22 @@ public sealed class ContextMenuRegistryCatalog
         foreach (var entry in actualEntries.Values.OrderBy(static item => item.Category).ThenBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
             states.TryGetValue(entry.Id, out var state);
+            if (state is null && IsWpsOfficeSyntheticId(entry.Id))
+            {
+                state = PersistedContextMenuState.FromEntry(entry);
+                state.IsPendingApproval = true;
+                state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+                states[entry.Id] = state;
+                dirty = true;
+            }
+
             var issue = GetConsistencyIssue(entry, state);
-            var changeKind = GetDetectedChangeKind(entry, state, hasBaseline);
-            var changeDetails = GetDetectedChangeDetails(entry, state, changeKind);
+            var changeKind = IsWpsOfficeSyntheticId(entry.Id)
+                ? entry.DetectedChangeKind
+                : GetDetectedChangeKind(entry, state, hasBaseline);
+            var changeDetails = IsWpsOfficeSyntheticId(entry.Id)
+                ? entry.DetectedChangeDetails
+                : GetDetectedChangeDetails(entry, state, changeKind);
             var merged = entry with
             {
                 IsPendingApproval = state?.IsPendingApproval ?? false,
@@ -518,6 +552,10 @@ public sealed class ContextMenuRegistryCatalog
     {
         var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+        if (IsWpsOfficeSyntheticId(itemId))
+        {
+            return await AcknowledgeWpsOfficeSyntheticStateAsync(itemId, item, cancellationToken);
+        }
 
         return decision switch
         {
@@ -1603,6 +1641,48 @@ public sealed class ContextMenuRegistryCatalog
         return results;
     }
 
+    private async Task<PipeResponse> AcknowledgeWpsOfficeSyntheticStateAsync(
+        string itemId,
+        ContextMenuEntry? item,
+        CancellationToken cancellationToken)
+    {
+        var states = await _stateStore.LoadAsync(cancellationToken);
+        if (item is not null)
+        {
+            var state = GetOrCreateState(states, item);
+            state.IsPendingApproval = false;
+            state.SuppressNextDetection = false;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await _stateStore.SaveAsync(states, cancellationToken);
+            await _logger.LogAsync($"Acknowledged WPS Office co-existence finding: {item.DisplayName} ({item.Id}).", cancellationToken);
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"Acknowledged {item.DisplayName}."
+            };
+        }
+
+        if (states.TryGetValue(itemId, out var existing))
+        {
+            existing.IsPendingApproval = false;
+            existing.SuppressNextDetection = false;
+            existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            await _stateStore.SaveAsync(states, cancellationToken);
+        }
+
+        return new PipeResponse
+        {
+            Success = true,
+            Message = $"Acknowledged WPS Office co-existence finding '{itemId}'."
+        };
+    }
+
+    public OfficeSuiteCoexistenceStatus GetOfficeSuiteCoexistenceStatus(BackendUserContext? userContext)
+        => _officeCoexistenceDetector.Detect(userContext);
+
+    public PipeResponse SetDocumentIconProvider(BackendUserContext userContext, DocumentIconProvider provider)
+        => _officeCoexistenceDetector.SetDocumentIconProvider(userContext, provider);
+
     private IEnumerable<ContextMenuEntry> EnumerateEntries(IEnumerable<RegistryRootDescriptor> roots)
     {
         foreach (var root in roots)
@@ -2092,6 +2172,11 @@ public sealed class ContextMenuRegistryCatalog
 
         if (state.IsWindows11ContextMenu
             || string.Equals(state.SourceRootPath, Windows11MonitoredRootPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (IsWpsOfficeSyntheticSource(state.SourceRootPath))
         {
             return false;
         }
@@ -4038,6 +4123,13 @@ public sealed class ContextMenuRegistryCatalog
             .ThenBy(static entry => IsDisabledContainerEntry(entry) ? 1 : 0)
             .FirstOrDefault();
     }
+
+    private static bool IsWpsOfficeSyntheticId(string? itemId)
+        => !string.IsNullOrWhiteSpace(itemId)
+           && itemId.StartsWith("special:wps-", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsWpsOfficeSyntheticSource(string? sourceRootPath)
+        => string.Equals(sourceRootPath, "special:wps-office-coexistence", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsDisabledContainerEntry(ContextMenuEntry entry)
     {

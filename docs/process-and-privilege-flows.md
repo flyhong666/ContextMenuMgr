@@ -170,6 +170,8 @@ ProbeHost 的边界：
 | Win11 全局恢复经典菜单设置 | 链路 A | 是 | 否 | 写 `HKEY_USERS\<sid>\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32`，不得写服务 `HKCU` 或 HKLM；生效需要重启 Explorer 或重新登录。 |
 | Win11 snapshot | 链路 A | 是 | 否 | `Windows11ContextMenuCatalog.EnumerateEntriesAsync` 没有 SID 会跳过。 |
 | ShellNew 枚举 | 链路 A | 是 | 否 | 读取用户 `Software\Classes` 和 Explorer ShellNew order key。 |
+| WPS / Microsoft Office 共存保护 | 链路 A | 是 | 否 | 只在 WPS Office 和 Microsoft Office 同时存在时启用；读取 `HKEY_USERS\<sid>\Software\Classes`、ShellNew order key 和 HKLM Office baseline，通过待审核专用管道生成 WPS 关联 / 图标 / ShellNew 注入项，不进入普通文件 / ShellNew / OpenWith 页面。 |
+| 文档图标来源切换 | 链路 A | 是 | 否 | `PipeCommand.SetDocumentIconProvider` 只写当前前端用户 `HKEY_USERS\<sid>\Software\Classes\<ProgID>\DefaultIcon`，不写 HKLM，不修改 UserChoice Hash。 |
 | ShellNew 排序 | 链路 A | 是 | 否 | 写 Explorer ShellNew order key，可能需要临时 unlock/relock ACL。 |
 | ShellNew ACL lock/unlock | 链路 A | 是 | 否 | 只锁 ShellNew order key，不等于 Registry Write Protection。 |
 | SendTo 操作 | 链路 A | 是 | 否 | 操作用户 `%APPDATA%\Microsoft\Windows\SendTo`。 |

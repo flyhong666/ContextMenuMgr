@@ -155,13 +155,6 @@
                                                         </ui:TextBlock.Style>
                                                     </ui:TextBlock>
                                                 </Border>
-                                                <ui:Button
-                                                    Margin="10,0,0,0"
-                                                    Appearance="Secondary"
-                                                    Command="{Binding DeepAnalyzeMenuItemCommand}"
-                                                    Content="{Binding DeepAnalyzeMenuItemText}"
-                                                    ToolTip="{Binding DeepAnalyzeMenuItemTooltip}"
-                                                    Visibility="{Binding CanDeepAnalyzeMenuItem, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                 <Border
                                                     Margin="6,0,0,0"
                                                     Padding="8,2"
@@ -169,6 +162,7 @@
                                                     CornerRadius="4"
                                                     Visibility="{Binding IsPendingApproval, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <ui:TextBlock
+                                                        VerticalAlignment="Center"
                                                         FontSize="11"
                                                         Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                                         Text="{Binding PendingApprovalBadgeText}" />
@@ -185,6 +179,13 @@
                                                         Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                                         Text="{Binding DetectedChangeBadgeText}" />
                                                 </Border>
+                                                <ui:Button
+                                                    Margin="10,0,0,0"
+                                                    Appearance="Secondary"
+                                                    Command="{Binding DeepAnalyzeMenuItemCommand}"
+                                                    Content="{Binding DeepAnalyzeMenuItemText}"
+                                                    ToolTip="{Binding DeepAnalyzeMenuItemTooltip}"
+                                                    Visibility="{Binding CanDeepAnalyzeMenuItem, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             </WrapPanel>
 
                                             <ui:TextBlock
@@ -341,13 +342,13 @@
                                                     behaviors:ClickOpenSubmenuBehavior.IsEnabled="True"
                                                     Header="{Binding DetailsTitle}"
                                                     Visibility="{Binding HasDetailsActions, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <MenuItem
-                                                    Command="{Binding EditUserNoteCommand}"
-                                                    Header="{Binding DetailsEditUserNoteLabel}"
-                                                    StaysOpenOnClick="True"
-                                                    Visibility="{Binding CanEditUserNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                                <MenuItem
-                                                    Command="{Binding ChangeTextCommand}"
+                                                    <MenuItem
+                                                        Command="{Binding EditUserNoteCommand}"
+                                                        Header="{Binding DetailsEditUserNoteLabel}"
+                                                        StaysOpenOnClick="True"
+                                                        Visibility="{Binding CanEditUserNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                    <MenuItem
+                                                        Command="{Binding ChangeTextCommand}"
                                                         Header="{Binding DetailsChangeTextLabel}"
                                                         StaysOpenOnClick="True"
                                                         Visibility="{Binding CanEditText, Converter={StaticResource BooleanToVisibilityConverter}}" />

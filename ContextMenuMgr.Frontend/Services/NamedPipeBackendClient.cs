@@ -670,6 +670,36 @@ public sealed class NamedPipeBackendClient : IBackendClient
             cancellationToken);
     }
 
+    public async Task<OfficeSuiteCoexistenceStatus?> GetOfficeSuiteCoexistenceStatusAsync(CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest { Command = PipeCommand.GetOfficeSuiteCoexistenceStatus },
+            cancellationToken);
+        return response.OfficeSuiteCoexistence;
+    }
+
+    public async Task<IReadOnlyList<ContextMenuEntry>> GetWpsOfficePendingApprovalsAsync(CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest { Command = PipeCommand.GetWpsOfficePendingApprovals },
+            cancellationToken);
+        return response.Items;
+    }
+
+    public async Task<OfficeSuiteCoexistenceStatus?> SetDocumentIconProviderAsync(
+        DocumentIconProvider provider,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.SetDocumentIconProvider,
+                DocumentIconProvider = provider
+            },
+            cancellationToken);
+        return response.OfficeSuiteCoexistence;
+    }
+
     /// <summary>
     /// Releases resources used by the current instance.
     /// </summary>

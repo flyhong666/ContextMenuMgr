@@ -177,4 +177,6 @@ public sealed record PipeRequest
     /// Gets or sets the shared runtime log level.
     /// </summary>
     public RuntimeLogLevel? LogLevel { get; init; }
+
+    public DocumentIconProvider? DocumentIconProvider { get; init; }
 }
