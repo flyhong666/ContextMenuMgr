@@ -696,7 +696,7 @@
     <value>可攜版檔案被 Windows 封鎖</value>
   </data>
   <data name="PortableRuntimeBlockedWarningText" xml:space="preserve">
-    <value>這些可攜版檔案因為來自 Internet 下載內容而被 Windows 封鎖，可能導致服務安裝失敗。你可以解除目前可攜版資料夾的封鎖狀態後重試。</value>
+    <value>Windows 封鎖了這個來自 Internet 的可攜版包。請解鎖後重試服務安裝。</value>
   </data>
   <data name="UnblockPortableFilesAndRetry" xml:space="preserve">
     <value>解鎖並重試</value>

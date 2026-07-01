@@ -824,7 +824,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
             {
                 if (string.Equals(result.Code, "PORTABLE_RUNTIME_FILES_BLOCKED", StringComparison.OrdinalIgnoreCase))
                 {
-                    await PromptUnblockPortableRuntimeFilesAndRetryAsync(result.Detail);
+                    await PromptUnblockPortableRuntimeFilesAndRetryAsync();
                 }
                 else
                 {
@@ -857,16 +857,10 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         return ready;
     }
 
-    private async Task PromptUnblockPortableRuntimeFilesAndRetryAsync(string blockedFiles)
+    private async Task PromptUnblockPortableRuntimeFilesAndRetryAsync()
     {
-        var message = _localization.Translate("PortableRuntimeBlockedWarningText");
-        if (!string.IsNullOrWhiteSpace(blockedFiles))
-        {
-            message += Environment.NewLine + Environment.NewLine + blockedFiles;
-        }
-
         var shouldUnblock = await FrontendMessageBox.ShowConfirmAsync(
-            message,
+            _localization.Translate("PortableRuntimeBlockedWarningText"),
             _localization.Translate("PortableRuntimeBlockedWarningTitle"),
             _localization.Translate("UnblockPortableFilesAndRetry"),
             _localization.Translate("DialogCancel"));

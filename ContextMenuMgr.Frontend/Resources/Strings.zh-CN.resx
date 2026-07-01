@@ -696,7 +696,7 @@
     <value>便携版文件被 Windows 阻止</value>
   </data>
   <data name="PortableRuntimeBlockedWarningText" xml:space="preserve">
-    <value>这些便携版文件因为来自 Internet 下载内容而被 Windows 阻止，可能导致服务安装失败。你可以解除当前便携版文件夹的阻止状态后重试。</value>
+    <value>Windows 阻止了这个来自 Internet 的便携版包。请解锁后重试服务安装。</value>
   </data>
   <data name="UnblockPortableFilesAndRetry" xml:space="preserve">
     <value>解锁并重试</value>

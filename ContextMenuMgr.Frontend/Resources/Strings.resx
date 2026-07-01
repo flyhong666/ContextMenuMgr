@@ -696,7 +696,7 @@ Continue anyway? (Not recommended)</value>
     <value>Portable files are blocked by Windows</value>
   </data>
   <data name="PortableRuntimeBlockedWarningText" xml:space="preserve">
-    <value>The portable package files are blocked because they were downloaded from the Internet. This can prevent service installation. You can unblock the current portable folder and retry.</value>
+    <value>Windows has blocked this portable package because it was downloaded from the Internet. Unblock it and retry service installation.</value>
   </data>
   <data name="UnblockPortableFilesAndRetry" xml:space="preserve">
     <value>Unblock and retry</value>

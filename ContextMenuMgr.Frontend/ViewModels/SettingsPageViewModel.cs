@@ -424,7 +424,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         {
             await RefreshPortableRuntimeTrustWarningAsync();
             if (await FrontendMessageBox.ShowConfirmAsync(
-                    BuildPortableRuntimeBlockedMessage(),
+                    PortableRuntimeBlockedWarningText,
                     PortableRuntimeBlockedWarningTitle,
                     UnblockPortableFilesAndRetryText,
                     CancelText))
@@ -1070,10 +1070,6 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    private string BuildPortableRuntimeBlockedMessage()
-        => string.IsNullOrWhiteSpace(PortableRuntimeBlockedFilesText)
-            ? PortableRuntimeBlockedWarningText
-            : PortableRuntimeBlockedWarningText + Environment.NewLine + Environment.NewLine + PortableRuntimeBlockedFilesText;
 
     private async Task ApplyShowTrayIconAsync(bool value)
     {
