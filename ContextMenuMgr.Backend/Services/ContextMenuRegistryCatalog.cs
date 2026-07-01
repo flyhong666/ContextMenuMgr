@@ -938,11 +938,13 @@ public sealed class ContextMenuRegistryCatalog
             var relativeGroupPath = NormalizeClassesRootRelativePath(groupRegistryPath)
                 ?? throw new InvalidOperationException("The enhance-menu group path must point into HKCR.");
             var states = await _stateStore.LoadAsync(cancellationToken);
+            var requestedCultureName = cultureName?.Trim();
             var effectiveCultureName = NormalizeEnhanceCultureName(cultureName);
+            EnhanceAttributeWriteResult? enhanceWriteResult = null;
 
             if (itemElement.Attribute("KeyName") is not null)
             {
-                SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName, userContext, _logger);
+                enhanceWriteResult = SetEnhanceShellItemEnabled(relativeGroupPath, itemElement, enable, effectiveCultureName, userContext, _logger);
             }
             else if (itemElement.Element("Guid") is not null)
             {
@@ -966,6 +968,18 @@ public sealed class ContextMenuRegistryCatalog
             }
 
             ShellChangeNotifier.NotifyAssociationsChanged();
+
+            if (enable && itemElement.Attribute("KeyName") is not null)
+            {
+                await _logger.LogAsync(
+                    "EnhanceShellItemWrite: "
+                    + $"RequestedCulture={requestedCultureName ?? string.Empty}, "
+                    + $"NormalizedCulture={effectiveCultureName}, "
+                    + $"KeyName={itemElement.Attribute("KeyName")?.Value?.Trim()}, "
+                    + $"SelectedMUIVerb={enhanceWriteResult?.MuiVerb ?? string.Empty}, "
+                    + $"CultureOverrideApplied={enhanceWriteResult?.CultureOverrideApplied ?? false}.",
+                    cancellationToken);
+            }
 
             await _logger.LogAsync(
                 $"{(enable ? "Enabled" : "Disabled")} enhance menu item under {groupRegistryPath}. "
@@ -2516,7 +2530,7 @@ public sealed class ContextMenuRegistryCatalog
         DeleteRegistryKeyTree(registryPath);
     }
 
-    private static void SetEnhanceShellItemEnabled(
+    private static EnhanceAttributeWriteResult? SetEnhanceShellItemEnabled(
         string relativeGroupPath,
         XElement itemElement,
         bool enable,
@@ -2533,7 +2547,7 @@ public sealed class ContextMenuRegistryCatalog
         var registryPath = $@"{relativeGroupPath}\shell\{keyName}";
         if (enable)
         {
-            WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName, userContext, logger);
+            return WriteEnhanceSubKeysValue(itemElement, registryPath, cultureName, userContext, logger);
         }
         else
         {
@@ -2549,6 +2563,8 @@ public sealed class ContextMenuRegistryCatalog
                 // Log a warning but do not fail the user-level operation.
                 _ = registryPath; // Suppress unused warning; path is logged by caller.
             }
+
+            return null;
         }
     }
 
@@ -2670,7 +2686,7 @@ public sealed class ContextMenuRegistryCatalog
         return $@"{parentRelativePath}\{candidate}";
     }
 
-    private static void WriteEnhanceSubKeysValue(
+    private static EnhanceAttributeWriteResult? WriteEnhanceSubKeysValue(
         XElement keyElement,
         string registryPath,
         string cultureName,
@@ -2679,10 +2695,11 @@ public sealed class ContextMenuRegistryCatalog
     {
         if (!ShouldIncludeNode(keyElement, cultureName))
         {
-            return;
+            return null;
         }
 
         EnableBackupPrivilege();
+        EnhanceAttributeWriteResult? result = null;
 
         var defaultValue = keyElement.Attribute("Default")?.Value;
         if (!string.IsNullOrWhiteSpace(defaultValue))
@@ -2708,25 +2725,28 @@ public sealed class ContextMenuRegistryCatalog
             WriteEnhanceCommandValue(keyElement, registryPath, cultureName, userContext, logger);
         }
 
-        WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath, cultureName, userContext);
+        result = WriteEnhanceAttributesValue(keyElement.Element("Value"), registryPath, cultureName, userContext);
 
         var subKeyElement = keyElement.Element("SubKey");
         if (subKeyElement is null)
         {
-            return;
+            return result;
         }
 
         foreach (var childElement in subKeyElement.Elements())
         {
-            WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName, userContext, logger);
+            var childResult = WriteEnhanceSubKeysValue(childElement, $@"{registryPath}\{childElement.Name.LocalName}", cultureName, userContext, logger);
+            result ??= childResult;
         }
+
+        return result;
     }
 
-    private static void WriteEnhanceAttributesValue(XElement? valueElement, string registryPath, string cultureName, BackendUserContext userContext)
+    private static EnhanceAttributeWriteResult? WriteEnhanceAttributesValue(XElement? valueElement, string registryPath, string cultureName, BackendUserContext userContext)
     {
         if (valueElement is null || !ShouldIncludeNode(valueElement, cultureName))
         {
-            return;
+            return null;
         }
 
         EnableBackupPrivilege();
@@ -2739,8 +2759,11 @@ public sealed class ContextMenuRegistryCatalog
                 $"Unable to create per-user registry key: HKEY_USERS\\{userContext.Sid}\\{UserClassesPath}\\{registryPath}.");
         }
 
-        foreach (var valueNode in SelectLocalizedElements(valueElement.Elements(), cultureName))
+        string? selectedMuiVerb = null;
+        var cultureOverrideApplied = false;
+        foreach (var valueNode in SelectLocalizedElementsForWrite(valueElement.Elements(), cultureName))
         {
+            var nodeHasExactCulture = HasExactNormalizedCulture(valueNode, cultureName);
             foreach (var attribute in valueNode.Attributes())
             {
                 if (string.IsNullOrWhiteSpace(attribute.Name.LocalName)
@@ -2756,6 +2779,8 @@ public sealed class ContextMenuRegistryCatalog
                         if (string.Equals(attribute.Name.LocalName, "MUIVerb", StringComparison.OrdinalIgnoreCase))
                         {
                             attributeValue = EnhanceMenuTextSanitizer.StripMenuAcceleratorAmpersands(attributeValue);
+                            selectedMuiVerb = Environment.ExpandEnvironmentVariables(attributeValue);
+                            cultureOverrideApplied = nodeHasExactCulture;
                         }
 
                         key.SetValue(attribute.Name.LocalName, Environment.ExpandEnvironmentVariables(attributeValue), RegistryValueKind.String);
@@ -2774,6 +2799,10 @@ public sealed class ContextMenuRegistryCatalog
                 }
             }
         }
+
+        return selectedMuiVerb is null
+            ? null
+            : new EnhanceAttributeWriteResult(selectedMuiVerb, cultureOverrideApplied);
     }
 
     private static void WriteEnhanceCommandValue(
@@ -2808,7 +2837,7 @@ public sealed class ContextMenuRegistryCatalog
         var fileNameElement = commandElement.Element("FileName");
         var argumentsElement = commandElement.Element("Arguments");
         var shellExecuteElement = commandElement.Element("ShellExecute");
-        var powerShellScriptElement = SelectLocalizedElement(commandElement.Elements("PowerShellScript"), cultureName);
+        var powerShellScriptElement = SelectLocalizedElementForWrite(commandElement.Elements("PowerShellScript"), cultureName);
 
         if (powerShellScriptElement is not null)
         {
@@ -2938,6 +2967,84 @@ public sealed class ContextMenuRegistryCatalog
         return flaggedCount == 0 ? 0 : 2;
     }
 
+    internal static int ValidateEnhanceLocalizationSelection(TextWriter writer)
+    {
+        var failures = new List<string>();
+        var valueNodes = ParseElements(
+            """
+            <Root>
+              <REG_SZ MUIVerb="系统信息" />
+              <REG_SZ MUIVerb="System Info"><Culture>en-US</Culture></REG_SZ>
+              <REG_SZ MUIVerb="系統資訊"><Culture>zh-TW</Culture></REG_SZ>
+            </Root>
+            """);
+        var scriptNodes = ParseElements(
+            """
+            <Root>
+              <PowerShellScript>simplified-script</PowerShellScript>
+              <PowerShellScript>traditional-script<Culture>zh-TW</Culture></PowerShellScript>
+              <PowerShellScript>english-script<Culture>en-US</Culture></PowerShellScript>
+            </Root>
+            """);
+
+        ExpectEqual("zh-CN value selection", "系统信息", GetFinalSelectedMuiVerb(valueNodes, "zh-CN"), failures);
+        ExpectEqual("zh-TW value selection", "系統資訊", GetFinalSelectedMuiVerb(valueNodes, "zh-TW"), failures);
+        ExpectEqual("en-US value selection", "System Info", GetFinalSelectedMuiVerb(valueNodes, "en-US"), failures);
+        ExpectFalse(
+            "zh-CN excludes zh-TW value node",
+            SelectLocalizedElementsForWrite(valueNodes, "zh-CN").Any(element => HasExactNormalizedCulture(element, "zh-TW")),
+            failures);
+        ExpectEqual("zh-TW normalization", "zh-TW", NormalizeEnhanceCultureName("zh-TW"), failures);
+        ExpectEqual(
+            "PowerShellScript zh-CN selection",
+            "simplified-script",
+            GetDirectElementText(SelectLocalizedElementForWrite(scriptNodes, "zh-CN")!).Trim(),
+            failures);
+        ExpectEqual(
+            "PowerShellScript en-US selection",
+            "english-script",
+            GetDirectElementText(SelectLocalizedElementForWrite(scriptNodes, "en-US")!).Trim(),
+            failures);
+
+        if (failures.Count == 0)
+        {
+            writer.WriteLine("Enhance localization selection validation passed.");
+            return 0;
+        }
+
+        writer.WriteLine("Enhance localization selection validation failed:");
+        foreach (var failure in failures)
+        {
+            writer.WriteLine($"- {failure}");
+        }
+
+        return 1;
+
+        static IReadOnlyList<XElement> ParseElements(string xml)
+            => XElement.Parse(xml).Elements().ToList();
+
+        static string? GetFinalSelectedMuiVerb(IReadOnlyList<XElement> elements, string cultureName)
+            => SelectLocalizedElementsForWrite(elements, cultureName)
+                .Select(element => element.Attribute("MUIVerb")?.Value)
+                .LastOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        static void ExpectEqual(string name, string expected, string? actual, List<string> failures)
+        {
+            if (!string.Equals(expected, actual, StringComparison.Ordinal))
+            {
+                failures.Add($"{name}: expected '{expected}', got '{actual ?? "<null>"}'.");
+            }
+        }
+
+        static void ExpectFalse(string name, bool actual, List<string> failures)
+        {
+            if (actual)
+            {
+                failures.Add($"{name}: expected false, got true.");
+            }
+        }
+    }
+
     private static (string CommandKind, string Command) CompileEnhanceDiagnosticCommand(XElement commandElement, string cultureName)
     {
         var defaultValue = commandElement.Attribute("Default")?.Value;
@@ -3011,6 +3118,8 @@ public sealed class ContextMenuRegistryCatalog
         string GeneratedCommandKind,
         bool GeneratedFileCreated,
         string WrapperReason);
+
+    private sealed record EnhanceAttributeWriteResult(string MuiVerb, bool CultureOverrideApplied);
 
     private static bool RequiresShellExecuteWrapper(XElement shellExecuteElement)
         => !string.IsNullOrEmpty(GetShellExecuteWrapperReason(shellExecuteElement));
@@ -3203,29 +3312,25 @@ public sealed class ContextMenuRegistryCatalog
         Directory.CreateDirectory(generatedDir);
 
         var path = string.Empty;
-        foreach (var createFileElement in SelectLocalizedElements(parentElement.Elements("CreateFile"), cultureName))
+        var createFileElement = SelectLocalizedElementForWrite(parentElement.Elements("CreateFile"), cultureName);
+        if (createFileElement is not null)
         {
             var fileName = createFileElement.Attribute("FileName")?.Value;
             var content = createFileElement.Attribute("Content")?.Value ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(fileName))
+            if (!string.IsNullOrWhiteSpace(fileName))
             {
-                continue;
-            }
+                var safeFileName = SanitizeEnhanceProgramFileName(fileName);
+                var filePath = Path.Combine(generatedDir, safeFileName);
+                var encoding = string.Equals(Path.GetExtension(fileName), ".bat", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Path.GetExtension(fileName), ".cmd", StringComparison.OrdinalIgnoreCase)
+                        ? Encoding.Default
+                        : Encoding.Unicode;
 
-            var safeFileName = SanitizeEnhanceProgramFileName(fileName);
-            var filePath = Path.Combine(generatedDir, safeFileName);
-            var encoding = string.Equals(Path.GetExtension(fileName), ".bat", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(Path.GetExtension(fileName), ".cmd", StringComparison.OrdinalIgnoreCase)
-                    ? Encoding.Default
-                    : Encoding.Unicode;
-
-            if (string.IsNullOrEmpty(path))
-            {
                 path = filePath;
-            }
 
-            File.Delete(filePath);
-            File.WriteAllText(filePath, content, encoding);
+                File.Delete(filePath);
+                File.WriteAllText(filePath, content, encoding);
+            }
         }
 
         return path;
@@ -3498,7 +3603,7 @@ public sealed class ContextMenuRegistryCatalog
         return MatchesCulture(element, cultureName);
     }
 
-    internal static XElement? SelectLocalizedElement(IEnumerable<XElement> elements, string cultureName)
+    internal static XElement? SelectLocalizedElementForWrite(IEnumerable<XElement> elements, string cultureName)
     {
         var candidates = elements.Where(IsValidLocalizedNode).ToList();
         if (candidates.Count == 0)
@@ -3506,12 +3611,32 @@ public sealed class ContextMenuRegistryCatalog
             return null;
         }
 
-        return candidates
-            .OrderByDescending(element => GetCultureSelectionRank(element, cultureName))
-            .FirstOrDefault();
+        var normalizedCultureName = NormalizeEnhanceCultureName(cultureName);
+        var exact = candidates.FirstOrDefault(element => HasExactNormalizedCulture(element, normalizedCultureName));
+        if (exact is not null)
+        {
+            return exact;
+        }
+
+        var noCulture = candidates.FirstOrDefault(IsNoCultureNode);
+        if (noCulture is not null)
+        {
+            return noCulture;
+        }
+
+        if (!IsChineseEnhanceCultureName(normalizedCultureName))
+        {
+            var english = candidates.FirstOrDefault(element => HasExactNormalizedCulture(element, "en-US"));
+            if (english is not null)
+            {
+                return english;
+            }
+        }
+
+        return candidates[0];
     }
 
-    private static IReadOnlyList<XElement> SelectLocalizedElements(IEnumerable<XElement> elements, string cultureName)
+    internal static IReadOnlyList<XElement> SelectLocalizedElementsForWrite(IEnumerable<XElement> elements, string cultureName)
     {
         var candidates = elements.Where(IsValidLocalizedNode).ToList();
         if (candidates.Count == 0)
@@ -3519,10 +3644,10 @@ public sealed class ContextMenuRegistryCatalog
             return [];
         }
 
-        var selected = candidates
-            .Where(element => IsNoCultureNode(element) || GetCultureSelectionRank(element, cultureName) > 0)
-            .OrderBy(element => GetCultureSelectionRank(element, cultureName))
-            .ToList();
+        var normalizedCultureName = NormalizeEnhanceCultureName(cultureName);
+        var selected = new List<XElement>();
+        selected.AddRange(candidates.Where(IsNoCultureNode));
+        selected.AddRange(candidates.Where(element => HasExactNormalizedCulture(element, normalizedCultureName)));
 
         return selected.Count > 0 ? selected : [candidates[0]];
     }
@@ -3533,34 +3658,16 @@ public sealed class ContextMenuRegistryCatalog
     private static bool IsNoCultureNode(XElement element)
         => string.IsNullOrWhiteSpace(element.Element("Culture")?.Value);
 
-    private static int GetCultureSelectionRank(XElement element, string cultureName)
+    private static bool HasExactNormalizedCulture(XElement element, string cultureName)
     {
         var culture = element.Element("Culture")?.Value?.Trim();
         if (string.IsNullOrWhiteSpace(culture))
         {
-            return 1;
+            return false;
         }
 
-        if (string.Equals(culture, cultureName, StringComparison.OrdinalIgnoreCase))
-        {
-            return 3;
-        }
-
-        try
-        {
-            var elementCulture = CultureInfo.GetCultureInfo(culture);
-            var requestedCulture = CultureInfo.GetCultureInfo(cultureName);
-            return string.Equals(
-                elementCulture.TwoLetterISOLanguageName,
-                requestedCulture.TwoLetterISOLanguageName,
-                StringComparison.OrdinalIgnoreCase)
-                    ? 2
-                    : 0;
-        }
-        catch (CultureNotFoundException)
-        {
-            return 0;
-        }
+        return TryNormalizeEnhanceCultureName(culture, out var normalizedElementCulture)
+            && string.Equals(normalizedElementCulture, NormalizeEnhanceCultureName(cultureName), StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasRequiredFiles(XElement element)
@@ -3585,7 +3692,8 @@ public sealed class ContextMenuRegistryCatalog
             return true;
         }
 
-        return string.Equals(culture, cultureName, StringComparison.OrdinalIgnoreCase);
+        return TryNormalizeEnhanceCultureName(culture, out var normalizedElementCulture)
+            && string.Equals(normalizedElementCulture, NormalizeEnhanceCultureName(cultureName), StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool MatchesOsVersion(XElement element)
@@ -3620,27 +3728,46 @@ public sealed class ContextMenuRegistryCatalog
 
     private static string NormalizeEnhanceCultureName(string? cultureName)
     {
+        if (TryNormalizeEnhanceCultureName(cultureName, out var normalizedCultureName)
+            || TryNormalizeEnhanceCultureName(CultureInfo.CurrentUICulture.Name, out normalizedCultureName))
+        {
+            return normalizedCultureName;
+        }
+
+        return "en-US";
+    }
+
+    private static bool TryNormalizeEnhanceCultureName(string? cultureName, out string normalizedCultureName)
+    {
+        normalizedCultureName = "en-US";
         if (string.IsNullOrWhiteSpace(cultureName))
         {
-            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
-                ? "zh-CN"
-                : "en-US";
+            return false;
         }
 
         try
         {
             var culture = CultureInfo.GetCultureInfo(cultureName.Trim());
-            return culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
-                ? "zh-CN"
-                : "en-US";
+            normalizedCultureName = culture.Name switch
+            {
+                "zh-CN" or "zh-Hans" or "zh-SG" => "zh-CN",
+                "zh-TW" or "zh-Hant" or "zh-HK" or "zh-MO" => "zh-TW",
+                "zh" => "zh-CN",
+                "en" or "en-US" => "en-US",
+                _ => "en-US"
+            };
+
+            return true;
         }
         catch (CultureNotFoundException)
         {
-            return CultureInfo.CurrentUICulture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
-                ? "zh-CN"
-                : "en-US";
+            return false;
         }
     }
+
+    private static bool IsChineseEnhanceCultureName(string cultureName)
+        => string.Equals(cultureName, "zh-CN", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(cultureName, "zh-TW", StringComparison.OrdinalIgnoreCase);
 
     private static string GetUniqueRegistryPath(string basePath, string keyName)
     {

@@ -21,6 +21,12 @@ internal static class Program
                 return 0;
             }
 
+            if (TryRunEnhanceLocalizationSelectionValidation(args, out var localizationSelectionExitCode))
+            {
+                BackendEmergencyLogger.Log($"Program.Main exiting after enhance localization selection validation. ExitCode={localizationSelectionExitCode}.");
+                return localizationSelectionExitCode;
+            }
+
             if (TryRunEnhanceMenuValidation(args, out var validationExitCode))
             {
                 BackendEmergencyLogger.Log($"Program.Main exiting after enhance menu validation. ExitCode={validationExitCode}.");
@@ -63,6 +69,18 @@ internal static class Program
         var cultureName = TryGetArgumentValue(args, "--culture");
 
         exitCode = ContextMenuRegistryCatalog.ValidateEnhanceMenuDictionary(dictionaryPath, cultureName, Console.Out);
+        return true;
+    }
+
+    private static bool TryRunEnhanceLocalizationSelectionValidation(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (!args.Any(static arg => string.Equals(arg, "--validate-enhance-localization-selection", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        exitCode = ContextMenuRegistryCatalog.ValidateEnhanceLocalizationSelection(Console.Out);
         return true;
     }
 
