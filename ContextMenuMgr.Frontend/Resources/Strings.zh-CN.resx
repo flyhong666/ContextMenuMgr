@@ -692,6 +692,18 @@
   <data name="InstallOrRepairService" xml:space="preserve">
     <value>安装或修复服务</value>
   </data>
+  <data name="PortableRuntimeBlockedWarningTitle" xml:space="preserve">
+    <value>便携版文件被 Windows 阻止</value>
+  </data>
+  <data name="PortableRuntimeBlockedWarningText" xml:space="preserve">
+    <value>这些便携版文件因为来自 Internet 下载内容而被 Windows 阻止，可能导致服务安装失败。你可以解除当前便携版文件夹的阻止状态后重试。</value>
+  </data>
+  <data name="UnblockPortableFilesAndRetry" xml:space="preserve">
+    <value>解锁并重试</value>
+  </data>
+  <data name="PortableRuntimeUnblockFailed" xml:space="preserve">
+    <value>部分便携版运行文件未能解除阻止。详细信息：{0}</value>
+  </data>
   <data name="SettingsUninstallService" xml:space="preserve">
     <value>卸载服务</value>
   </data>

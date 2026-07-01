@@ -451,6 +451,7 @@ public partial class MainViewModel : ObservableObject
         {
             "BACKEND_EXE_MISSING" => _localization.Translate("BackendExecutableMissing"),
             "ELEVATION_CANCELLED" => _localization.Translate("ServiceOperationCancelled"),
+            "PORTABLE_RUNTIME_FILES_BLOCKED" => _localization.Translate("PortableRuntimeBlockedWarningText"),
             "SERVICE_NOT_RUNNING" => _localization.Format("ServiceNotRunningStatus", detail),
             "BACKEND_PIPE_NOT_READY" => _localization.Format("ServiceInstallFailedDetailed", detail),
             "SERVICE_START_TIMEOUT" => _localization.Format("ServiceInstallFailedDetailed", detail),

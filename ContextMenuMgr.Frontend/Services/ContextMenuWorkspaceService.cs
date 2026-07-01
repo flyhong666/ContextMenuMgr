@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ContextMenuMgr.Contracts;
@@ -19,6 +20,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
     private readonly LocalizationService _localization;
     private readonly FrontendSettingsService _settingsService;
     private readonly TrayHostProcessService _trayHostProcessService;
+    private readonly PortablePackageTrustService _portablePackageTrustService;
     private readonly HashSet<string> _seenPendingApprovalIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _seenChangedItemIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _seenWpsOfficeApprovalIds = new(StringComparer.OrdinalIgnoreCase);
@@ -45,7 +47,8 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         IconPreviewService iconPreviewService,
         LocalizationService localization,
         FrontendSettingsService settingsService,
-        TrayHostProcessService trayHostProcessService)
+        TrayHostProcessService trayHostProcessService,
+        PortablePackageTrustService portablePackageTrustService)
     {
         _backendClient = backendClient;
         _backendServiceManager = backendServiceManager;
@@ -55,6 +58,7 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         _localization = localization;
         _settingsService = settingsService;
         _trayHostProcessService = trayHostProcessService;
+        _portablePackageTrustService = portablePackageTrustService;
         _backendClient.NotificationReceived += OnBackendNotificationReceived;
         ConnectionStatus = _localization.Translate("ConnectingStatus");
     }
@@ -809,16 +813,25 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
                     : ServiceAttentionState.Missing);
             ConnectionStatus = result.Cancelled
                 ? _localization.Translate("ServiceOperationCancelled")
-                : _localization.Format("ServiceInstallFailedDetailed", result.Detail);
+                : (string.Equals(result.Code, "PORTABLE_RUNTIME_FILES_BLOCKED", StringComparison.OrdinalIgnoreCase)
+                    ? _localization.Translate("PortableRuntimeBlockedWarningText")
+                    : _localization.Format("ServiceInstallFailedDetailed", result.Detail));
             SetMenuLoadFailure(result.Cancelled
                 ? MenuLoadFailureState.Cancelled
                 : MenuLoadFailureState.ServiceUnavailable);
 
             if (!result.Cancelled)
             {
-                await FrontendMessageBox.ShowErrorAsync(
-                    _localization.Format("ServiceInstallFailedDetailed", result.Detail),
-                    _localization.Translate("WindowTitle"));
+                if (string.Equals(result.Code, "PORTABLE_RUNTIME_FILES_BLOCKED", StringComparison.OrdinalIgnoreCase))
+                {
+                    await PromptUnblockPortableRuntimeFilesAndRetryAsync(result.Detail);
+                }
+                else
+                {
+                    await FrontendMessageBox.ShowErrorAsync(
+                        _localization.Format("ServiceInstallFailedDetailed", result.Detail),
+                        _localization.Translate("WindowTitle"));
+                }
             }
 
             return false;
@@ -842,6 +855,39 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         }
 
         return ready;
+    }
+
+    private async Task PromptUnblockPortableRuntimeFilesAndRetryAsync(string blockedFiles)
+    {
+        var message = _localization.Translate("PortableRuntimeBlockedWarningText");
+        if (!string.IsNullOrWhiteSpace(blockedFiles))
+        {
+            message += Environment.NewLine + Environment.NewLine + blockedFiles;
+        }
+
+        var shouldUnblock = await FrontendMessageBox.ShowConfirmAsync(
+            message,
+            _localization.Translate("PortableRuntimeBlockedWarningTitle"),
+            _localization.Translate("UnblockPortableFilesAndRetry"),
+            _localization.Translate("DialogCancel"));
+        if (!shouldUnblock)
+        {
+            return;
+        }
+
+        var unblockReport = await _portablePackageTrustService.UnblockPortableRuntimeFilesAsync(CancellationToken.None);
+        if (unblockReport.FailedFiles.Count > 0)
+        {
+            var failedFiles = string.Join(
+                Environment.NewLine,
+                unblockReport.FailedFiles.Select(static file => $"{Path.GetFileName(file.FilePath)}: {file.Error}"));
+            await FrontendMessageBox.ShowErrorAsync(
+                _localization.Format("PortableRuntimeUnblockFailed", failedFiles),
+                _localization.Translate("PortableRuntimeBlockedWarningTitle"));
+            return;
+        }
+
+        await EnsureBackendReadyAsync(suppressBootstrapPrompt: false);
     }
 
     private async Task<bool> CanReachBackendAsync()

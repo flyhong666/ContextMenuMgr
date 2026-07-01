@@ -326,7 +326,7 @@ Portable 删除备份按 host identity 分目录，当前主机目录由 `Runtim
 | 显示系统托盘图标 | 前端本地更新，通过 `PipeCommand.SetTrayIconPolicy` 写 `HKEY_USERS\<sid>\Software\ContextMenuMgr\Frontend\ShowTrayIcon`，并通过 TrayHost control pipe 运行时隐藏/显示图标。 |
 | Registry Write Protection | 通过 workspace 调用后端 pipe；前端本地设置只做 UI 同步。 |
 | 禁用 Win11 新版右键菜单 / 恢复经典右键菜单 | 通过 workspace 调用后端 pipe；后端使用前端用户 SID 写 `HKEY_USERS\<sid>\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}`，前端设置文件只镜像真实注册表状态；写入成功后只置位 `ExplorerRestartStateService.MarkRequired()`，由主窗口顶部全局重启按钮执行 Explorer 重启。 |
-| 服务安装/卸载/停止 | `BackendServiceManager` 走 UAC bootstrapper。 |
+| 服务安装/卸载/停止 | `BackendServiceManager` 走 UAC bootstrapper。Portable 包安装/修复前会检查当前应用目录运行时文件的 Mark-of-the-Web；命中时返回 `PORTABLE_RUNTIME_FILES_BLOCKED`，由设置页提示用户确认后解除当前 portable runtime 文件的 `Zone.Identifier`。 |
 
 ## 15. 构建与发布
 

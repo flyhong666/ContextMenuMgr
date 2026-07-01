@@ -40,6 +40,22 @@ Portable 包中 `frontend-settings.json` 的语言、主题、颜色等纯偏好
 | 优先查看的日志 | `frontend-debug.log`、bootstrap result file、bootstrap log 如运行时生成。 |
 | 常见修复方向 | 确认 `Verb=runas` 正常弹出；检查传入命令和 `--user-sid`；安装/修复只走链路 B，不要复用普通后端 pipe。 |
 
+### Portable 包文件被 Windows 阻止 / Mark-of-the-Web
+
+从浏览器下载的 portable zip 可能带有 Mark-of-the-Web。Windows 或解压工具有时会把 `Zone.Identifier` alternate data stream 传播到解压后的 `.exe` / `.dll` 文件。此时文件属性页可能显示“This file came from another computer and might be blocked to help protect this computer.”。如果 `ContextMenuManagerPlus.Service.exe`、`ContextMenuManagerPlus.TrayHost.exe`、`createdump.exe` 或其它运行时文件被阻止，前端通过 `Verb=runas` 启动服务 bootstrapper 时可能表现为 UAC 被拒绝、没有 result file、或等待超时。
+
+当前前端只会检测当前 portable 应用目录中的运行时文件，并且只会在用户确认后删除这些文件上的 `Zone.Identifier` ADS。它不会扫描用户文档、不会扫描应用目录外的路径、不会修改 ACL，也不会自动解除阻止。
+
+推荐的手动修复方式是在解压前处理 zip：右键下载的 zip 文件 -> Properties / 属性 -> Unblock / 解除锁定 -> Apply / 应用，然后重新解压。
+
+也可以对已解压的 portable 目录执行 PowerShell：
+
+```powershell
+Get-ChildItem -LiteralPath "<portable folder>" -Recurse -File | Unblock-File
+```
+
+如果应用检测到此问题，设置页的服务区域会显示 portable 文件阻止警告，并提供“解除便携版文件阻止并重试”操作。失败时优先查看 `frontend-debug.log` 中的 `PortableMotwScanStarted`、`PortableMotwDetected`、`PortableMotwUnblockStarted`、`PortableMotwUnblockSucceeded`、`PortableMotwUnblockFailed` 和 `ServiceBootstrapBlockedByMotw` 记录。
+
 ## 3. 前端因为后端异常而退出或无法加载
 
 | 项目 | 内容 |

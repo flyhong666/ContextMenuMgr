@@ -27,6 +27,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private readonly ContextMenuItemActionsService _actionsService;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
     private readonly ExplorerRestartStateService _explorerRestartState;
+    private readonly PortablePackageTrustService _portablePackageTrustService;
     private bool _suppressProtectionSync;
     private bool _suppressAutoStartSync;
     private bool _suppressTrayIconSync;
@@ -46,7 +47,8 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         FrontendThemeService themeService,
         ContextMenuItemActionsService actionsService,
         ListPlaceholderDebugStateService placeholderDebug,
-        ExplorerRestartStateService explorerRestartState)
+        ExplorerRestartStateService explorerRestartState,
+        PortablePackageTrustService portablePackageTrustService)
     {
         _settingsService = settingsService;
         _startupService = startupService;
@@ -57,6 +59,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         _actionsService = actionsService;
         _placeholderDebug = placeholderDebug;
         _explorerRestartState = explorerRestartState;
+        _portablePackageTrustService = portablePackageTrustService;
 
         AvailableLanguages =
         [
@@ -102,6 +105,7 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
         // Load async settings in background to avoid blocking UI thread
         _ = LoadInitialSettingsAsync();
+        _ = RefreshPortableRuntimeTrustWarningAsync();
     }
 
     /// <summary>
@@ -236,6 +240,12 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     public string InstallOrRepairServiceText => _localization.Translate("InstallOrRepairService");
 
+    public string PortableRuntimeBlockedWarningTitle => _localization.Translate("PortableRuntimeBlockedWarningTitle");
+
+    public string PortableRuntimeBlockedWarningText => _localization.Translate("PortableRuntimeBlockedWarningText");
+
+    public string UnblockPortableFilesAndRetryText => _localization.Translate("UnblockPortableFilesAndRetry");
+
     public string UninstallServiceText => _localization.Translate("SettingsUninstallService");
 
     public string RefreshText => _localization.Translate("Refresh");
@@ -279,6 +289,15 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     public string VersionLabel => "Version";
 
     public string VersionText => GetApplicationVersion();
+
+    [ObservableProperty]
+    public partial bool IsPortableRuntimeBlockedWarningVisible { get; private set; }
+
+    [ObservableProperty]
+    public partial string PortableRuntimeBlockedFilesText { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsPortableRuntimeUnblockInProgress { get; private set; }
 
     partial void OnSelectedLanguageChanged(LanguageOptionViewModel? value)
     {
@@ -401,6 +420,21 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
     private async Task InstallOrRepairServiceAsync()
     {
         var result = await _workspace.InstallOrRepairServiceAsync();
+        if (string.Equals(result.Code, "PORTABLE_RUNTIME_FILES_BLOCKED", StringComparison.OrdinalIgnoreCase))
+        {
+            await RefreshPortableRuntimeTrustWarningAsync();
+            if (await FrontendMessageBox.ShowConfirmAsync(
+                    BuildPortableRuntimeBlockedMessage(),
+                    PortableRuntimeBlockedWarningTitle,
+                    UnblockPortableFilesAndRetryText,
+                    CancelText))
+            {
+                await UnblockPortableFilesAndRetryAsync();
+            }
+
+            return;
+        }
+
         if (!result.Success && !result.Cancelled)
         {
             await FrontendMessageBox.ShowErrorAsync(
@@ -409,6 +443,53 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         }
 
         RefreshServiceState();
+    }
+
+    [RelayCommand]
+    private async Task UnblockPortableFilesAndRetryAsync()
+    {
+        if (IsPortableRuntimeUnblockInProgress)
+        {
+            return;
+        }
+
+        IsPortableRuntimeUnblockInProgress = true;
+        try
+        {
+            var report = await _portablePackageTrustService.UnblockPortableRuntimeFilesAsync(CancellationToken.None);
+            if (report.FailedFiles.Count > 0)
+            {
+                PortableRuntimeBlockedFilesText = string.Join(
+                    Environment.NewLine,
+                    report.FailedFiles.Select(static file => $"{Path.GetFileName(file.FilePath)}: {file.Error}"));
+                IsPortableRuntimeBlockedWarningVisible = true;
+                await FrontendMessageBox.ShowErrorAsync(
+                    _localization.Format("PortableRuntimeUnblockFailed", PortableRuntimeBlockedFilesText),
+                    PortableRuntimeBlockedWarningTitle);
+                return;
+            }
+
+            await RefreshPortableRuntimeTrustWarningAsync();
+            var result = await _workspace.InstallOrRepairServiceAsync();
+            if (string.Equals(result.Code, "PORTABLE_RUNTIME_FILES_BLOCKED", StringComparison.OrdinalIgnoreCase))
+            {
+                await RefreshPortableRuntimeTrustWarningAsync();
+                return;
+            }
+
+            if (!result.Success && !result.Cancelled)
+            {
+                await FrontendMessageBox.ShowErrorAsync(
+                    result.Detail,
+                    _localization.Translate("InstallOrRepairService"));
+            }
+
+            RefreshServiceState();
+        }
+        finally
+        {
+            IsPortableRuntimeUnblockInProgress = false;
+        }
     }
 
     [RelayCommand]
@@ -666,6 +747,9 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RegistryProtectionWarningCloseText));
         OnPropertyChanged(nameof(ServiceSettingsTitle));
         OnPropertyChanged(nameof(InstallOrRepairServiceText));
+        OnPropertyChanged(nameof(PortableRuntimeBlockedWarningTitle));
+        OnPropertyChanged(nameof(PortableRuntimeBlockedWarningText));
+        OnPropertyChanged(nameof(UnblockPortableFilesAndRetryText));
         OnPropertyChanged(nameof(UninstallServiceText));
         OnPropertyChanged(nameof(RefreshText));
         OnPropertyChanged(nameof(RestartExplorerText));
@@ -969,6 +1053,27 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
                 _localization.Translate("StartupBehaviorTitle"));
         }
     }
+
+    private async Task RefreshPortableRuntimeTrustWarningAsync()
+    {
+        try
+        {
+            var report = await _portablePackageTrustService.ScanPortableRuntimeFilesAsync(CancellationToken.None);
+            IsPortableRuntimeBlockedWarningVisible = report.BlockedCount > 0;
+            PortableRuntimeBlockedFilesText = report.BlockedCount == 0
+                ? string.Empty
+                : string.Join(Environment.NewLine, report.BlockedFiles.Select(static file => file.RelativePath));
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Warning("SettingsPageViewModel", $"Failed to scan portable runtime file trust state: {ex.Message}");
+        }
+    }
+
+    private string BuildPortableRuntimeBlockedMessage()
+        => string.IsNullOrWhiteSpace(PortableRuntimeBlockedFilesText)
+            ? PortableRuntimeBlockedWarningText
+            : PortableRuntimeBlockedWarningText + Environment.NewLine + Environment.NewLine + PortableRuntimeBlockedFilesText;
 
     private async Task ApplyShowTrayIconAsync(bool value)
     {

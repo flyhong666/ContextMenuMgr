@@ -16,6 +16,12 @@ namespace ContextMenuMgr.Frontend.Services;
 public sealed class BackendServiceManager : IBackendServiceManager
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly PortablePackageTrustService _portablePackageTrustService;
+
+    public BackendServiceManager(PortablePackageTrustService portablePackageTrustService)
+    {
+        _portablePackageTrustService = portablePackageTrustService;
+    }
 
     /// <summary>
     /// Executes is Service Installed.
@@ -63,6 +69,26 @@ public sealed class BackendServiceManager : IBackendServiceManager
             return new BackendServiceBootstrapResult(false, false, "BACKEND_EXE_MISSING", string.Empty);
         }
         FrontendDebugLog.Info("BackendServiceManager", $"Resolved backend executable path: {backendExePath}");
+
+        var trustReport = await _portablePackageTrustService.ScanPortableRuntimeFilesAsync(cancellationToken);
+        if (trustReport.BlockedCount > 0)
+        {
+            var blockedFileNames = string.Join(
+                ", ",
+                trustReport.BlockedFiles.Select(static file => file.RelativePath));
+            FrontendDebugLog.Warning(
+                "BackendServiceManager",
+                "ServiceBootstrapBlockedByMotw: "
+                + $"PackageKind={RuntimePaths.PackageKind}, "
+                + $"BaseDirectory={AppContext.BaseDirectory}, "
+                + $"BlockedFiles={blockedFileNames}, "
+                + "ResultCode=PORTABLE_RUNTIME_FILES_BLOCKED.");
+            return new BackendServiceBootstrapResult(
+                false,
+                false,
+                "PORTABLE_RUNTIME_FILES_BLOCKED",
+                blockedFileNames);
+        }
 
         var resultFilePath = Path.Combine(
             Path.GetTempPath(),

@@ -175,6 +175,42 @@
                     Margin="0,10,0,0"
                     Opacity="0.72"
                     Text="{Binding ServiceStateText}" />
+                <Border
+                    Margin="0,14,0,0"
+                    Padding="12"
+                    Background="{DynamicResource ControlFillColorTertiaryBrush}"
+                    BorderBrush="{DynamicResource SystemFillColorCautionBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Visibility="{Binding IsPortableRuntimeBlockedWarningVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Width="360">
+                        <DockPanel>
+                            <ui:SymbolIcon
+                                Margin="0,0,8,0"
+                                VerticalAlignment="Top"
+                                Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                Symbol="ChatWarning24" />
+                            <StackPanel>
+                                <ui:TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="{Binding PortableRuntimeBlockedWarningTitle}"
+                                    TextWrapping="Wrap" />
+                                <ui:TextBlock
+                                    Margin="0,6,0,0"
+                                    Opacity="0.82"
+                                    Text="{Binding PortableRuntimeBlockedWarningText}"
+                                    TextWrapping="Wrap" />
+                                <ui:TextBlock
+                                    Margin="0,8,0,0"
+                                    FontFamily="Consolas"
+                                    FontSize="12"
+                                    Opacity="0.72"
+                                    Text="{Binding PortableRuntimeBlockedFilesText}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
                 <WrapPanel Margin="0,16,0,0">
                     <ui:Button
                         Margin="0,0,12,12"

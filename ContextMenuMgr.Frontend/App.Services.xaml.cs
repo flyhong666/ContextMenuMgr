@@ -22,6 +22,7 @@ public partial class App
         services.AddSingleton<RuntimeDataAclRepairClient>();
         services.AddSingleton<FrontendSettingsService>();
         services.AddSingleton<FrontendStartupService>();
+        services.AddSingleton<PortablePackageTrustService>();
         services.AddSingleton<TrayHostProcessService>();
         services.AddSingleton<FrontendNavigationState>();
         services.AddSingleton<LocalizationService>();

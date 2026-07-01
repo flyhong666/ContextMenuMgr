@@ -692,6 +692,18 @@ Continue anyway? (Not recommended)</value>
   <data name="InstallOrRepairService" xml:space="preserve">
     <value>Install or repair service</value>
   </data>
+  <data name="PortableRuntimeBlockedWarningTitle" xml:space="preserve">
+    <value>Portable files are blocked by Windows</value>
+  </data>
+  <data name="PortableRuntimeBlockedWarningText" xml:space="preserve">
+    <value>The portable package files are blocked because they were downloaded from the Internet. This can prevent service installation. You can unblock the current portable folder and retry.</value>
+  </data>
+  <data name="UnblockPortableFilesAndRetry" xml:space="preserve">
+    <value>Unblock and retry</value>
+  </data>
+  <data name="PortableRuntimeUnblockFailed" xml:space="preserve">
+    <value>Some portable runtime files could not be unblocked. Details: {0}</value>
+  </data>
   <data name="SettingsUninstallService" xml:space="preserve">
     <value>Uninstall service</value>
   </data>
