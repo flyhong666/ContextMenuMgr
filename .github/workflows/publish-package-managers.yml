@@ -1,0 +1,201 @@
+name: Publish Package Managers
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to test, for example v1.7.2-Beta+abcdef0
+        required: true
+        type: string
+      dry_run:
+        description: Generate manifests and avoid pushes/PRs
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  publish-package-managers:
+    runs-on: windows-latest
+    env:
+      OWNER_REPO: PLFJY/ContextMenuMgr
+      PACKAGE_OUTPUT_DIR: build/package-managers
+      SCOOP_BUCKET_REPOSITORY: ${{ vars.SCOOP_BUCKET_REPOSITORY || 'PLFJY/scoop-bucket' }}
+      WINGET_FORK_REPOSITORY: ${{ vars.WINGET_FORK_REPOSITORY }}
+      ENABLE_WINGET_PR: ${{ vars.ENABLE_WINGET_PR || 'false' }}
+      ENABLE_SCOOP_PUSH: ${{ vars.ENABLE_SCOOP_PUSH || 'true' }}
+      PACKAGE_MANAGER_DRY_RUN: ${{ vars.PACKAGE_MANAGER_DRY_RUN || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve publish options
+        id: options
+        shell: pwsh
+        env:
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          function Convert-ToBooleanText {
+            param([string] $Value, [string] $Default)
+
+            if ([string]::IsNullOrWhiteSpace($Value)) {
+              $Value = $Default
+            }
+
+            if ($Value -match '^(?i:true|1|yes)$') {
+              return 'true'
+            }
+
+            if ($Value -match '^(?i:false|0|no)$') {
+              return 'false'
+            }
+
+            throw "Invalid boolean value '$Value'."
+          }
+
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $dryRun = Convert-ToBooleanText -Value $env:DISPATCH_DRY_RUN -Default 'true'
+          }
+          else {
+            $dryRun = Convert-ToBooleanText -Value $env:PACKAGE_MANAGER_DRY_RUN -Default 'false'
+          }
+
+          $enableScoopPush = Convert-ToBooleanText -Value $env:ENABLE_SCOOP_PUSH -Default 'true'
+          $enableWingetPr = Convert-ToBooleanText -Value $env:ENABLE_WINGET_PR -Default 'false'
+
+          "dry_run=$dryRun" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "enable_scoop_push=$enableScoopPush" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "enable_winget_pr=$enableWingetPr" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          Write-Host "dry_run: $dryRun"
+          Write-Host "enable_scoop_push: $enableScoopPush"
+          Write-Host "enable_winget_pr: $enableWingetPr"
+
+      - name: Prepare release event JSON
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:PACKAGE_OUTPUT_DIR | Out-Null
+          $eventPath = Join-Path $env:PACKAGE_OUTPUT_DIR 'release-event.json'
+
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+            Copy-Item -LiteralPath $env:GITHUB_EVENT_PATH -Destination $eventPath -Force
+            return
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:DISPATCH_TAG)) {
+            throw 'workflow_dispatch requires a published release tag.'
+          }
+
+          $release = gh release view $env:DISPATCH_TAG --repo $env:OWNER_REPO --json tagName,name,isPrerelease,publishedAt,url | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to read GitHub Release '$env:DISPATCH_TAG'."
+          }
+
+          [ordered]@{
+            release = [ordered]@{
+              tag_name = $release.tagName
+              name = $release.name
+              prerelease = $release.isPrerelease
+              published_at = $release.publishedAt
+              html_url = $release.url
+            }
+          } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $eventPath -Encoding UTF8
+
+      - name: Run package manager script tests
+        shell: pwsh
+        run: .\Scripts\PackageManagers\Test-PackageManagerScripts.ps1
+
+      - name: Resolve release metadata
+        id: release
+        shell: pwsh
+        run: |
+          .\Scripts\PackageManagers\Resolve-PackageRelease.ps1 `
+            -ReleaseEventJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-event.json') `
+            -OutputPath (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-metadata.json')
+
+      - name: Download and hash release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .\Scripts\PackageManagers\Get-ReleaseAssetHashes.ps1 `
+            -OwnerRepo $env:OWNER_REPO `
+            -TagName '${{ steps.release.outputs.release_tag }}' `
+            -AssetVersion '${{ steps.release.outputs.asset_version }}' `
+            -OutputPath (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-assets.json')
+
+      - name: Generate Scoop manifest
+        shell: pwsh
+        run: |
+          .\Scripts\PackageManagers\New-ScoopManifest.ps1 `
+            -ReleaseMetadataJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-metadata.json') `
+            -AssetManifestJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-assets.json') `
+            -OutputDirectory (Join-Path $env:PACKAGE_OUTPUT_DIR 'scoop')
+
+      - name: Generate winget manifests
+        shell: pwsh
+        run: |
+          .\Scripts\PackageManagers\New-WingetManifest.ps1 `
+            -ReleaseMetadataJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-metadata.json') `
+            -AssetManifestJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-assets.json') `
+            -OutputDirectory (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget')
+
+      - name: Update Scoop bucket
+        if: steps.options.outputs.enable_scoop_push == 'true' || steps.options.outputs.dry_run == 'true'
+        shell: pwsh
+        env:
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          $manifestPath = Join-Path (Join-Path $env:PACKAGE_OUTPUT_DIR 'scoop') '${{ steps.release.outputs.scoop_app }}.json'
+          $arguments = @(
+            '-ManifestPath', $manifestPath,
+            '-BucketRepository', $env:SCOOP_BUCKET_REPOSITORY,
+            '-TokenEnvVar', 'SCOOP_BUCKET_TOKEN'
+          )
+
+          if ('${{ steps.options.outputs.dry_run }}' -eq 'true' -or '${{ steps.options.outputs.enable_scoop_push }}' -ne 'true') {
+            $arguments += '-DryRun'
+          }
+
+          & .\Scripts\PackageManagers\Update-ScoopBucket.ps1 @arguments
+
+      - name: Submit winget PR
+        if: steps.options.outputs.enable_winget_pr == 'true'
+        shell: pwsh
+        env:
+          WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_FORK_REPOSITORY)) {
+            throw 'WINGET_FORK_REPOSITORY is required when ENABLE_WINGET_PR is true.'
+          }
+
+          $arguments = @(
+            '-ManifestDirectory', (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget'),
+            '-WingetForkRepository', $env:WINGET_FORK_REPOSITORY,
+            '-PackageIdentifier', '${{ steps.release.outputs.winget_package_identifier }}',
+            '-PackageVersion', '${{ steps.release.outputs.package_version }}',
+            '-ReleaseTag', '${{ steps.release.outputs.release_tag }}',
+            '-TokenEnvVar', 'WINGET_PR_TOKEN'
+          )
+
+          if ('${{ steps.options.outputs.dry_run }}' -eq 'true') {
+            $arguments += '-DryRun'
+          }
+
+          & .\Scripts\PackageManagers\Submit-WingetPr.ps1 @arguments
+
+      - name: Upload generated package manager manifests
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-manager-manifests-${{ steps.release.outputs.channel || 'unresolved' }}
+          path: build/package-managers
+          if-no-files-found: warn

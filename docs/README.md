@@ -17,4 +17,5 @@
 - [Deep Analysis 与 ProbeHost 实现说明](./deep-analysis-probehost.md)
 - [前端与 WPF-UI 实现说明](./frontend-wpf-ui.md)
 - [构建与发布说明](./build-and-release.md)
+- [包管理器发布说明](./package-managers.md)
 - [排错指南](./troubleshooting.md)

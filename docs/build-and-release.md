@@ -174,6 +174,8 @@ resolve-metadata
 
 构建矩阵覆盖 `win-x64`、`win-x86`、`win-arm64` 的 self-contained 和 framework-dependent installer，以及 framework-dependent portable。
 
+`.github/workflows/publish-package-managers.yml` 是包管理器发布 workflow。它在 GitHub Release 从 draft 被维护者手动发布后，通过 `release.published` 触发，读取已公开的 Release assets，生成并发布 Scoop / winget manifests。Scoop 和 winget 的详细渠道、变量、secret、dry-run 和首个 Beta 验证流程见 [包管理器发布说明](./package-managers.md)。
+
 ## 9. 构建排错
 
 | 问题 | 优先检查 |
