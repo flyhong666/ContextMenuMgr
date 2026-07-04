@@ -53,7 +53,6 @@ foreach ($assetName in @('scoopPortableX64', 'scoopPortableX86', 'scoopPortableA
 }
 
 $notes = @(
-    'This Scoop package uses self-contained portable builds and does not require a separate .NET Desktop Runtime installation.',
     'Context Menu Manager Plus may ask to install or repair its Windows service for elevated menu operations.'
 )
 

@@ -106,7 +106,7 @@ scoop bucket add plfjy https://github.com/PLFJY/scoop-bucket
 scoop install plfjy/contextmenumgrplus-beta
 ```
 
-Release workflow 同时构建 self-contained 和 framework-dependent 产物。包管理器发布流程会读取真实 GitHub Release asset 并计算 SHA256，但包管理器 manifest 有意选择 self-contained 产物，避免通过包管理器安装时额外依赖用户预装 .NET Desktop Runtime。
+Release workflow 同时构建 self-contained 和 framework-dependent 产物。包管理器发布流程会读取真实 GitHub Release asset 并计算 SHA256，但包管理器 manifest 有意选择 self-contained 产物。
 
 Scoop manifest 使用按架构区分的 self-contained portable zip：
 
@@ -116,7 +116,7 @@ ContextMenuMgrPlus-<assetVersion>-x86-self-contained-portable.zip
 ContextMenuMgrPlus-<assetVersion>-arm64-self-contained-portable.zip
 ```
 
-manifest 通过 Scoop `architecture` 字段分别写入 `64bit`、`32bit` 和 `arm64` URL / SHA256，不再使用顶层 `url` / `hash`。manifest notes 会提示该 Scoop 包使用 self-contained portable builds，不需要单独安装 .NET Desktop Runtime；同时仍提示应用可能请求安装或修复 Windows Service。Beta manifest 还会提示 Beta 可能包含回归。
+manifest 通过 Scoop `architecture` 字段分别写入 `64bit`、`32bit` 和 `arm64` URL / SHA256，不再使用顶层 `url` / `hash`。manifest notes 仍提示应用可能请求安装或修复 Windows Service。Beta manifest 还会提示 Beta 可能包含回归。
 
 ## 5. winget
 
@@ -126,7 +126,7 @@ winget 使用按架构区分的 self-contained Inno Setup installers：
 - `ContextMenuMgrPlus-<assetVersion>-x86-self-contained-Setup.exe`
 - `ContextMenuMgrPlus-<assetVersion>-arm64-self-contained-Setup.exe`
 
-这些 installer 已包含所需 .NET runtime，因此通过 winget 安装不要求用户先单独安装 .NET Desktop Runtime。framework-dependent installer 仍可作为 Release asset 存在，但不作为包管理器 manifest 的目标。
+framework-dependent installer 仍可作为 Release asset 存在，但不作为包管理器 manifest 的目标。
 
 workflow 生成 multi-file manifests：
 
