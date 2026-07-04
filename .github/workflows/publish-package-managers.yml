@@ -109,10 +109,6 @@ jobs:
             }
           } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $eventPath -Encoding UTF8
 
-      - name: Run package manager script tests
-        shell: pwsh
-        run: .\Scripts\PackageManagers\Test-PackageManagerScripts.ps1
-
       - name: Resolve release metadata
         id: release
         shell: pwsh
@@ -147,6 +143,14 @@ jobs:
             -ReleaseMetadataJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-metadata.json') `
             -AssetManifestJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-assets.json') `
             -OutputDirectory (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget')
+
+      - name: Upload generated package manager manifests
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-manager-manifests-${{ steps.release.outputs.channel || 'unresolved' }}
+          path: build/package-managers
+          if-no-files-found: warn
 
       - name: Update Scoop bucket
         if: steps.options.outputs.enable_scoop_push == 'true' || steps.options.outputs.dry_run == 'true'
@@ -191,11 +195,3 @@ jobs:
           }
 
           & .\Scripts\PackageManagers\Submit-WingetPr.ps1 @arguments
-
-      - name: Upload generated package manager manifests
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: package-manager-manifests-${{ steps.release.outputs.channel || 'unresolved' }}
-          path: build/package-managers
-          if-no-files-found: warn

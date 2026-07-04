@@ -1,0 +1,32 @@
+name: Package Manager Script Tests
+
+on:
+  pull_request:
+    paths:
+      - Scripts/PackageManagers/**
+      - .github/workflows/publish-package-managers.yml
+      - .github/workflows/package-manager-script-tests.yml
+      - docs/package-managers.md
+  push:
+    branches:
+      - dev
+    paths:
+      - Scripts/PackageManagers/**
+      - .github/workflows/publish-package-managers.yml
+      - .github/workflows/package-manager-script-tests.yml
+      - docs/package-managers.md
+
+permissions:
+  contents: read
+
+jobs:
+  test-package-manager-scripts:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run package manager script tests
+        shell: pwsh
+        run: pwsh Scripts/PackageManagers/Test-PackageManagerScripts.ps1

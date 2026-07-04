@@ -7,7 +7,9 @@ param(
     [string] $AssetManifestJson,
 
     [Parameter(Mandatory)]
-    [string] $OutputDirectory
+    [string] $OutputDirectory,
+
+    [switch] $SkipWingetValidate
 )
 
 Set-StrictMode -Version Latest
@@ -154,10 +156,20 @@ Test-RequiredYamlKeys -Path $versionManifest
 Test-RequiredYamlKeys -Path $localeManifest
 Test-RequiredYamlKeys -Path $installerManifest
 
-if ($null -ne (Get-Command winget -ErrorAction SilentlyContinue)) {
-    winget validate --manifest $OutputDirectory
-    if ($LASTEXITCODE -ne 0) {
-        throw "winget validate failed for '$OutputDirectory'."
+if ($SkipWingetValidate) {
+    Write-Host 'winget validate skipped by request.'
+}
+elseif ($null -ne (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "Running winget validate for '$OutputDirectory'."
+    $validationOutput = & winget validate --manifest $OutputDirectory 2>&1
+    $validationExitCode = $LASTEXITCODE
+
+    foreach ($line in @($validationOutput)) {
+        Write-Host $line
+    }
+
+    if ($validationExitCode -ne 0) {
+        throw "winget validate failed for '$OutputDirectory' with exit code $validationExitCode."
     }
 }
 else {

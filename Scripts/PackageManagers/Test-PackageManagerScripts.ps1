@@ -119,7 +119,7 @@ function Invoke-GenerationCase {
 
     & (Join-Path $scriptDir 'Resolve-PackageRelease.ps1') -ReleaseEventJson $eventPath -OutputPath $metadataPath
     & (Join-Path $scriptDir 'New-ScoopManifest.ps1') -ReleaseMetadataJson $metadataPath -AssetManifestJson $assetPath -OutputDirectory $scoopOut | Out-Null
-    & (Join-Path $scriptDir 'New-WingetManifest.ps1') -ReleaseMetadataJson $metadataPath -AssetManifestJson $assetPath -OutputDirectory $wingetOut | Out-Null
+    & (Join-Path $scriptDir 'New-WingetManifest.ps1') -ReleaseMetadataJson $metadataPath -AssetManifestJson $assetPath -OutputDirectory $wingetOut -SkipWingetValidate | Out-Null
 
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
     Assert-Equal -Actual $metadata.packageVersion -Expected $ExpectedPackageVersion -Message "$Name package version mismatch."

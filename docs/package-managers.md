@@ -16,7 +16,9 @@ on:
 
 原因是当前 `.github/workflows/manual-release.yml` 只创建 draft GitHub Release，最终发布由维护者手动完成。包管理器 manifest 必须指向已经公开可下载的 Release asset，因此不能用 tag push 或 draft release 创建事件触发。
 
-workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。dry-run 会解析 Release、下载并校验 asset hash、生成 Scoop 和 winget manifests，并上传生成文件为 workflow artifact；不会强制推送 bucket 或提交 winget PR。
+workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，并上传生成文件为 workflow artifact。
+
+dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作用：不会 push 到 Scoop bucket，也不会创建 winget PR。它不会跳过 asset 下载、hash 计算、manifest 生成或真实 winget manifest 验证。
 
 ## 2. Stable 与 Beta 渠道
 
@@ -152,15 +154,27 @@ Manual dry-run:
    - `scoop/*.json`
    - `winget/*.yaml`
 
+The dry-run artifact is generated from the real GitHub Release selected by tag. `release-assets.json` contains hashes computed from downloaded Release assets, not fixture values.
+
+## 8. Fixture tests
+
+Fixture tests are separate CI/local checks and are not part of the publishing workflow. They validate script behavior with offline sample JSON and fake URLs/hashes, so they must not run before a real release publish.
+
+CI workflow:
+
+```text
+.github/workflows/package-manager-script-tests.yml
+```
+
 Local script validation:
 
 ```powershell
 pwsh Scripts/PackageManagers/Test-PackageManagerScripts.ps1
 ```
 
-This test is offline. It uses fixture JSON and fake asset hashes to validate Stable and Beta versioning, Scoop mutual exclusion, licenses, persisted data, winget identifiers, and installer architecture coverage.
+This test is offline. It uses fixture JSON and fake asset hashes to validate Stable and Beta versioning, Scoop mutual exclusion, licenses, persisted data, winget identifiers, and installer architecture coverage. Because it uses fake URLs/hashes, the fixture test calls winget manifest generation with `-SkipWingetValidate`; real publish runs still validate the real generated winget manifests when `winget` is available.
 
-## 8. First Beta validation checklist
+## 9. First Beta validation checklist
 
 1. Create `PLFJY/scoop-bucket`.
 2. Add `SCOOP_BUCKET_TOKEN`.
