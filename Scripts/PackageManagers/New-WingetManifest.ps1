@@ -34,6 +34,23 @@ function Assert-Asset {
     }
 }
 
+function Assert-SelfContainedInstallerAsset {
+    param(
+        [Parameter(Mandatory)] $Assets,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $asset = $Assets.assets.$Name
+    $url = [string] $asset.url
+    if ($url -notmatch 'self-contained-Setup\.exe') {
+        throw "Asset manifest assets.$Name.url must point to a self-contained setup exe."
+    }
+
+    if ($url -match 'framework-dependent') {
+        throw "Asset manifest assets.$Name.url must not point to a framework-dependent setup exe."
+    }
+}
+
 function ConvertTo-YamlScalar {
     param([AllowNull()] [string] $Value)
 
@@ -182,6 +199,9 @@ $assets = Read-Json -Path $AssetManifestJson
 Assert-Asset -Assets $assets -Name 'wingetX64'
 Assert-Asset -Assets $assets -Name 'wingetX86'
 Assert-Asset -Assets $assets -Name 'wingetArm64'
+Assert-SelfContainedInstallerAsset -Assets $assets -Name 'wingetX64'
+Assert-SelfContainedInstallerAsset -Assets $assets -Name 'wingetX86'
+Assert-SelfContainedInstallerAsset -Assets $assets -Name 'wingetArm64'
 
 $packageIdentifier = [string] $metadata.wingetPackageIdentifier
 $packageVersion = [string] $metadata.packageVersion

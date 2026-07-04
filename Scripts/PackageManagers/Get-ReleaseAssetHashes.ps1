@@ -30,10 +30,12 @@ function Get-AssetDefinition {
     param([Parameter(Mandatory)] [string] $Version)
 
     return [ordered] @{
-        wingetX64 = "ContextMenuMgrPlus-$Version-x64-framework-dependent-Setup.exe"
-        wingetX86 = "ContextMenuMgrPlus-$Version-x86-framework-dependent-Setup.exe"
-        wingetArm64 = "ContextMenuMgrPlus-$Version-arm64-framework-dependent-Setup.exe"
-        scoopPortable = "ContextMenuMgrPlus-$Version-framework-dependent-portable.zip"
+        wingetX64 = "ContextMenuMgrPlus-$Version-x64-self-contained-Setup.exe"
+        wingetX86 = "ContextMenuMgrPlus-$Version-x86-self-contained-Setup.exe"
+        wingetArm64 = "ContextMenuMgrPlus-$Version-arm64-self-contained-Setup.exe"
+        scoopPortableX64 = "ContextMenuMgrPlus-$Version-x64-self-contained-portable.zip"
+        scoopPortableX86 = "ContextMenuMgrPlus-$Version-x86-self-contained-portable.zip"
+        scoopPortableArm64 = "ContextMenuMgrPlus-$Version-arm64-self-contained-portable.zip"
     }
 }
 

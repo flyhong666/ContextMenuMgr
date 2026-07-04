@@ -7,9 +7,34 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Assert-True {
+    param(
+        [Parameter(Mandatory)] [bool] $Condition,
+        [Parameter(Mandatory)] [string] $Message
+    )
+
+    if (-not $Condition) {
+        throw $Message
+    }
+}
+
 if (-not (Test-Path -LiteralPath $ManifestDirectory -PathType Container)) {
     throw "winget manifest directory was not found: $ManifestDirectory"
 }
+
+$installerManifestPath = Get-ChildItem -LiteralPath $ManifestDirectory -Filter '*.installer.yaml' -File | Select-Object -First 1
+if ($null -eq $installerManifestPath) {
+    throw "winget installer manifest was not found in '$ManifestDirectory'."
+}
+
+$installerManifest = Get-Content -LiteralPath $installerManifestPath.FullName -Raw
+Assert-True -Condition ($installerManifest -match '(?m)^-\s*Architecture:\s*x64\s*$') -Message 'winget installer manifest is missing x64 installer entry.'
+Assert-True -Condition ($installerManifest -match '(?m)^-\s*Architecture:\s*x86\s*$') -Message 'winget installer manifest is missing x86 installer entry.'
+Assert-True -Condition ($installerManifest -match '(?m)^-\s*Architecture:\s*arm64\s*$') -Message 'winget installer manifest is missing arm64 installer entry.'
+Assert-True -Condition ($installerManifest -match 'x64-self-contained-Setup\.exe') -Message 'winget installer manifest must use x64 self-contained setup.'
+Assert-True -Condition ($installerManifest -match 'x86-self-contained-Setup\.exe') -Message 'winget installer manifest must use x86 self-contained setup.'
+Assert-True -Condition ($installerManifest -match 'arm64-self-contained-Setup\.exe') -Message 'winget installer manifest must use arm64 self-contained setup.'
+Assert-True -Condition ($installerManifest -notmatch 'framework-dependent') -Message 'winget installer manifest must not reference framework-dependent assets.'
 
 if ($null -eq (Get-Command winget -ErrorAction SilentlyContinue)) {
     throw 'winget command was not found. Install winget before validating generated manifests.'

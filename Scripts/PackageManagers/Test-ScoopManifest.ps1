@@ -35,9 +35,22 @@ $rawJson = Get-Content -LiteralPath $ManifestPath -Raw
 $manifest = $rawJson | ConvertFrom-Json -NoEnumerate
 
 Assert-True -Condition ([string] $manifest.version -eq $ExpectedVersion) -Message "Scoop version '$($manifest.version)' does not match expected version '$ExpectedVersion'."
-Assert-True -Condition (-not [string]::IsNullOrWhiteSpace([string] $manifest.url)) -Message 'Scoop url is missing.'
-Assert-True -Condition ([string] $manifest.hash -match '^[A-Fa-f0-9]{64}$') -Message 'Scoop hash is not a 64-character SHA256 hex string.'
+Assert-True -Condition ($manifest.PSObject.Properties.Name -notcontains 'url') -Message 'Scoop manifest must not emit top-level url.'
+Assert-True -Condition ($manifest.PSObject.Properties.Name -notcontains 'hash') -Message 'Scoop manifest must not emit top-level hash.'
+Assert-True -Condition ($null -ne $manifest.architecture) -Message 'Scoop architecture block is missing.'
+
+foreach ($architectureName in @('64bit', '32bit', 'arm64')) {
+    $architecture = $manifest.architecture.$architectureName
+    Assert-True -Condition ($null -ne $architecture) -Message "Scoop architecture.$architectureName is missing."
+    Assert-True -Condition (-not [string]::IsNullOrWhiteSpace([string] $architecture.url)) -Message "Scoop architecture.$architectureName.url is missing."
+    Assert-True -Condition ([string] $architecture.hash -match '^[A-Fa-f0-9]{64}$') -Message "Scoop architecture.$architectureName.hash is not a 64-character SHA256 hex string."
+    Assert-True -Condition ([string] $architecture.url -match 'self-contained-portable\.zip') -Message "Scoop architecture.$architectureName.url must point to a self-contained portable zip."
+    Assert-True -Condition ([string] $architecture.url -notmatch 'framework-dependent') -Message "Scoop architecture.$architectureName.url must not point to a framework-dependent asset."
+}
+
 Assert-True -Condition ([string] $manifest.license -eq 'GPL-3.0-only') -Message "Scoop license must be GPL-3.0-only."
+Assert-True -Condition ($rawJson -notmatch '\.NET 10 Desktop Runtime') -Message 'Scoop notes must not mention .NET 10 Desktop Runtime.'
+Assert-True -Condition ($rawJson -notmatch 'framework-dependent') -Message 'Scoop manifest must not mention framework-dependent assets.'
 
 $expectedShortcutName = switch ($ExpectedAppName) {
     'contextmenumgrplus' { 'Context Menu Manager Plus' }

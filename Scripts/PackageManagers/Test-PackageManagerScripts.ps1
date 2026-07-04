@@ -77,30 +77,42 @@ function New-SampleAssets {
     $hashB = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     $hashC = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
     $hashD = 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+    $hashE = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+    $hashF = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 
     Write-Json -Path $Path -Value ([ordered] @{
         releaseTag = $Tag
         assetVersion = $AssetVersion
         assets = [ordered] @{
             wingetX64 = [ordered] @{
-                name = "ContextMenuMgrPlus-$AssetVersion-x64-framework-dependent-Setup.exe"
-                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-x64-framework-dependent-Setup.exe"
+                name = "ContextMenuMgrPlus-$AssetVersion-x64-self-contained-Setup.exe"
+                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-x64-self-contained-Setup.exe"
                 sha256 = $hashA
             }
             wingetX86 = [ordered] @{
-                name = "ContextMenuMgrPlus-$AssetVersion-x86-framework-dependent-Setup.exe"
-                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-x86-framework-dependent-Setup.exe"
+                name = "ContextMenuMgrPlus-$AssetVersion-x86-self-contained-Setup.exe"
+                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-x86-self-contained-Setup.exe"
                 sha256 = $hashB
             }
             wingetArm64 = [ordered] @{
-                name = "ContextMenuMgrPlus-$AssetVersion-arm64-framework-dependent-Setup.exe"
-                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-arm64-framework-dependent-Setup.exe"
+                name = "ContextMenuMgrPlus-$AssetVersion-arm64-self-contained-Setup.exe"
+                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-arm64-self-contained-Setup.exe"
                 sha256 = $hashC
             }
-            scoopPortable = [ordered] @{
-                name = "ContextMenuMgrPlus-$AssetVersion-framework-dependent-portable.zip"
-                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-framework-dependent-portable.zip"
+            scoopPortableX64 = [ordered] @{
+                name = "ContextMenuMgrPlus-$AssetVersion-x64-self-contained-portable.zip"
+                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-x64-self-contained-portable.zip"
                 sha256 = $hashD
+            }
+            scoopPortableX86 = [ordered] @{
+                name = "ContextMenuMgrPlus-$AssetVersion-x86-self-contained-portable.zip"
+                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-x86-self-contained-portable.zip"
+                sha256 = $hashE
+            }
+            scoopPortableArm64 = [ordered] @{
+                name = "ContextMenuMgrPlus-$AssetVersion-arm64-self-contained-portable.zip"
+                url = "https://github.com/PLFJY/ContextMenuMgr/releases/download/$Tag/ContextMenuMgrPlus-$AssetVersion-arm64-self-contained-portable.zip"
+                sha256 = $hashF
             }
         }
     })
@@ -158,6 +170,15 @@ function Invoke-GenerationCase {
     $scoop = Get-Content -LiteralPath $scoopPath -Raw | ConvertFrom-Json
     Assert-Equal -Actual $scoop.license -Expected 'GPL-3.0-only' -Message "$Name Scoop license mismatch."
     Assert-Equal -Actual $scoop.persist -Expected 'Data' -Message "$Name Scoop persist mismatch."
+    Assert-True -Condition ($scoop.PSObject.Properties.Name -notcontains 'url') -Message "$Name Scoop manifest must not have top-level url."
+    Assert-True -Condition ($scoop.PSObject.Properties.Name -notcontains 'hash') -Message "$Name Scoop manifest must not have top-level hash."
+    Assert-True -Condition (-not [string]::IsNullOrWhiteSpace([string] $scoop.architecture.'64bit'.url)) -Message "$Name Scoop 64bit URL is missing."
+    Assert-True -Condition (-not [string]::IsNullOrWhiteSpace([string] $scoop.architecture.'32bit'.url)) -Message "$Name Scoop 32bit URL is missing."
+    Assert-True -Condition (-not [string]::IsNullOrWhiteSpace([string] $scoop.architecture.arm64.url)) -Message "$Name Scoop arm64 URL is missing."
+    Assert-True -Condition ([string] $scoop.architecture.'64bit'.url -match 'x64-self-contained-portable\.zip') -Message "$Name Scoop 64bit URL must point to x64 self-contained portable zip."
+    Assert-True -Condition ([string] $scoop.architecture.'32bit'.url -match 'x86-self-contained-portable\.zip') -Message "$Name Scoop 32bit URL must point to x86 self-contained portable zip."
+    Assert-True -Condition ([string] $scoop.architecture.arm64.url -match 'arm64-self-contained-portable\.zip') -Message "$Name Scoop arm64 URL must point to arm64 self-contained portable zip."
+    Assert-True -Condition (($scoop.notes -join "`n") -notmatch '\.NET 10 Desktop Runtime') -Message "$Name Scoop notes must not mention .NET runtime requirement."
 
     $preInstall = ($scoop.pre_install -join "`n")
     if ($Prerelease) {
@@ -207,6 +228,14 @@ function Invoke-GenerationCase {
     Assert-True -Condition ($installerManifest -match 'Architecture: x64') -Message "$Name installer manifest is missing x64."
     Assert-True -Condition ($installerManifest -match 'Architecture: x86') -Message "$Name installer manifest is missing x86."
     Assert-True -Condition ($installerManifest -match 'Architecture: arm64') -Message "$Name installer manifest is missing arm64."
+    Assert-True -Condition ($installerManifest -match 'x64-self-contained-Setup\.exe') -Message "$Name winget installer manifest must use x64 self-contained setup."
+    Assert-True -Condition ($installerManifest -match 'x86-self-contained-Setup\.exe') -Message "$Name winget installer manifest must use x86 self-contained setup."
+    Assert-True -Condition ($installerManifest -match 'arm64-self-contained-Setup\.exe') -Message "$Name winget installer manifest must use arm64 self-contained setup."
+
+    foreach ($manifestPath in @($scoopPath, $versionManifestPath, $zhCnLocaleManifestPath, $zhTwLocaleManifestPath, $enUsLocaleManifestPath, $installerManifestPath)) {
+        $manifestContent = Get-Content -LiteralPath $manifestPath -Raw
+        Assert-True -Condition ($manifestContent -notmatch 'framework-dependent') -Message "$Name package-manager manifest references framework-dependent assets: $manifestPath"
+    }
 
     Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json | Out-Null
 }

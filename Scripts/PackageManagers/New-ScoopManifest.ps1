@@ -46,12 +46,14 @@ function Get-PreInstallLines {
 $metadata = Read-Json -Path $ReleaseMetadataJson
 $assets = Read-Json -Path $AssetManifestJson
 
-if ($null -eq $assets.assets.scoopPortable) {
-    throw 'Asset manifest is missing assets.scoopPortable.'
+foreach ($assetName in @('scoopPortableX64', 'scoopPortableX86', 'scoopPortableArm64')) {
+    if ($null -eq $assets.assets.$assetName) {
+        throw "Asset manifest is missing assets.$assetName."
+    }
 }
 
 $notes = @(
-    'This framework-dependent portable package requires the .NET 10 Desktop Runtime.',
+    'This Scoop package uses self-contained portable builds and does not require a separate .NET Desktop Runtime installation.',
     'Context Menu Manager Plus may ask to install or repair its Windows service for elevated menu operations.'
 )
 
@@ -66,8 +68,20 @@ $manifest = [ordered] @{
     description = 'A Windows context menu management tool.'
     homepage = 'https://github.com/PLFJY/ContextMenuMgr'
     license = 'GPL-3.0-only'
-    url = [string] $assets.assets.scoopPortable.url
-    hash = [string] $assets.assets.scoopPortable.sha256
+    architecture = [ordered] @{
+        '64bit' = [ordered] @{
+            url = [string] $assets.assets.scoopPortableX64.url
+            hash = [string] $assets.assets.scoopPortableX64.sha256
+        }
+        '32bit' = [ordered] @{
+            url = [string] $assets.assets.scoopPortableX86.url
+            hash = [string] $assets.assets.scoopPortableX86.sha256
+        }
+        'arm64' = [ordered] @{
+            url = [string] $assets.assets.scoopPortableArm64.url
+            hash = [string] $assets.assets.scoopPortableArm64.sha256
+        }
+    }
     shortcuts = [object[]] @(, $shortcutEntry)
     persist = 'Data'
     notes = $notes
