@@ -109,8 +109,14 @@ winget 使用 framework-dependent Inno Setup installers：
 workflow 生成 multi-file manifests：
 
 - `<PackageIdentifier>.yaml`
+- `<PackageIdentifier>.locale.zh-CN.yaml`
+- `<PackageIdentifier>.locale.zh-TW.yaml`
 - `<PackageIdentifier>.locale.en-US.yaml`
 - `<PackageIdentifier>.installer.yaml`
+
+version manifest 使用 `DefaultLocale: zh-CN`。`zh-CN` locale manifest 是 `ManifestType: defaultLocale`，`zh-TW` 和 `en-US` locale manifests 是 `ManifestType: locale`。Locale tag 使用 BCP 47 casing：`zh-CN`、`zh-TW`、`en-US`。
+
+所有 locale 的 `PackageName` 都保持为 `Context Menu Manager Plus`，不翻译成中文。这样做是为了与 Inno Setup installer AppName、Windows “Add or Remove Programs” 项，以及 Stable / Beta 共用的安装器身份保持一致。Stable 和 Beta 在 winget 中使用不同 PackageIdentifier，但安装器 AppId、服务名和安装目录仍然是同一个应用身份。
 
 提交路径遵循 winget-pkgs identifier split convention：
 

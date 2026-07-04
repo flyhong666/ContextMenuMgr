@@ -140,10 +140,12 @@ function Invoke-GenerationCase {
     }
 
     $versionManifestPath = Join-Path $wingetOut "$ExpectedWingetId.yaml"
-    $localeManifestPath = Join-Path $wingetOut "$ExpectedWingetId.locale.en-US.yaml"
+    $zhCnLocaleManifestPath = Join-Path $wingetOut "$ExpectedWingetId.locale.zh-CN.yaml"
+    $zhTwLocaleManifestPath = Join-Path $wingetOut "$ExpectedWingetId.locale.zh-TW.yaml"
+    $enUsLocaleManifestPath = Join-Path $wingetOut "$ExpectedWingetId.locale.en-US.yaml"
     $installerManifestPath = Join-Path $wingetOut "$ExpectedWingetId.installer.yaml"
 
-    foreach ($path in @($versionManifestPath, $localeManifestPath, $installerManifestPath)) {
+    foreach ($path in @($versionManifestPath, $zhCnLocaleManifestPath, $zhTwLocaleManifestPath, $enUsLocaleManifestPath, $installerManifestPath)) {
         Assert-True -Condition (Test-Path -LiteralPath $path) -Message "$Name missing winget manifest: $path"
         $content = Get-Content -LiteralPath $path -Raw
         Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($content)) -Message "$Name winget manifest is empty: $path"
@@ -151,11 +153,23 @@ function Invoke-GenerationCase {
     }
 
     $versionManifest = Get-Content -LiteralPath $versionManifestPath -Raw
-    $localeManifest = Get-Content -LiteralPath $localeManifestPath -Raw
+    $zhCnLocaleManifest = Get-Content -LiteralPath $zhCnLocaleManifestPath -Raw
+    $zhTwLocaleManifest = Get-Content -LiteralPath $zhTwLocaleManifestPath -Raw
+    $enUsLocaleManifest = Get-Content -LiteralPath $enUsLocaleManifestPath -Raw
     $installerManifest = Get-Content -LiteralPath $installerManifestPath -Raw
 
     Assert-True -Condition ($versionManifest -match [regex]::Escape("PackageIdentifier: '$ExpectedWingetId'")) -Message "$Name version manifest has wrong PackageIdentifier."
-    Assert-True -Condition ($localeManifest -match 'License: GPL-3\.0') -Message "$Name winget locale manifest has wrong license."
+    Assert-True -Condition ($versionManifest -match 'DefaultLocale: zh-CN') -Message "$Name version manifest does not use zh-CN as DefaultLocale."
+    Assert-True -Condition ($zhCnLocaleManifest -match 'PackageLocale: zh-CN') -Message "$Name zh-CN locale manifest has wrong PackageLocale."
+    Assert-True -Condition ($zhCnLocaleManifest -match 'ManifestType: defaultLocale') -Message "$Name zh-CN locale manifest is not defaultLocale."
+    Assert-True -Condition ($zhTwLocaleManifest -match 'PackageLocale: zh-TW') -Message "$Name zh-TW locale manifest has wrong PackageLocale."
+    Assert-True -Condition ($zhTwLocaleManifest -match 'ManifestType: locale') -Message "$Name zh-TW locale manifest is not locale."
+    Assert-True -Condition ($enUsLocaleManifest -match 'PackageLocale: en-US') -Message "$Name en-US locale manifest has wrong PackageLocale."
+    Assert-True -Condition ($enUsLocaleManifest -match 'ManifestType: locale') -Message "$Name en-US locale manifest is not locale."
+    foreach ($localeContent in @($zhCnLocaleManifest, $zhTwLocaleManifest, $enUsLocaleManifest)) {
+        Assert-True -Condition ($localeContent -match 'License: GPL-3\.0') -Message "$Name winget locale manifest has wrong license."
+        Assert-True -Condition ($localeContent -match [regex]::Escape("PackageName: 'Context Menu Manager Plus'")) -Message "$Name winget PackageName should remain Context Menu Manager Plus."
+    }
     Assert-True -Condition ($installerManifest -match 'Architecture: x64') -Message "$Name installer manifest is missing x64."
     Assert-True -Condition ($installerManifest -match 'Architecture: x86') -Message "$Name installer manifest is missing x86."
     Assert-True -Condition ($installerManifest -match 'Architecture: arm64') -Message "$Name installer manifest is missing arm64."
