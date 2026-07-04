@@ -165,14 +165,14 @@ jobs:
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
         run: |
           $manifestPath = Join-Path (Join-Path $env:PACKAGE_OUTPUT_DIR 'scoop') '${{ steps.release.outputs.scoop_app }}.json'
-          $arguments = @(
-            '-ManifestPath', $manifestPath,
-            '-BucketRepository', $env:SCOOP_BUCKET_REPOSITORY,
-            '-TokenEnvVar', 'SCOOP_BUCKET_TOKEN'
-          )
+          $arguments = @{
+            ManifestPath = $manifestPath
+            BucketRepository = $env:SCOOP_BUCKET_REPOSITORY
+            TokenEnvVar = 'SCOOP_BUCKET_TOKEN'
+          }
 
           if ('${{ steps.options.outputs.dry_run }}' -eq 'true' -or '${{ steps.options.outputs.enable_scoop_push }}' -ne 'true') {
-            $arguments += '-DryRun'
+            $arguments['DryRun'] = $true
           }
 
           & .\Scripts\PackageManagers\Update-ScoopBucket.ps1 @arguments
@@ -187,17 +187,17 @@ jobs:
             throw 'WINGET_FORK_REPOSITORY is required when ENABLE_WINGET_PR is true.'
           }
 
-          $arguments = @(
-            '-ManifestDirectory', (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget'),
-            '-WingetForkRepository', $env:WINGET_FORK_REPOSITORY,
-            '-PackageIdentifier', '${{ steps.release.outputs.winget_package_identifier }}',
-            '-PackageVersion', '${{ steps.release.outputs.package_version }}',
-            '-ReleaseTag', '${{ steps.release.outputs.release_tag }}',
-            '-TokenEnvVar', 'WINGET_PR_TOKEN'
-          )
+          $arguments = @{
+            ManifestDirectory = (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget')
+            WingetForkRepository = $env:WINGET_FORK_REPOSITORY
+            PackageIdentifier = '${{ steps.release.outputs.winget_package_identifier }}'
+            PackageVersion = '${{ steps.release.outputs.package_version }}'
+            ReleaseTag = '${{ steps.release.outputs.release_tag }}'
+            TokenEnvVar = 'WINGET_PR_TOKEN'
+          }
 
           if ('${{ steps.options.outputs.dry_run }}' -eq 'true') {
-            $arguments += '-DryRun'
+            $arguments['DryRun'] = $true
           }
 
           & .\Scripts\PackageManagers\Submit-WingetPr.ps1 @arguments
