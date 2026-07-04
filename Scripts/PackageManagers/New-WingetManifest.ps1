@@ -47,7 +47,7 @@ function ConvertTo-YamlScalar {
 function Write-TextFile {
     param(
         [Parameter(Mandatory)] [string] $Path,
-        [Parameter(Mandatory)] [string[]] $Lines
+        [Parameter(Mandatory)] [AllowEmptyString()] [string[]] $Lines
     )
 
     $directory = Split-Path -Parent $Path
@@ -56,6 +56,19 @@ function Write-TextFile {
     }
 
     [System.IO.File]::WriteAllLines($Path, $Lines, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Add-WingetSchemaHeader {
+    param(
+        [Parameter(Mandatory)] [ValidateSet('version', 'installer', 'defaultLocale', 'locale')] [string] $SchemaType,
+        [Parameter(Mandatory)] [string[]] $BodyLines
+    )
+
+    return @(
+        '# Created with ContextMenuMgr package manager automation',
+        "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.$SchemaType.1.12.0.schema.json",
+        ''
+    ) + $BodyLines
 }
 
 function Test-RequiredYamlKeys {
@@ -160,7 +173,7 @@ function New-LocaleManifestLines {
         "ManifestVersion: 1.12.0"
     )
 
-    return $lines
+    return Add-WingetSchemaHeader -SchemaType ([string] $Definition.ManifestType) -BodyLines $lines
 }
 
 $metadata = Read-Json -Path $ReleaseMetadataJson
@@ -183,13 +196,13 @@ $localeDefinitions = @(Get-LocaleDefinitions -IsBeta $isBeta)
 $localeManifests = @()
 $installerManifest = Join-Path $OutputDirectory "$packageIdentifier.installer.yaml"
 
-Write-TextFile -Path $versionManifest -Lines @(
-    "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
-    "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
-    "DefaultLocale: zh-CN",
-    "ManifestType: version",
-    "ManifestVersion: 1.12.0"
-)
+Write-TextFile -Path $versionManifest -Lines (Add-WingetSchemaHeader -SchemaType 'version' -BodyLines @(
+        "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
+        "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
+        "DefaultLocale: zh-CN",
+        "ManifestType: version",
+        "ManifestVersion: 1.12.0"
+    ))
 
 foreach ($definition in $localeDefinitions) {
     $localeManifest = Join-Path $OutputDirectory "$packageIdentifier.locale.$($definition.Locale).yaml"
@@ -209,31 +222,31 @@ foreach ($requiredLocale in @('zh-CN', 'zh-TW', 'en-US')) {
     }
 }
 
-Write-TextFile -Path $installerManifest -Lines @(
-    "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
-    "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
-    "InstallerType: inno",
-    "Scope: machine",
-    "UpgradeBehavior: install",
-    "InstallModes:",
-    "- silent",
-    "- silentWithProgress",
-    "InstallerSwitches:",
-    "  Silent: /VERYSILENT /NORESTART",
-    "  SilentWithProgress: /SILENT /NORESTART",
-    "Installers:",
-    "- Architecture: x64",
-    "  InstallerUrl: $($assets.assets.wingetX64.url)",
-    "  InstallerSha256: $($assets.assets.wingetX64.sha256)",
-    "- Architecture: x86",
-    "  InstallerUrl: $($assets.assets.wingetX86.url)",
-    "  InstallerSha256: $($assets.assets.wingetX86.sha256)",
-    "- Architecture: arm64",
-    "  InstallerUrl: $($assets.assets.wingetArm64.url)",
-    "  InstallerSha256: $($assets.assets.wingetArm64.sha256)",
-    "ManifestType: installer",
-    "ManifestVersion: 1.12.0"
-)
+Write-TextFile -Path $installerManifest -Lines (Add-WingetSchemaHeader -SchemaType 'installer' -BodyLines @(
+        "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
+        "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
+        "InstallerType: inno",
+        "Scope: machine",
+        "UpgradeBehavior: install",
+        "InstallModes:",
+        "- silent",
+        "- silentWithProgress",
+        "InstallerSwitches:",
+        "  Silent: /VERYSILENT /NORESTART",
+        "  SilentWithProgress: /SILENT /NORESTART",
+        "Installers:",
+        "- Architecture: x64",
+        "  InstallerUrl: $($assets.assets.wingetX64.url)",
+        "  InstallerSha256: $($assets.assets.wingetX64.sha256)",
+        "- Architecture: x86",
+        "  InstallerUrl: $($assets.assets.wingetX86.url)",
+        "  InstallerSha256: $($assets.assets.wingetX86.sha256)",
+        "- Architecture: arm64",
+        "  InstallerUrl: $($assets.assets.wingetArm64.url)",
+        "  InstallerSha256: $($assets.assets.wingetArm64.sha256)",
+        "ManifestType: installer",
+        "ManifestVersion: 1.12.0"
+    ))
 
 Test-RequiredYamlKeys -Path $versionManifest
 foreach ($localeManifest in $localeManifests) {

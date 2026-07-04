@@ -32,6 +32,29 @@ function Assert-Equal {
     }
 }
 
+function Assert-WingetHeader {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $SchemaType,
+        [Parameter(Mandatory)] [string] $CaseName
+    )
+
+    $lines = Get-Content -LiteralPath $Path
+    $schemaHeader = "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.$SchemaType.1.12.0.schema.json"
+
+    Assert-True -Condition ($lines -contains '# Created with ContextMenuMgr package manager automation') -Message "$CaseName winget manifest is missing the creator header: $Path"
+    Assert-True -Condition ($lines -contains $schemaHeader) -Message "$CaseName winget manifest is missing schema header '$schemaHeader': $Path"
+
+    $firstContentLine = $lines |
+        Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_) -and
+            -not $_.TrimStart().StartsWith('#')
+        } |
+        Select-Object -First 1
+
+    Assert-True -Condition ($firstContentLine -match '^PackageIdentifier:') -Message "$CaseName first non-empty, non-comment winget line should start with PackageIdentifier: $Path"
+}
+
 function Write-Json {
     param(
         [Parameter(Mandatory)] [string] $Path,
@@ -148,11 +171,15 @@ function Invoke-GenerationCase {
     foreach ($path in @($versionManifestPath, $zhCnLocaleManifestPath, $zhTwLocaleManifestPath, $enUsLocaleManifestPath, $installerManifestPath)) {
         Assert-True -Condition (Test-Path -LiteralPath $path) -Message "$Name missing winget manifest: $path"
         $content = Get-Content -LiteralPath $path -Raw
-        $firstLine = Get-Content -LiteralPath $path -First 1
-        Assert-True -Condition ($firstLine -match '^PackageIdentifier:') -Message "$Name winget manifest should start with PackageIdentifier: $path"
         Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($content)) -Message "$Name winget manifest is empty: $path"
         Assert-True -Condition ($content -match 'ManifestVersion: 1\.12\.0') -Message "$Name winget manifest is missing ManifestVersion: $path"
     }
+
+    Assert-WingetHeader -Path $versionManifestPath -SchemaType 'version' -CaseName $Name
+    Assert-WingetHeader -Path $zhCnLocaleManifestPath -SchemaType 'defaultLocale' -CaseName $Name
+    Assert-WingetHeader -Path $zhTwLocaleManifestPath -SchemaType 'locale' -CaseName $Name
+    Assert-WingetHeader -Path $enUsLocaleManifestPath -SchemaType 'locale' -CaseName $Name
+    Assert-WingetHeader -Path $installerManifestPath -SchemaType 'installer' -CaseName $Name
 
     $versionManifest = Get-Content -LiteralPath $versionManifestPath -Raw
     $zhCnLocaleManifest = Get-Content -LiteralPath $zhCnLocaleManifestPath -Raw
