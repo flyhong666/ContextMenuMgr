@@ -59,6 +59,8 @@ if ($metadata.channel -eq 'beta') {
     $notes += 'Beta builds may contain regressions; use them only when you want to validate prerelease changes.'
 }
 
+$shortcutEntry = [object[]] @('ContextMenuManagerPlus.exe', [string] $metadata.scoopShortcutName)
+
 $manifest = [ordered] @{
     version = [string] $metadata.packageVersion
     description = 'A Windows context menu management tool.'
@@ -66,9 +68,7 @@ $manifest = [ordered] @{
     license = 'GPL-3.0-only'
     url = [string] $assets.assets.scoopPortable.url
     hash = [string] $assets.assets.scoopPortable.sha256
-    shortcuts = @(
-        @('ContextMenuManagerPlus.exe', [string] $metadata.scoopShortcutName)
-    )
+    shortcuts = [object[]] @(, $shortcutEntry)
     persist = 'Data'
     notes = $notes
     pre_install = @(Get-PreInstallLines -Channel ([string] $metadata.channel))
