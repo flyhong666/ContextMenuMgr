@@ -16,9 +16,22 @@ on:
 
 原因是当前 `.github/workflows/manual-release.yml` 只创建 draft GitHub Release，最终发布由维护者手动完成。包管理器 manifest 必须指向已经公开可下载的 Release asset，因此不能用 tag push 或 draft release 创建事件触发。
 
-workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，并上传生成文件为 workflow artifact。
+workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，运行 `winget validate` 验证真实生成的 winget manifests，并上传生成文件为 workflow artifact。
 
 dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作用：不会 push 到 Scoop bucket，也不会创建 winget PR。它不会跳过 asset 下载、hash 计算、manifest 生成或真实 winget manifest 验证。
+
+发布流水线顺序是：
+
+```text
+real release metadata
+-> real asset download/hash
+-> Scoop manifest generation
+-> winget manifest generation
+-> winget validate
+-> artifact upload
+-> optional Scoop bucket push
+-> optional winget PR
+```
 
 ## 2. Stable 与 Beta 渠道
 
@@ -125,6 +138,8 @@ version manifest 使用 `DefaultLocale: zh-CN`。`zh-CN` locale manifest 是 `Ma
 
 winget 可用性取决于 PR 合并到 `microsoft/winget-pkgs` 以及源索引刷新。Action 可以自动打开 PR，但不能保证用户立即通过 winget 搜到或安装。
 
+`Scripts/PackageManagers/New-WingetManifest.ps1` 只负责生成 manifest 并做确定性的文件内容检查。`Scripts/PackageManagers/Test-WingetManifest.ps1` 负责调用 `winget validate`。发布 workflow 只对真实 Release assets 生成的 manifest 运行 winget CLI 验证。
+
 ## 6. Secrets and Variables
 
 Repository variables:
@@ -178,7 +193,7 @@ Local script validation:
 pwsh Scripts/PackageManagers/Test-PackageManagerScripts.ps1
 ```
 
-This test is offline. It uses fixture JSON and fake asset hashes to validate Stable and Beta versioning, Scoop mutual exclusion, licenses, persisted data, winget identifiers, and installer architecture coverage. Because it uses fake URLs/hashes, the fixture test calls winget manifest generation with `-SkipWingetValidate`; real publish runs still validate the real generated winget manifests when `winget` is available.
+This test is offline. It uses fixture JSON and fake asset hashes to validate Stable and Beta versioning, Scoop mutual exclusion, licenses, persisted data, winget identifiers, locale manifest generation, and installer architecture coverage. Fixture tests only check deterministic generation logic and do not run winget CLI validation because they use fake URLs and hashes.
 
 ## 9. First Beta validation checklist
 

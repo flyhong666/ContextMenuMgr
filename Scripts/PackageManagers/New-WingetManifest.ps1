@@ -7,9 +7,7 @@ param(
     [string] $AssetManifestJson,
 
     [Parameter(Mandatory)]
-    [string] $OutputDirectory,
-
-    [switch] $SkipWingetValidate
+    [string] $OutputDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -81,7 +79,6 @@ function Get-LocaleDefinitions {
             [ordered] @{
                 Locale = 'zh-CN'
                 ManifestType = 'defaultLocale'
-                Schema = 'defaultLocale'
                 ShortDescription = 'Context Menu Manager Plus 的 Beta 渠道版本。'
                 Description = 'Context Menu Manager Plus Beta 用于提前验证新的右键菜单管理功能和修复，可能包含回归问题。Stable 和 Beta 是互斥渠道，安装一个会替换另一个。'
                 Tags = @('右键菜单', '上下文菜单', 'Windows', 'Shell', '注册表', 'WPF', 'Beta', '预发布')
@@ -89,7 +86,6 @@ function Get-LocaleDefinitions {
             [ordered] @{
                 Locale = 'zh-TW'
                 ManifestType = 'locale'
-                Schema = 'locale'
                 ShortDescription = 'Context Menu Manager Plus 的 Beta 渠道版本。'
                 Description = 'Context Menu Manager Plus Beta 用於提前驗證新的右鍵選單管理功能和修復，可能包含回歸問題。Stable 和 Beta 是互斥渠道，安裝一個會替換另一個。'
                 Tags = @('右鍵選單', '內容選單', 'Windows', 'Shell', '登錄檔', 'WPF', 'Beta', '預發布')
@@ -97,7 +93,6 @@ function Get-LocaleDefinitions {
             [ordered] @{
                 Locale = 'en-US'
                 ManifestType = 'locale'
-                Schema = 'locale'
                 ShortDescription = 'Beta channel for Context Menu Manager Plus.'
                 Description = 'Context Menu Manager Plus Beta is a prerelease channel for validating new context menu management features and fixes. It may contain regressions. Stable and Beta are mutually exclusive channels; installing one replaces the other.'
                 Tags = @('context-menu', 'windows', 'shell', 'registry', 'wpf', 'beta', 'prerelease')
@@ -109,7 +104,6 @@ function Get-LocaleDefinitions {
         [ordered] @{
             Locale = 'zh-CN'
             ManifestType = 'defaultLocale'
-            Schema = 'defaultLocale'
             ShortDescription = 'Windows 右键菜单管理工具。'
             Description = 'Context Menu Manager Plus 用于管理 Windows 右键菜单项，检测第三方新增项，并帮助用户审核不需要的菜单项。'
             Tags = @('右键菜单', '上下文菜单', 'Windows', 'Shell', '注册表', 'WPF')
@@ -117,7 +111,6 @@ function Get-LocaleDefinitions {
         [ordered] @{
             Locale = 'zh-TW'
             ManifestType = 'locale'
-            Schema = 'locale'
             ShortDescription = 'Windows 右鍵選單管理工具。'
             Description = 'Context Menu Manager Plus 用於管理 Windows 右鍵選單項目，偵測第三方新增項目，並協助使用者審核不需要的選單項目。'
             Tags = @('右鍵選單', '內容選單', 'Windows', 'Shell', '登錄檔', 'WPF')
@@ -125,7 +118,6 @@ function Get-LocaleDefinitions {
         [ordered] @{
             Locale = 'en-US'
             ManifestType = 'locale'
-            Schema = 'locale'
             ShortDescription = 'A Windows context menu management tool.'
             Description = 'Context Menu Manager Plus manages Windows context menu entries, detects third-party additions, and helps users review unwanted menu items.'
             Tags = @('context-menu', 'windows', 'shell', 'registry', 'wpf')
@@ -210,6 +202,13 @@ foreach ($definition in $localeDefinitions) {
             -Definition $definition)
 }
 
+foreach ($requiredLocale in @('zh-CN', 'zh-TW', 'en-US')) {
+    $requiredLocaleManifest = Join-Path $OutputDirectory "$packageIdentifier.locale.$requiredLocale.yaml"
+    if (-not (Test-Path -LiteralPath $requiredLocaleManifest)) {
+        throw "Required winget locale manifest was not generated: $requiredLocaleManifest"
+    }
+}
+
 Write-TextFile -Path $installerManifest -Lines @(
     "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
     "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
@@ -241,26 +240,6 @@ foreach ($localeManifest in $localeManifests) {
     Test-RequiredYamlKeys -Path $localeManifest
 }
 Test-RequiredYamlKeys -Path $installerManifest
-
-if ($SkipWingetValidate) {
-    Write-Host 'winget validate skipped by request.'
-}
-elseif ($null -ne (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Write-Host "Running winget validate for '$OutputDirectory'."
-    $validationOutput = & winget validate --manifest $OutputDirectory 2>&1
-    $validationExitCode = $LASTEXITCODE
-
-    foreach ($line in @($validationOutput)) {
-        Write-Host $line
-    }
-
-    if ($validationExitCode -ne 0) {
-        throw "winget validate failed for '$OutputDirectory' with exit code $validationExitCode."
-    }
-}
-else {
-    Write-Host 'winget CLI was not found; deterministic YAML generation checks completed.'
-}
 
 Write-Host "winget manifests: $OutputDirectory"
 Write-Output $OutputDirectory

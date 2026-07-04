@@ -144,6 +144,12 @@ jobs:
             -AssetManifestJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-assets.json') `
             -OutputDirectory (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget')
 
+      - name: Validate winget manifests
+        shell: pwsh
+        run: |
+          pwsh Scripts\PackageManagers\Test-WingetManifest.ps1 `
+            -ManifestDirectory (Join-Path $env:PACKAGE_OUTPUT_DIR 'winget')
+
       - name: Upload generated package manager manifests
         if: always()
         uses: actions/upload-artifact@v7
