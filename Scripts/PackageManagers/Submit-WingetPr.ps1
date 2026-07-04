@@ -157,7 +157,7 @@ function Assert-GitStatusOnlyUnderPath {
     )
 
     $normalizedTarget = ($RelativePath -replace '\\', '/').TrimEnd('/') + '/'
-    $statusLines = @(git -C $ClonePath status --porcelain)
+    $statusLines = @(git -C $ClonePath status --porcelain --untracked-files=all)
     foreach ($line in $statusLines) {
         if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -lt 4) {
             continue
@@ -258,7 +258,10 @@ Get-ChildItem -LiteralPath $ManifestDirectory -File | ForEach-Object {
 Assert-WingetTargetDirectory -Path $targetPath -Identifier $PackageIdentifier -Version $PackageVersion
 
 $testWingetManifest = Join-Path $scriptDir 'Test-WingetManifest.ps1'
-& pwsh $testWingetManifest -ManifestDirectory $targetPath
+$validationOutputPath = Join-Path $workRoot 'winget-target-validation-output.txt'
+& pwsh $testWingetManifest `
+    -ManifestDirectory $targetPath `
+    -ValidationOutputPath $validationOutputPath
 if ($LASTEXITCODE -ne 0) {
     throw "winget target-path validation failed for '$targetPath'."
 }

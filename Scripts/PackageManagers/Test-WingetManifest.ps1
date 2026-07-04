@@ -1,7 +1,9 @@
 #Requires -Version 5.1
 param(
     [Parameter(Mandatory)]
-    [string] $ManifestDirectory
+    [string] $ManifestDirectory,
+
+    [string] $ValidationOutputPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -54,7 +56,15 @@ foreach ($line in @($validationOutput)) {
     Write-Host $line
 }
 
-$validationOutputPath = Join-Path (Split-Path -Parent $ManifestDirectory) 'winget-validation-output.txt'
+if ([string]::IsNullOrWhiteSpace($ValidationOutputPath)) {
+    $ValidationOutputPath = Join-Path (Split-Path -Parent $ManifestDirectory) 'winget-validation-output.txt'
+}
+
+$outputParent = Split-Path -Parent $ValidationOutputPath
+if (-not [string]::IsNullOrWhiteSpace($outputParent)) {
+    New-Item -ItemType Directory -Force -Path $outputParent | Out-Null
+}
+
 @(
     'winget --version'
     @($wingetVersionOutput)
@@ -63,8 +73,8 @@ $validationOutputPath = Join-Path (Split-Path -Parent $ManifestDirectory) 'winge
     @($validationOutput)
     ''
     "ExitCode: $validationExitCode"
-) | Set-Content -LiteralPath $validationOutputPath -Encoding UTF8
-Write-Host "Wrote winget validation output to '$validationOutputPath'."
+) | Set-Content -LiteralPath $ValidationOutputPath -Encoding UTF8
+Write-Host "Wrote winget validation output to '$ValidationOutputPath'."
 
 if ($validationExitCode -ne 0) {
     throw "winget validate failed for '$ManifestDirectory' with exit code $validationExitCode."
