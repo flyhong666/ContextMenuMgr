@@ -16,7 +16,7 @@ on:
 
 原因是当前 `.github/workflows/manual-release.yml` 只创建 draft GitHub Release，最终发布由维护者手动完成。包管理器 manifest 必须指向已经公开可下载的 Release asset，因此不能用 tag push 或 draft release 创建事件触发。
 
-workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，运行 `winget validate` 验证真实生成的 winget manifests，并上传生成文件为 workflow artifact。
+workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，运行 `winget validate --ignore-warnings` 验证真实生成的 winget manifests，并上传生成文件为 workflow artifact。
 
 dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作用：不会 push 到 Scoop bucket，也不会创建 winget PR。它不会跳过 asset 下载、hash 计算、manifest 生成或真实 winget manifest 验证。
 
@@ -27,7 +27,7 @@ real release metadata
 -> real asset download/hash
 -> Scoop manifest generation
 -> winget manifest generation
--> winget validate
+-> winget validate --ignore-warnings
 -> artifact upload
 -> optional Scoop bucket push
 -> optional winget PR
@@ -138,7 +138,18 @@ version manifest 使用 `DefaultLocale: zh-CN`。`zh-CN` locale manifest 是 `Ma
 
 winget 可用性取决于 PR 合并到 `microsoft/winget-pkgs` 以及源索引刷新。Action 可以自动打开 PR，但不能保证用户立即通过 winget 搜到或安装。
 
-`Scripts/PackageManagers/New-WingetManifest.ps1` 只负责生成 manifest 并做确定性的文件内容检查。`Scripts/PackageManagers/Test-WingetManifest.ps1` 负责调用 `winget validate`。发布 workflow 只对真实 Release assets 生成的 manifest 运行 winget CLI 验证。
+`Scripts/PackageManagers/New-WingetManifest.ps1` 只负责生成 manifest 并做确定性的文件内容检查。`Scripts/PackageManagers/Test-WingetManifest.ps1` 负责调用 `winget validate --ignore-warnings`。发布 workflow 只对真实 Release assets 生成的 manifest 运行 winget CLI 验证。
+
+验证脚本会保留 winget YAML schema header，例如：
+
+```yaml
+# Created with ContextMenuMgr package manager automation
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.12.0.schema.json
+
+PackageIdentifier: ...
+```
+
+GitHub-hosted runner 上的 winget 版本可能在输出 `Manifest validation succeeded with warnings.` 时仍因 schema-header warning 返回非零退出码。发布 workflow 不应因为 warning-only validation 阻断包管理器 manifest 发布，因此验证脚本使用 `--ignore-warnings`。如果加入该参数后 `winget validate` 仍返回非零退出码，则视为真实 validation error，并让 workflow 失败。脚本同时会把 winget 版本和完整验证输出写入 `winget-validation-output.txt`，该文件会随 `if: always()` 上传的 package manager artifact 一起保留，便于后续排查。
 
 ## 6. Secrets and Variables
 
