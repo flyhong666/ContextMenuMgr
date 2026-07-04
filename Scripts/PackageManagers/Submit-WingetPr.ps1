@@ -285,13 +285,17 @@ else {
     Invoke-Git -Arguments @('push', '--force-with-lease', 'origin', $branchName) -WorkingDirectory $clonePath
 }
 
-$existingPrJson = gh pr list --repo $TargetRepository --head "$($WingetForkRepository.Split('/')[0]):$branchName" --state open --json url --limit 1
-if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingPrJson)) {
-    $existingPr = $existingPrJson | ConvertFrom-Json
-    if ($existingPr.Count -gt 0) {
-        Write-Host "Existing winget PR: $($existingPr[0].url)"
-        return
-    }
+$existingPrUrl = gh pr list `
+    --repo $TargetRepository `
+    --head "$($WingetForkRepository.Split('/')[0]):$branchName" `
+    --state open `
+    --json url `
+    --jq '.[0].url' `
+    --limit 1
+
+if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingPrUrl)) {
+    Write-Host "Existing winget PR: $existingPrUrl"
+    return
 }
 
 $body = @"
