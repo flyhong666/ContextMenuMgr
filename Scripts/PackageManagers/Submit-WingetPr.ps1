@@ -55,6 +55,17 @@ function Invoke-Git {
     }
 }
 
+function Assert-True {
+    param(
+        [Parameter(Mandatory)] [bool] $Condition,
+        [Parameter(Mandatory)] [string] $Message
+    )
+
+    if (-not $Condition) {
+        throw $Message
+    }
+}
+
 function Get-WingetManifestRelativePath {
     param(
         [Parameter(Mandatory)] [string] $Identifier,
@@ -69,6 +80,104 @@ function Get-WingetManifestRelativePath {
     $publisher = $segments[0]
     $firstLetter = $publisher.Substring(0, 1).ToLowerInvariant()
     return Join-Path (Join-Path 'manifests' $firstLetter) (Join-Path ($segments -join [System.IO.Path]::DirectorySeparatorChar) $Version)
+}
+
+function Get-ManifestValue {
+    param(
+        [Parameter(Mandatory)] [string] $Content,
+        [Parameter(Mandatory)] [string] $Key,
+        [Parameter(Mandatory)] [string] $Path
+    )
+
+    $match = [regex]::Match($Content, "(?m)^$([regex]::Escape($Key)):\s*(.+?)\s*$")
+    if (-not $match.Success) {
+        throw "winget manifest '$Path' is missing '$Key'."
+    }
+
+    $value = $match.Groups[1].Value.Trim()
+    if ($value.Length -ge 2 -and $value.StartsWith("'") -and $value.EndsWith("'")) {
+        $value = $value.Substring(1, $value.Length - 2) -replace "''", "'"
+    }
+
+    return $value
+}
+
+function Assert-WingetTargetDirectory {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Identifier,
+        [Parameter(Mandatory)] [string] $Version
+    )
+
+    $expectedFiles = @(
+        "$Identifier.yaml",
+        "$Identifier.installer.yaml",
+        "$Identifier.locale.zh-CN.yaml",
+        "$Identifier.locale.zh-TW.yaml",
+        "$Identifier.locale.en-US.yaml"
+    )
+
+    $actualFiles = @(Get-ChildItem -LiteralPath $Path -File | ForEach-Object { $_.Name } | Sort-Object)
+    $expectedSorted = @($expectedFiles | Sort-Object)
+
+    Assert-True -Condition ($actualFiles.Count -eq $expectedSorted.Count) -Message "winget target directory must contain exactly $($expectedSorted.Count) manifest files."
+    for ($i = 0; $i -lt $expectedSorted.Count; $i++) {
+        Assert-True -Condition ($actualFiles[$i] -eq $expectedSorted[$i]) -Message "winget target directory file mismatch. Expected '$($expectedSorted[$i])', got '$($actualFiles[$i])'."
+    }
+
+    $manifestTypes = @{}
+    foreach ($fileName in $expectedFiles) {
+        $filePath = Join-Path $Path $fileName
+        $content = Get-Content -LiteralPath $filePath -Raw
+        $fileIdentifier = Get-ManifestValue -Content $content -Key 'PackageIdentifier' -Path $filePath
+        $fileVersion = Get-ManifestValue -Content $content -Key 'PackageVersion' -Path $filePath
+        $manifestType = Get-ManifestValue -Content $content -Key 'ManifestType' -Path $filePath
+
+        Assert-True -Condition ($fileIdentifier -eq $Identifier) -Message "PackageIdentifier mismatch in '$fileName'."
+        Assert-True -Condition ($fileVersion -eq $Version) -Message "PackageVersion mismatch in '$fileName'."
+
+        if (-not $manifestTypes.ContainsKey($manifestType)) {
+            $manifestTypes[$manifestType] = 0
+        }
+
+        $manifestTypes[$manifestType]++
+    }
+
+    foreach ($requiredType in @('version', 'defaultLocale', 'installer')) {
+        Assert-True -Condition ($manifestTypes.ContainsKey($requiredType) -and $manifestTypes[$requiredType] -eq 1) -Message "winget target directory must contain exactly one ManifestType: $requiredType."
+    }
+
+    Assert-True -Condition ($manifestTypes.ContainsKey('locale') -and $manifestTypes['locale'] -ge 1) -Message 'winget target directory must contain at least one locale manifest.'
+}
+
+function Assert-GitStatusOnlyUnderPath {
+    param(
+        [Parameter(Mandatory)] [string] $ClonePath,
+        [Parameter(Mandatory)] [string] $RelativePath
+    )
+
+    $normalizedTarget = ($RelativePath -replace '\\', '/').TrimEnd('/') + '/'
+    $statusLines = @(git -C $ClonePath status --porcelain)
+    foreach ($line in $statusLines) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -lt 4) {
+            continue
+        }
+
+        $pathPart = $line.Substring(3).Trim()
+        $paths = @($pathPart)
+        if ($pathPart -match ' -> ') {
+            $paths = @($pathPart -split ' -> ')
+        }
+
+        foreach ($changedPath in $paths) {
+            $normalizedChangedPath = ($changedPath.Trim('"') -replace '\\', '/')
+            if (-not $normalizedChangedPath.StartsWith($normalizedTarget, [System.StringComparison]::Ordinal)) {
+                throw "Unexpected changed file outside winget target path '$RelativePath': $changedPath"
+            }
+        }
+    }
+
+    return $statusLines
 }
 
 if (-not (Test-Path -LiteralPath $ManifestDirectory)) {
@@ -103,6 +212,10 @@ $branchName = "$branchPrefix-$safeVersion"
 $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ContextMenuMgr-winget-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $workRoot | Out-Null
 $clonePath = Join-Path $workRoot 'winget-pkgs'
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
 
 if ($DryRun) {
     $cloneUrl = "https://github.com/$WingetForkRepository.git"
@@ -115,8 +228,10 @@ else {
 Invoke-Git -Arguments @('clone', $cloneUrl, $clonePath)
 Invoke-Git -Arguments @('config', 'user.name', 'github-actions[bot]') -WorkingDirectory $clonePath
 Invoke-Git -Arguments @('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com') -WorkingDirectory $clonePath
+Invoke-Git -Arguments @('remote', 'add', 'upstream', "https://github.com/$TargetRepository.git") -WorkingDirectory $clonePath
+Invoke-Git -Arguments @('fetch', 'upstream', 'master', '--depth=1') -WorkingDirectory $clonePath
+Invoke-Git -Arguments @('checkout', '-B', $branchName, 'upstream/master') -WorkingDirectory $clonePath
 
-Invoke-Git -Arguments @('checkout', '-B', $branchName) -WorkingDirectory $clonePath
 $targetRelativePath = Get-WingetManifestRelativePath -Identifier $PackageIdentifier -Version $PackageVersion
 $targetPath = Join-Path $clonePath $targetRelativePath
 New-Item -ItemType Directory -Force -Path $targetPath | Out-Null
@@ -124,26 +239,31 @@ Get-ChildItem -LiteralPath $ManifestDirectory -File | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $targetPath -Force
 }
 
-$status = git -C $clonePath status --porcelain
+Assert-WingetTargetDirectory -Path $targetPath -Identifier $PackageIdentifier -Version $PackageVersion
+
+$testWingetManifest = Join-Path $scriptDir 'Test-WingetManifest.ps1'
+& pwsh $testWingetManifest -ManifestDirectory $targetPath
+if ($LASTEXITCODE -ne 0) {
+    throw "winget target-path validation failed for '$targetPath'."
+}
+
+$status = Assert-GitStatusOnlyUnderPath -ClonePath $clonePath -RelativePath $targetRelativePath
+if ($DryRun) {
+    Write-Host "Dry run enabled; winget manifest path would be '$targetRelativePath'."
+    Write-Host "winget target path: $targetRelativePath"
+    git -C $clonePath diff -- $targetRelativePath
+    git -C $clonePath status --short
+    return
+}
+
 if ([string]::IsNullOrWhiteSpace(($status -join [Environment]::NewLine))) {
-    Write-Host 'winget fork already contains the generated manifest; checking for an existing PR.'
+    Write-Host 'microsoft/winget-pkgs already contains the generated manifest; no winget PR is required.'
+    return
 }
 else {
-    if ($DryRun) {
-        Write-Host "Dry run enabled; winget manifest path would be '$targetRelativePath'."
-        git -C $clonePath diff -- $targetRelativePath
-        git -C $clonePath status --short
-        return
-    }
-
     Invoke-Git -Arguments @('add', $targetRelativePath) -WorkingDirectory $clonePath
     Invoke-Git -Arguments @('commit', '-m', "New version: $PackageIdentifier version $PackageVersion") -WorkingDirectory $clonePath
     Invoke-Git -Arguments @('push', '--force-with-lease', 'origin', $branchName) -WorkingDirectory $clonePath
-}
-
-if ($DryRun) {
-    Write-Host 'Dry run enabled; winget PR was not opened.'
-    return
 }
 
 $existingPrJson = gh pr list --repo $TargetRepository --head "$($WingetForkRepository.Split('/')[0]):$branchName" --state open --json url --limit 1

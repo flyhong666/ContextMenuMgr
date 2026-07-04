@@ -16,9 +16,9 @@ on:
 
 原因是当前 `.github/workflows/manual-release.yml` 只创建 draft GitHub Release，最终发布由维护者手动完成。包管理器 manifest 必须指向已经公开可下载的 Release asset，因此不能用 tag push 或 draft release 创建事件触发。
 
-workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，运行 `winget validate --ignore-warnings` 验证真实生成的 winget manifests，并上传生成文件为 workflow artifact。
+workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-run。发布 workflow 只处理真实 GitHub Release：它会读取 `release.published` 事件中的 Release，或读取手动输入的已发布 tag，然后下载该 Release 的真实 assets、计算真实 SHA256、生成 Scoop 和 winget manifests，验证真实生成的 Scoop manifest，运行 `winget validate --ignore-warnings` 验证真实生成的 winget manifests，并上传生成文件为 workflow artifact。
 
-dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作用：不会 push 到 Scoop bucket，也不会创建 winget PR。它不会跳过 asset 下载、hash 计算、manifest 生成或真实 winget manifest 验证。
+dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作用：不会 push 到 Scoop bucket，也不会创建 winget PR。它不会跳过真实 Release asset 下载、真实 SHA256 计算、Scoop manifest 生成和验证、winget manifest 生成和验证、winget 目标路径 preflight，或 Scoop bucket diff preflight。
 
 发布流水线顺序是：
 
@@ -26,10 +26,13 @@ dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作
 real release metadata
 -> real asset download/hash
 -> Scoop manifest generation
+-> Scoop manifest validation
 -> winget manifest generation
 -> winget validate --ignore-warnings
 -> artifact upload
+-> Scoop bucket clone/copy/diff preflight
 -> optional Scoop bucket push
+-> optional upstream-master-based winget target-path preflight
 -> optional winget PR
 ```
 
@@ -136,9 +139,11 @@ version manifest 使用 `DefaultLocale: zh-CN`。`zh-CN` locale manifest 是 `Ma
 - Stable: `manifests/p/PLFJY/ContextMenuMgrPlus/<PackageVersion>/`
 - Beta: `manifests/p/PLFJY/ContextMenuMgrPlus/Beta/<PackageVersion>/`
 
+winget PR 分支会先 clone fork，然后添加 `upstream=https://github.com/microsoft/winget-pkgs.git`，fetch `upstream/master --depth=1`，并从当前官方 `upstream/master` 创建发布分支。生成的 manifest 只复制到上述单一 `<PackageVersion>` 目录，提交前会检查所有 changed files 都位于该目录下。PR 因此被限制为 exactly one package version manifest directory，不能夹带其它包、其它版本或非 manifest 改动。
+
 winget 可用性取决于 PR 合并到 `microsoft/winget-pkgs` 以及源索引刷新。Action 可以自动打开 PR，但不能保证用户立即通过 winget 搜到或安装。
 
-`Scripts/PackageManagers/New-WingetManifest.ps1` 只负责生成 manifest 并做确定性的文件内容检查。`Scripts/PackageManagers/Test-WingetManifest.ps1` 负责调用 `winget validate --ignore-warnings`。发布 workflow 只对真实 Release assets 生成的 manifest 运行 winget CLI 验证。
+`Scripts/PackageManagers/New-WingetManifest.ps1` 只负责生成 manifest 并做确定性的文件内容检查。`Scripts/PackageManagers/Test-WingetManifest.ps1` 负责调用 `winget validate --ignore-warnings`。发布 workflow 会对真实 Release assets 生成的 staging manifest 运行 winget CLI 验证；启用 winget PR 步骤时，`Submit-WingetPr.ps1` 还会在 clone 后把文件复制到最终 `microsoft/winget-pkgs` 目标路径，并再次对该最终路径运行验证。
 
 验证脚本会保留 winget YAML schema header，例如：
 
@@ -187,6 +192,21 @@ Manual dry-run:
    - `winget/*.yaml`
 
 The dry-run artifact is generated from the real GitHub Release selected by tag. `release-assets.json` contains hashes computed from downloaded Release assets, not fixture values.
+
+`dry_run=true` 仍会执行这些真实 preflight：
+
+- 下载已发布 Release 的真实 assets；
+- 计算真实 SHA256；
+- 生成并验证 Scoop manifest；
+- 生成并验证 winget manifests；
+- clone Scoop bucket、复制 manifest、打印 diff/status；
+- 当 winget PR 步骤被启用时，clone winget fork、从官方 `microsoft/winget-pkgs` `upstream/master` 创建分支、复制到最终 target path、验证 target path、打印 diff/status。
+
+`dry_run=true` 只阻止外部副作用：
+
+- 不向 Scoop bucket push；
+- 不向 winget fork push；
+- 不打开 `microsoft/winget-pkgs` PR。
 
 ## 8. Fixture tests
 

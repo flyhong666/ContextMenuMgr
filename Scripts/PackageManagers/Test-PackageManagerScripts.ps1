@@ -150,6 +150,11 @@ function Invoke-GenerationCase {
 
     $scoopPath = Join-Path $scoopOut $ExpectedScoopFile
     Assert-True -Condition (Test-Path -LiteralPath $scoopPath) -Message "$Name Scoop manifest was not created."
+    & (Join-Path $scriptDir 'Test-ScoopManifest.ps1') `
+        -ManifestPath $scoopPath `
+        -ExpectedAppName ([System.IO.Path]::GetFileNameWithoutExtension($ExpectedScoopFile)) `
+        -ExpectedVersion $ExpectedPackageVersion
+
     $scoop = Get-Content -LiteralPath $scoopPath -Raw | ConvertFrom-Json
     Assert-Equal -Actual $scoop.license -Expected 'GPL-3.0-only' -Message "$Name Scoop license mismatch."
     Assert-Equal -Actual $scoop.persist -Expected 'Data' -Message "$Name Scoop persist mismatch."

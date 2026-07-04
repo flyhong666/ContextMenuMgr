@@ -136,6 +136,14 @@ jobs:
             -AssetManifestJson (Join-Path $env:PACKAGE_OUTPUT_DIR 'release-assets.json') `
             -OutputDirectory (Join-Path $env:PACKAGE_OUTPUT_DIR 'scoop')
 
+      - name: Validate Scoop manifest
+        shell: pwsh
+        run: |
+          pwsh Scripts\PackageManagers\Test-ScoopManifest.ps1 `
+            -ManifestPath (Join-Path (Join-Path $env:PACKAGE_OUTPUT_DIR 'scoop') '${{ steps.release.outputs.scoop_app }}.json') `
+            -ExpectedAppName '${{ steps.release.outputs.scoop_app }}' `
+            -ExpectedVersion '${{ steps.release.outputs.package_version }}'
+
       - name: Generate winget manifests
         shell: pwsh
         run: |
