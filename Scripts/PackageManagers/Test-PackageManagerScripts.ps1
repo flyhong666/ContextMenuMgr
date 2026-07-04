@@ -148,6 +148,8 @@ function Invoke-GenerationCase {
     foreach ($path in @($versionManifestPath, $zhCnLocaleManifestPath, $zhTwLocaleManifestPath, $enUsLocaleManifestPath, $installerManifestPath)) {
         Assert-True -Condition (Test-Path -LiteralPath $path) -Message "$Name missing winget manifest: $path"
         $content = Get-Content -LiteralPath $path -Raw
+        $firstLine = Get-Content -LiteralPath $path -First 1
+        Assert-True -Condition ($firstLine -match '^PackageIdentifier:') -Message "$Name winget manifest should start with PackageIdentifier: $path"
         Assert-True -Condition (-not [string]::IsNullOrWhiteSpace($content)) -Message "$Name winget manifest is empty: $path"
         Assert-True -Condition ($content -match 'ManifestVersion: 1\.12\.0') -Message "$Name winget manifest is missing ManifestVersion: $path"
     }

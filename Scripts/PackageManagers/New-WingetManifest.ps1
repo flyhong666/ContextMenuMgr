@@ -143,7 +143,6 @@ function New-LocaleManifestLines {
     )
 
     $lines = @(
-        "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.$($Definition.Schema).1.12.0.schema.json",
         "PackageIdentifier: $(ConvertTo-YamlScalar $PackageIdentifier)",
         "PackageVersion: $(ConvertTo-YamlScalar $PackageVersion)",
         "PackageLocale: $($Definition.Locale)",
@@ -193,7 +192,6 @@ $localeManifests = @()
 $installerManifest = Join-Path $OutputDirectory "$packageIdentifier.installer.yaml"
 
 Write-TextFile -Path $versionManifest -Lines @(
-    "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.12.0.schema.json",
     "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
     "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
     "DefaultLocale: zh-CN",
@@ -213,7 +211,6 @@ foreach ($definition in $localeDefinitions) {
 }
 
 Write-TextFile -Path $installerManifest -Lines @(
-    "# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json",
     "PackageIdentifier: $(ConvertTo-YamlScalar $packageIdentifier)",
     "PackageVersion: $(ConvertTo-YamlScalar $packageVersion)",
     "InstallerType: inno",
