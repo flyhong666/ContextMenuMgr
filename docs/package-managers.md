@@ -145,7 +145,7 @@ version manifest 使用 `DefaultLocale: zh-CN`。`zh-CN` locale manifest 是 `Ma
 - Stable: `manifests/p/PLFJY/ContextMenuMgrPlus/<PackageVersion>/`
 - Beta: `manifests/p/PLFJY/ContextMenuMgrPlus/Beta/<PackageVersion>/`
 
-winget PR 分支会先 clone fork，然后添加 `upstream=https://github.com/microsoft/winget-pkgs.git`，fetch `upstream/master --depth=1`，并从当前官方 `upstream/master` 创建发布分支。生成的 manifest 只复制到上述单一 `<PackageVersion>` 目录，提交前会检查所有 changed files 都位于该目录下。PR 因此被限制为 exactly one package version manifest directory，不能夹带其它包、其它版本或非 manifest 改动。
+winget PR 分支会先计算目标 manifest 目录，然后对 fork 执行 `--filter=blob:none --no-checkout` partial clone，添加 `upstream=https://github.com/microsoft/winget-pkgs.git`，fetch `upstream/master --depth=1`，再启用 cone sparse checkout，只 checkout 目标 `<PackageVersion>` 目录，并从当前官方 `upstream/master` 创建发布分支。这样避免 Windows runner materialize winget-pkgs 的数十万 manifest 文件，也避免无关历史包路径过长导致 checkout 失败。生成的 manifest 只复制到上述单一 `<PackageVersion>` 目录，提交前会检查所有 changed files 都位于该目录下。PR 因此被限制为 exactly one package version manifest directory，不能夹带其它包、其它版本或非 manifest 改动。
 
 winget 可用性取决于 PR 合并到 `microsoft/winget-pkgs` 以及源索引刷新。Action 可以自动打开 PR，但不能保证用户立即通过 winget 搜到或安装。
 
@@ -206,7 +206,7 @@ The dry-run artifact is generated from the real GitHub Release selected by tag. 
 - 生成并验证 Scoop manifest；
 - 生成并验证 winget manifests；
 - clone Scoop bucket、复制 manifest、打印 diff/status；
-- 当 winget PR 步骤被启用时，clone winget fork、从官方 `microsoft/winget-pkgs` `upstream/master` 创建分支、复制到最终 target path、验证 target path、打印 diff/status。
+- 当 winget PR 步骤被启用时，partial clone winget fork、从官方 `microsoft/winget-pkgs` `upstream/master` 创建 sparse checkout 分支、只 materialize 最终 target path、验证 target path、打印 diff/status。
 
 `dry_run=true` 只阻止外部副作用：
 

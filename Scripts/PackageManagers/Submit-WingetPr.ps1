@@ -79,7 +79,7 @@ function Get-WingetManifestRelativePath {
 
     $publisher = $segments[0]
     $firstLetter = $publisher.Substring(0, 1).ToLowerInvariant()
-    return Join-Path (Join-Path 'manifests' $firstLetter) (Join-Path ($segments -join [System.IO.Path]::DirectorySeparatorChar) $Version)
+    return "manifests/$firstLetter/$($segments -join '/')/$Version"
 }
 
 function Get-ManifestValue {
@@ -209,6 +209,7 @@ if ($PackageIdentifier -like '*.Beta') {
 
 $safeVersion = $PackageVersion -replace '[^A-Za-z0-9._-]', '-'
 $branchName = "$branchPrefix-$safeVersion"
+$targetRelativePath = Get-WingetManifestRelativePath -Identifier $PackageIdentifier -Version $PackageVersion
 $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ContextMenuMgr-winget-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $workRoot | Out-Null
 $clonePath = Join-Path $workRoot 'winget-pkgs'
@@ -225,14 +226,29 @@ else {
     $cloneUrl = "https://x-access-token:$escapedToken@github.com/$WingetForkRepository.git"
 }
 
-Invoke-Git -Arguments @('clone', $cloneUrl, $clonePath)
+<# 
+winget-pkgs contains hundreds of thousands of manifest files. A full checkout is
+slow on Windows runners and can fail on unrelated existing manifests with long
+paths before this package is even touched. Use a partial no-checkout clone plus
+sparse checkout so only the target PLFJY manifest directory is materialized.
+#>
+Invoke-Git -Arguments @(
+    '-c', 'core.longpaths=true',
+    'clone',
+    '--filter=blob:none',
+    '--no-checkout',
+    $cloneUrl,
+    $clonePath
+)
+Invoke-Git -Arguments @('config', 'core.longpaths', 'true') -WorkingDirectory $clonePath
 Invoke-Git -Arguments @('config', 'user.name', 'github-actions[bot]') -WorkingDirectory $clonePath
 Invoke-Git -Arguments @('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com') -WorkingDirectory $clonePath
 Invoke-Git -Arguments @('remote', 'add', 'upstream', "https://github.com/$TargetRepository.git") -WorkingDirectory $clonePath
 Invoke-Git -Arguments @('fetch', 'upstream', 'master', '--depth=1') -WorkingDirectory $clonePath
+Invoke-Git -Arguments @('sparse-checkout', 'init', '--cone') -WorkingDirectory $clonePath
+Invoke-Git -Arguments @('sparse-checkout', 'set', '--skip-checks', $targetRelativePath) -WorkingDirectory $clonePath
 Invoke-Git -Arguments @('checkout', '-B', $branchName, 'upstream/master') -WorkingDirectory $clonePath
 
-$targetRelativePath = Get-WingetManifestRelativePath -Identifier $PackageIdentifier -Version $PackageVersion
 $targetPath = Join-Path $clonePath $targetRelativePath
 New-Item -ItemType Directory -Force -Path $targetPath | Out-Null
 Get-ChildItem -LiteralPath $ManifestDirectory -File | ForEach-Object {
