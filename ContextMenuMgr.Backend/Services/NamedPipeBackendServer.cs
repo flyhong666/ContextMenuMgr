@@ -517,7 +517,8 @@ public sealed class NamedPipeBackendServer
             request.ItemId ?? string.Empty,
             request.Enable.GetValueOrDefault(),
             cancellationToken,
-            userContext);
+            userContext,
+            request.Item);
     }
 
     private async Task<PipeResponse> HandleSetDocumentIconProviderAsync(
