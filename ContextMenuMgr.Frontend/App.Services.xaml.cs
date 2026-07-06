@@ -36,6 +36,7 @@ public partial class App
         services.AddSingleton<ContextMenuGlobalSearchService>();
         services.AddSingleton<GlobalSearchNavigationFilterService>();
         services.AddSingleton<ContextMenuItemActionsService>();
+        services.AddSingleton<ContextMenuApplicationIdentityService>();
         services.AddSingleton<ContextMenuDeepAnalysisService>();
         services.AddSingleton<ListPlaceholderDebugStateService>();
         services.AddSingleton<IBackendClient, NamedPipeBackendClient>();

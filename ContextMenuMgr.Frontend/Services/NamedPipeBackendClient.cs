@@ -503,6 +503,21 @@ public sealed class NamedPipeBackendClient : IBackendClient
         return response.Item;
     }
 
+    public async Task<IReadOnlyList<ContextMenuEntry>> FindRelatedFileTypeMenuItemsAsync(
+        FileTypeBatchQuery query,
+        CancellationToken cancellationToken)
+    {
+        var response = await SendRequestAsync(
+            new PipeRequest
+            {
+                Command = PipeCommand.FindRelatedFileTypeMenuItems,
+                FileTypeBatchQuery = query
+            },
+            cancellationToken);
+
+        return response.Items;
+    }
+
     /// <summary>
     /// Restarts explorer Async.
     /// </summary>

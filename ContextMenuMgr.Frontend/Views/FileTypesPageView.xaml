@@ -6,7 +6,10 @@
     xmlns:views="clr-namespace:ContextMenuMgr.Frontend.Views"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}">
     <Grid>
-        <TabControl x:Name="MainTabControl" Margin="0,8,0,0">
+        <TabControl
+            x:Name="MainTabControl"
+            Margin="0,8,0,0"
+            Visibility="{Binding IsBatchManagementActive, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal">
@@ -85,5 +88,9 @@
                 </Grid>
             </TabItem>
         </TabControl>
+
+        <Grid Visibility="{Binding IsBatchManagementActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <views:FileTypeBatchManagementView DataContext="{Binding BatchManagement}" />
+        </Grid>
     </Grid>
 </Page>

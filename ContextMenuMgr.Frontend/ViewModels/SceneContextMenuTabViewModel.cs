@@ -20,6 +20,8 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
     private readonly IconPreviewService _iconPreviewService;
     private readonly ContextMenuItemActionsService _actionsService;
     private readonly FrontendSettingsService _settingsService;
+    private readonly ContextMenuApplicationIdentityService? _identityService;
+    private readonly Func<ContextMenuItemViewModel, Task>? _openBatchManagementAsync;
     private readonly ContextMenuSceneKind _sceneKind;
     private readonly string? _fixedScopeValue;
     private readonly object _refreshSync = new();
@@ -43,7 +45,9 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         IconPreviewService iconPreviewService,
         ContextMenuItemActionsService actionsService,
         FrontendSettingsService settingsService,
-        string? fixedScopeValue = null)
+        string? fixedScopeValue = null,
+        ContextMenuApplicationIdentityService? identityService = null,
+        Func<ContextMenuItemViewModel, Task>? openBatchManagementAsync = null)
     {
         IconSymbol = iconSymbol;
         Title = title;
@@ -55,6 +59,8 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         _iconPreviewService = iconPreviewService;
         _actionsService = actionsService;
         _settingsService = settingsService;
+        _identityService = identityService;
+        _openBatchManagementAsync = openBatchManagementAsync;
 
         ItemsView = new ListCollectionView(Items);
         ItemsView.Filter = FilterItem;
@@ -71,6 +77,7 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         CancelText = localization.Translate("DialogCancel");
         SearchLabel = localization.Translate("SearchLabel");
         AddMenuItemText = localization.Translate("AddMenuItem");
+        BatchManagementText = localization.Translate("FileTypeBatchManageAction");
 
         _settingsService.SettingsChanged += OnSettingsChanged;
         _localization.LanguageChanged += OnLanguageChanged;
@@ -153,6 +160,11 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty]
     public partial string AddMenuItemText { get; set; }
+
+    [ObservableProperty]
+    public partial string BatchManagementText { get; set; }
+
+    public bool HasBatchManagementAction => _openBatchManagementAsync is not null;
 
     /// <summary>
     /// Gets or sets the delete Text.
@@ -431,6 +443,21 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         return Task.CompletedTask;
     }
 
+    [RelayCommand(CanExecute = nameof(CanOpenBatchManagement))]
+    private Task OpenBatchManagementAsync(ContextMenuItemViewModel? item)
+    {
+        return item is null || _openBatchManagementAsync is null
+            ? Task.CompletedTask
+            : _openBatchManagementAsync(item);
+    }
+
+    private bool CanOpenBatchManagement(ContextMenuItemViewModel? item)
+    {
+        return item is not null
+               && _openBatchManagementAsync is not null
+               && (_identityService?.CanBatchManageFileTypeItem(item) ?? item.CanOpenFileTypeBatchManagement);
+    }
+
     [RelayCommand]
     private async Task ConfirmPermanentDeleteAsync(ContextMenuItemViewModel? item)
     {
@@ -569,6 +596,7 @@ public partial class SceneContextMenuTabViewModel : ObservableObject, IDisposabl
         CancelText = _localization.Translate("DialogCancel");
         SearchLabel = _localization.Translate("SearchLabel");
         AddMenuItemText = _localization.Translate("AddMenuItem");
+        BatchManagementText = _localization.Translate("FileTypeBatchManageAction");
         if (!Items.Any())
         {
             EmptyText = RequiresScopeValue() && string.IsNullOrWhiteSpace(ResolveScopeValue())

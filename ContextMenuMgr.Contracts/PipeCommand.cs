@@ -45,6 +45,7 @@ public enum PipeCommand
     SetTrayIconPolicy,
     AnalyzeFileTypeContext,
     CreateSceneMenuItem,
+    FindRelatedFileTypeMenuItems,
     GetEnhanceMenuDefinitions,
     GetEnhanceMenuState,
     SetLogLevel,

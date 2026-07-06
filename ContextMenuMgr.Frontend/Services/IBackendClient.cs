@@ -116,6 +116,10 @@ public interface IBackendClient : IAsyncDisposable
         Guid clientOperationId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<ContextMenuEntry>> FindRelatedFileTypeMenuItemsAsync(
+        FileTypeBatchQuery query,
+        CancellationToken cancellationToken);
+
     Task RestartExplorerAsync(CancellationToken cancellationToken);
 
     Task RepairRuntimeDataAclAsync(CancellationToken cancellationToken);

@@ -24,6 +24,16 @@ public static class ProtectedMenuItemGuard
                && IsLnkOpenGuid(entry.HandlerClsid);
     }
 
+    public static bool IsProtectedFileTypeBatchDeleteItem(ContextMenuItemViewModel item)
+        => IsProtectedFileTypeBatchDeleteItem(item.Entry);
+
+    public static bool IsProtectedFileTypeBatchDeleteItem(ContextMenuEntry entry)
+    {
+        return entry.EntryKind == ContextMenuEntryKind.ShellVerb
+               && (string.Equals(entry.KeyName, "open", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(entry.KeyName, "edit", StringComparison.OrdinalIgnoreCase));
+    }
+
     public static bool IsProtectedOpenItem(SpecialMenuItemViewModel item) => IsProtectedOpenItem(item.Entry);
 
     public static bool IsProtectedOpenItem(SpecialMenuEntry entry)

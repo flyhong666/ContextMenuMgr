@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Frontend.Services;
@@ -10,22 +9,22 @@ namespace ContextMenuMgr.Frontend.ViewModels;
 
 public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposable
 {
-    private static readonly Regex CommandPathRegex = new(
-        "^(?:\\\"(?<path>[^\\\"]+\\.(?:exe|dll))\\\"|(?<path>[^\\s]+\\.(?:exe|dll)))",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly LocalizationService _localization;
     private readonly GlobalSearchNavigationFilterService _navigationFilterService;
+    private readonly ContextMenuApplicationIdentityService _identityService;
     private bool _applyingNavigationFilter;
 
     public ApplicationGroupsPageViewModel(
         ContextMenuWorkspaceService workspace,
         LocalizationService localization,
-        GlobalSearchNavigationFilterService navigationFilterService)
+        GlobalSearchNavigationFilterService navigationFilterService,
+        ContextMenuApplicationIdentityService identityService)
     {
         _workspace = workspace;
         _localization = localization;
         _navigationFilterService = navigationFilterService;
+        _identityService = identityService;
         _workspace.Items.CollectionChanged += OnItemsChanged;
         foreach (var item in _workspace.Items)
         {
@@ -116,28 +115,7 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
         }
     }
 
-    private static string GetGroupIdentity(ContextMenuItemViewModel item)
-    {
-        if (!string.IsNullOrWhiteSpace(item.Entry.FilePath))
-        {
-            return item.Entry.FilePath.Trim();
-        }
-
-        var commandMatch = CommandPathRegex.Match(item.Entry.CommandText?.Trim() ?? string.Empty);
-        if (commandMatch.Success)
-        {
-            return commandMatch.Groups["path"].Value;
-        }
-
-        if (!string.IsNullOrWhiteSpace(item.Entry.HandlerClsid))
-        {
-            return item.Entry.HandlerClsid.Trim();
-        }
-
-        return !string.IsNullOrWhiteSpace(item.Entry.RegistryPath)
-            ? item.Entry.RegistryPath.Trim()
-            : item.Id;
-    }
+    private string GetGroupIdentity(ContextMenuItemViewModel item) => _identityService.GetIdentity(item).Identity;
 
     private static bool IsClassicCategory(ContextMenuMgr.Contracts.ContextMenuCategory category) => category is
         ContextMenuMgr.Contracts.ContextMenuCategory.File
@@ -151,10 +129,10 @@ public partial class ApplicationGroupsPageViewModel : ObservableObject, IDisposa
         or ContextMenuMgr.Contracts.ContextMenuCategory.Computer
         or ContextMenuMgr.Contracts.ContextMenuCategory.RecycleBin;
 
-    private static bool MatchesGroup(IEnumerable<ContextMenuItemViewModel> group, string query)
+    private bool MatchesGroup(IEnumerable<ContextMenuItemViewModel> group, string query)
     {
         var items = group.ToArray();
-        var fields = new List<string?> { GetGroupIdentity(items[0]) };
+        var fields = new List<string?> { _identityService.GetIdentity(items[0]).Identity };
         fields.AddRange(items.SelectMany(item => new[]
         {
             item.DisplayName,

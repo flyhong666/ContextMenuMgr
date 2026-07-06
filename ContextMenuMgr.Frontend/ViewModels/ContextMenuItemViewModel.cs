@@ -99,6 +99,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public string RegistryPath => Entry.RegistryPath;
 
+    public string FileTypeRegistrationSource => GetFileTypeRegistrationSource(Entry.SourceRootPath, Entry.RegistryPath);
+
     public string Notes => Entry.Id switch
     {
         "special:wps-office-association:document-formats" => _localization.Format(
@@ -173,7 +175,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     public bool CanEditShellAttributes => HasOtherAttributesSection && !IsAttributesBusy;
 
-    public bool HasActionFlyout => HasOtherAttributesSection || HasDetailsActions;
+    public bool HasActionFlyout => HasOtherAttributesSection || HasDetailsActions || CanOpenFileTypeBatchManagement;
 
     public bool CanEditText => Entry.EntryKind == ContextMenuEntryKind.ShellVerb
         && IsPresentInRegistry
@@ -191,6 +193,23 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         && ContextMenuDeepAnalysisCapability.CanDeepAnalyze(Entry)
         && !IsDeepAnalyzing;
 
+    public bool CanOpenFileTypeBatchManagement => !IsDeleted
+        && IsPresentInRegistry
+        && !string.IsNullOrWhiteSpace(Entry.RegistryPath)
+        && !string.IsNullOrWhiteSpace(Entry.BackendRegistryPath)
+        && Entry.EntryKind switch
+        {
+            ContextMenuEntryKind.ShellVerb => !string.IsNullOrWhiteSpace(Entry.KeyName)
+                                              && (!string.IsNullOrWhiteSpace(Entry.FilePath)
+                                                  || !string.IsNullOrWhiteSpace(ExtractCommandExecutablePath(Entry.CommandText))),
+            ContextMenuEntryKind.ShellExtension => !string.IsNullOrWhiteSpace(Entry.HandlerClsid),
+            _ => false
+        };
+
+    public bool IsProtectedFileTypeBatchDelete => ProtectedMenuItemGuard.IsProtectedFileTypeBatchDeleteItem(Entry);
+
+    public bool CanDeleteInFileTypeBatch => !IsDeleted && IsPresentInRegistry && !IsProtectedFileTypeBatchDelete;
+
     /// <summary>
     /// Gets or sets a value indicating whether enabled.
     /// </summary>
@@ -205,6 +224,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
+    [NotifyPropertyChangedFor(nameof(HasActionFlyout))]
     public partial bool IsDeepAnalyzing { get; private set; }
 
     /// <summary>
@@ -226,6 +246,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowReadOnlyCommandText))]
     [NotifyPropertyChangedFor(nameof(HasDetailsActions))]
     [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFileTypeBatchManagement))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteInFileTypeBatch))]
     public partial bool IsDeleted { get; private set; }
 
     /// <summary>
@@ -294,6 +316,8 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasDetailsActions))]
     [NotifyPropertyChangedFor(nameof(CanReviewApproval))]
     [NotifyPropertyChangedFor(nameof(CanDeepAnalyzeMenuItem))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFileTypeBatchManagement))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteInFileTypeBatch))]
     public partial bool IsPresentInRegistry { get; private set; }
 
     /// <summary>
@@ -555,6 +579,7 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(KeyName));
         OnPropertyChanged(nameof(EditableText));
         OnPropertyChanged(nameof(RegistryPath));
+        OnPropertyChanged(nameof(FileTypeRegistrationSource));
         OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(ShowNotes));
         OnPropertyChanged(nameof(NotesToolTip));
@@ -570,6 +595,9 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowInlineCommandText));
         OnPropertyChanged(nameof(InlineCommandText));
         OnPropertyChanged(nameof(CanDeepAnalyzeMenuItem));
+        OnPropertyChanged(nameof(CanOpenFileTypeBatchManagement));
+        OnPropertyChanged(nameof(IsProtectedFileTypeBatchDelete));
+        OnPropertyChanged(nameof(CanDeleteInFileTypeBatch));
         OnPropertyChanged(nameof(CanEditText));
         OnPropertyChanged(nameof(HasOtherAttributesSection));
         OnPropertyChanged(nameof(CanEditShellAttributes));
@@ -1039,6 +1067,89 @@ public partial class ContextMenuItemViewModel : ObservableObject, IDisposable
             ? normalized[(lastSeparatorIndex + 1)..]
             : normalized;
     }
+
+    private static string GetFileTypeRegistrationSource(string? sourceRootPath, string? registryPath)
+    {
+        var root = string.IsNullOrWhiteSpace(sourceRootPath)
+            ? registryPath
+            : sourceRootPath;
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return string.Empty;
+        }
+
+        var normalized = root.Replace('/', '\\').Trim('\\');
+        foreach (var suffix in new[] { @"\shellex\ContextMenuHandlers", @"\shellex\PropertySheetHandlers", @"\shell" })
+        {
+            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[..^suffix.Length].TrimEnd('\\');
+                break;
+            }
+        }
+
+        const string systemFileAssociations = @"SystemFileAssociations\";
+        var systemIndex = normalized.IndexOf(systemFileAssociations, StringComparison.OrdinalIgnoreCase);
+        if (systemIndex >= 0)
+        {
+            return normalized[systemIndex..];
+        }
+
+        const string classesRoot = @"HKEY_CLASSES_ROOT\";
+        if (normalized.StartsWith(classesRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[classesRoot.Length..];
+        }
+
+        const string machineClasses = @"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\";
+        if (normalized.StartsWith(machineClasses, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[machineClasses.Length..];
+        }
+
+        const string userClassesMarker = @"\Software\Classes\";
+        var userClassesIndex = normalized.IndexOf(userClassesMarker, StringComparison.OrdinalIgnoreCase);
+        if (userClassesIndex >= 0)
+        {
+            normalized = normalized[(userClassesIndex + userClassesMarker.Length)..];
+        }
+
+        return normalized;
+    }
+
+    private static string? ExtractCommandExecutablePath(string? commandText)
+    {
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            return null;
+        }
+
+        var trimmed = commandText.Trim();
+        if (trimmed.StartsWith('"'))
+        {
+            var closingQuoteIndex = trimmed.IndexOf('"', 1);
+            if (closingQuoteIndex > 1)
+            {
+                var quoted = trimmed[1..closingQuoteIndex];
+                return EndsWithExecutableExtension(quoted) ? quoted : null;
+            }
+        }
+
+        foreach (var extension in new[] { ".exe", ".dll" })
+        {
+            var extensionIndex = trimmed.IndexOf(extension, StringComparison.OrdinalIgnoreCase);
+            if (extensionIndex > 0)
+            {
+                return trimmed[..(extensionIndex + extension.Length)].Trim().Trim('"');
+            }
+        }
+
+        return null;
+    }
+
+    private static bool EndsWithExecutableExtension(string value)
+        => value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+           || value.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
 
     private string GetWpsAffectedCount()
     {

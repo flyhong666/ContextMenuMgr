@@ -202,6 +202,68 @@ public sealed class ContextMenuRegistryCatalog
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<ContextMenuEntry>> FindRelatedFileTypeMenuItemsAsync(
+        FileTypeBatchQuery query,
+        CancellationToken cancellationToken = default,
+        BackendUserContext? userContext = null)
+    {
+        var roots = CreateRelatedFileTypeRoots(userContext).ToArray();
+        if (roots.Length == 0)
+        {
+            return [];
+        }
+
+        var includedRootPaths = roots
+            .Select(static root => root.StableRelativePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var snapshot = await BuildSnapshotAsync(
+            EnumerateEntries(roots, userContext),
+            state => includedRootPaths.Contains(state.SourceRootPath),
+            persistDiscoveredStates: false,
+            persistSnapshotUpdates: false,
+            cancellationToken);
+
+        var relatedActual = snapshot
+            .Where(entry => IsRelatedFileTypeEntry(query, entry))
+            .Select(static entry => entry with
+            {
+                IsPendingApproval = false,
+                DetectedChangeKind = ContextMenuChangeKind.None,
+                DetectedChangeDetails = null,
+                HasConsistencyIssue = false,
+                ConsistencyIssue = null
+            });
+
+        var states = await _stateStore.LoadAsync(cancellationToken);
+        var relatedDeleted = states.Values
+            .Where(static state => state.IsDeleted && !string.IsNullOrWhiteSpace(state.BackupFilePath))
+            .Select(static state => state.ToDeletedEntry())
+            .Where(entry => IsRelatedFileTypeEntry(query, entry))
+            .Select(static entry => entry with
+            {
+                IsPendingApproval = false,
+                DetectedChangeKind = ContextMenuChangeKind.None,
+                DetectedChangeDetails = null,
+                HasConsistencyIssue = false,
+                ConsistencyIssue = null
+            });
+
+        var related = relatedActual
+            .Concat(relatedDeleted)
+            .GroupBy(static entry => string.IsNullOrWhiteSpace(entry.BackendRegistryPath) ? entry.Id : entry.BackendRegistryPath, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.OrderBy(static entry => entry.IsDeleted ? 1 : 0).First())
+            .OrderBy(static entry => entry.RegistryPath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        await _logger.LogAsync(
+            $"RelatedFileTypeMenuItemsScan: EntryKind={query.EntryKind}, KeyName={query.KeyName}, CommandExecutablePath={query.CommandExecutablePath}, HandlerClsid={query.HandlerClsid}, FrontendSid={DiagnosticLogFormatter.FormatSid(userContext)}, ResultCount={related.Length}.",
+            cancellationToken);
+
+        return related;
+    }
+
     public async Task<IReadOnlyList<ContextMenuEntry>> GetWindows11SnapshotAsync(
         CancellationToken cancellationToken = default,
         BackendUserContext? userContext = null)
@@ -1220,16 +1282,25 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Deletes item Async.
     /// </summary>
-    public async Task<PipeResponse> DeleteItemAsync(string itemId, CancellationToken cancellationToken)
+    public async Task<PipeResponse> DeleteItemAsync(
+        string itemId,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null,
+        ContextMenuEntry? fallbackItem = null)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken);
+        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+        {
+            item = TryUseSceneFallbackItem(itemId, fallbackItem);
+        }
+
         var states = await _stateStore.LoadAsync(cancellationToken);
         var persistedState = states.GetValueOrDefault(itemId);
 
         if (item is null && persistedState is null)
         {
-            item = await TryFindEntryByIdAsync(itemId, cancellationToken);
+            item = await TryFindEntryByIdAsync(itemId, cancellationToken, userContext);
             if (item is null)
             {
                 return CreateFailure($"Menu item '{itemId}' was not found.");
@@ -1244,6 +1315,14 @@ public sealed class ContextMenuRegistryCatalog
         if (item is not null && !item.IsPresentInRegistry)
         {
             return await RemoveMissingItemStateAsync(item, cancellationToken);
+        }
+
+        var deleteTarget = item ?? (persistedState is null ? null : CreateMinimalEntry(itemId, persistedState));
+        if (deleteTarget is not null && IsProtectedFileTypeDeleteItem(deleteTarget))
+        {
+            return CreateFailure(
+                $"'{deleteTarget.DisplayName}' is a protected file-type verb and cannot be deleted. Disable it instead.",
+                deleteTarget);
         }
 
         try
@@ -1269,7 +1348,7 @@ public sealed class ContextMenuRegistryCatalog
 
             await _logger.LogAsync($"Deleted {state.DisplayName} with backup {backupFilePath}.", cancellationToken);
 
-            var refreshed = (await GetSnapshotAsync(cancellationToken))
+            var refreshed = (await GetSnapshotAsync(cancellationToken, userContext))
                 .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
                 ?? CreateVirtualEntry(state, null, ContextMenuChangeKind.None, null);
 
@@ -1290,7 +1369,8 @@ public sealed class ContextMenuRegistryCatalog
 
     private async Task<ContextMenuEntry?> TryFindEntryByIdAsync(
         string itemId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null)
     {
         var separatorIndex = itemId.LastIndexOf('|');
         if (separatorIndex < 0)
@@ -1302,7 +1382,11 @@ public sealed class ContextMenuRegistryCatalog
         var keyName = itemId[(separatorIndex + 1)..];
         var candidates = new List<ContextMenuEntry>();
 
-        foreach (var instance in EnumerateRootInstances())
+        var scope = userContext is null
+            ? RegistryRootInstanceScope.AllKnownInstances
+            : RegistryRootInstanceScope.MachineAndFrontendUser;
+
+        foreach (var instance in EnumerateRootInstances(scope, userContext))
         {
             using var baseKey = instance.OpenBaseKey(stableRelativePath);
             if (baseKey is null)
@@ -1470,7 +1554,10 @@ public sealed class ContextMenuRegistryCatalog
     /// <summary>
     /// Executes undo Delete Async.
     /// </summary>
-    public async Task<PipeResponse> UndoDeleteAsync(string itemId, CancellationToken cancellationToken)
+    public async Task<PipeResponse> UndoDeleteAsync(
+        string itemId,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null)
     {
         var states = await _stateStore.LoadAsync(cancellationToken);
         if (!states.TryGetValue(itemId, out var state) || !state.IsDeleted || string.IsNullOrWhiteSpace(state.BackupFilePath))
@@ -1508,12 +1595,13 @@ public sealed class ContextMenuRegistryCatalog
 
             await _logger.LogAsync($"Restored deleted item {state.DisplayName}.", cancellationToken);
 
-            var refreshed = (await GetSnapshotAsync(cancellationToken))
-                .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            var refreshed = (await GetSnapshotAsync(cancellationToken, userContext))
+                .FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase))
+                ?? await TryFindEntryByIdAsync(itemId, cancellationToken, userContext);
 
             return new PipeResponse
             {
-                Success = refreshed is not null,
+                Success = true,
                 Message = refreshed is not null
                     ? $"Restored {refreshed.DisplayName}."
                     : $"The backup for {state.DisplayName} was restored, but the item could not be re-read.",
@@ -4094,6 +4182,127 @@ public sealed class ContextMenuRegistryCatalog
         }
     }
 
+    private static IEnumerable<RegistryRootDescriptor> CreateRelatedFileTypeRoots(BackendUserContext? userContext)
+    {
+        var classRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectRelatedFileTypeClassRoots(Registry.LocalMachine, @"SOFTWARE\Classes", classRoots);
+        if (userContext is not null)
+        {
+            CollectRelatedFileTypeClassRoots(Registry.Users, $@"{userContext.Sid}\Software\Classes", classRoots);
+        }
+
+        foreach (var classRoot in classRoots.OrderBy(static root => root, StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var root in CreateShellSceneRoots(
+                         ContextMenuCategory.File,
+                         classRoot,
+                         RegistryRootInstanceScope.MachineAndFrontendUser,
+                         "FileTypeBatch"))
+            {
+                yield return root;
+            }
+        }
+    }
+
+    private static void CollectRelatedFileTypeClassRoots(
+        RegistryKey hive,
+        string classesBasePath,
+        ISet<string> classRoots)
+    {
+        using var classesRoot = hive.OpenSubKey(classesBasePath, writable: false);
+        if (classesRoot is null)
+        {
+            return;
+        }
+
+        foreach (var subKeyName in classesRoot.GetSubKeyNames())
+        {
+            if (string.Equals(subKeyName, "SystemFileAssociations", StringComparison.OrdinalIgnoreCase))
+            {
+                CollectSystemFileAssociationRoots(classesRoot, classRoots);
+                continue;
+            }
+
+            if (!IsRelatedFileTypeClassRootName(subKeyName))
+            {
+                continue;
+            }
+
+            if (HasAnyContextMenuSubkeyInClassesRoot(hive, classesBasePath, subKeyName))
+            {
+                classRoots.Add(subKeyName);
+            }
+        }
+    }
+
+    private static void CollectSystemFileAssociationRoots(RegistryKey classesRoot, ISet<string> classRoots)
+    {
+        using var associationsRoot = classesRoot.OpenSubKey("SystemFileAssociations", writable: false);
+        if (associationsRoot is null)
+        {
+            return;
+        }
+
+        foreach (var associationName in associationsRoot.GetSubKeyNames())
+        {
+            var classRoot = $@"SystemFileAssociations\{associationName}";
+            if (HasAnyContextMenuSubkey(associationsRoot, associationName))
+            {
+                classRoots.Add(classRoot);
+            }
+        }
+    }
+
+    private static bool HasAnyContextMenuSubkey(RegistryKey root, string classRoot)
+    {
+        foreach (var relativeSubPath in ContextMenuSubRootRelativePaths)
+        {
+            using var key = root.OpenSubKey($@"{classRoot}\{relativeSubPath}", writable: false);
+            if (key is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRelatedFileTypeClassRootName(string classRoot)
+    {
+        if (string.IsNullOrWhiteSpace(classRoot))
+        {
+            return false;
+        }
+
+        if (classRoot.StartsWith(".", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return !classRoot.Contains('\\', StringComparison.Ordinal)
+               && !FileTypeBatchExcludedClassRoots.Contains(classRoot);
+    }
+
+    private static readonly HashSet<string> FileTypeBatchExcludedClassRoots = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "*",
+        "AllFilesystemObjects",
+        "Directory",
+        "Directory.Background",
+        "Drive",
+        "Folder",
+        "LibraryFolder",
+        "UserLibraryFolder",
+        "DesktopBackground",
+        "CLSID",
+        "Interface",
+        "TypeLib",
+        "AppID",
+        "Applications",
+        "PackagedCom",
+        "Protocols"
+    };
+
     private static IEnumerable<RegistryRootDescriptor> CreatePerceivedTypeRoots(string? scopeValue)
     {
         if (string.IsNullOrWhiteSpace(scopeValue))
@@ -4313,6 +4522,107 @@ public sealed class ContextMenuRegistryCatalog
         }
 
         return extension;
+    }
+
+    private static bool IsRelatedFileTypeEntry(FileTypeBatchQuery query, ContextMenuEntry entry)
+    {
+        if (entry.IsWindows11ContextMenu || entry.EntryKind != query.EntryKind)
+        {
+            return false;
+        }
+
+        return query.EntryKind switch
+        {
+            ContextMenuEntryKind.ShellVerb => IsRelatedShellVerb(query, entry),
+            ContextMenuEntryKind.ShellExtension => IsRelatedShellExtension(query, entry),
+            _ => false
+        };
+    }
+
+    private static bool IsRelatedShellVerb(FileTypeBatchQuery query, ContextMenuEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(query.KeyName)
+            || string.IsNullOrWhiteSpace(entry.KeyName)
+            || !string.Equals(query.KeyName, entry.KeyName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var queryExecutable = NormalizeExecutableIdentity(query.CommandExecutablePath);
+        var entryExecutable = NormalizeExecutableIdentity(entry.FilePath)
+                              ?? NormalizeExecutableIdentity(ExtractCommandExecutablePath(entry.CommandText));
+        return !string.IsNullOrWhiteSpace(queryExecutable)
+               && !string.IsNullOrWhiteSpace(entryExecutable)
+               && string.Equals(queryExecutable, entryExecutable, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRelatedShellExtension(FileTypeBatchQuery query, ContextMenuEntry entry)
+    {
+        return !string.IsNullOrWhiteSpace(query.HandlerClsid)
+               && !string.IsNullOrWhiteSpace(entry.HandlerClsid)
+               && string.Equals(query.HandlerClsid, entry.HandlerClsid, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsProtectedFileTypeDeleteItem(ContextMenuEntry entry)
+    {
+        return entry.Category == ContextMenuCategory.File
+               && entry.EntryKind == ContextMenuEntryKind.ShellVerb
+               && (string.Equals(entry.KeyName, "open", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(entry.KeyName, "edit", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? NormalizeExecutableIdentity(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        var expanded = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
+        if (string.IsNullOrWhiteSpace(expanded))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Path.IsPathRooted(expanded)
+                ? Path.GetFullPath(expanded).TrimEnd('\\')
+                : expanded;
+        }
+        catch
+        {
+            return expanded;
+        }
+    }
+
+    private static string? ExtractCommandExecutablePath(string? commandText)
+    {
+        if (string.IsNullOrWhiteSpace(commandText))
+        {
+            return null;
+        }
+
+        var expanded = Environment.ExpandEnvironmentVariables(commandText.Trim());
+        if (expanded.StartsWith('"'))
+        {
+            var closingQuoteIndex = expanded.IndexOf('"', 1);
+            if (closingQuoteIndex > 1)
+            {
+                return expanded[1..closingQuoteIndex];
+            }
+        }
+
+        foreach (var extension in new[] { ".exe", ".dll" })
+        {
+            var extensionIndex = expanded.IndexOf(extension, StringComparison.OrdinalIgnoreCase);
+            if (extensionIndex > 0)
+            {
+                return expanded[..(extensionIndex + extension.Length)].Trim().Trim('"');
+            }
+        }
+
+        return null;
     }
 
     private const string UserClassesPath = @"Software\Classes";

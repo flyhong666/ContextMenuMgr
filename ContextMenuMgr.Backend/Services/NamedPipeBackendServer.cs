@@ -366,9 +366,16 @@ public sealed class NamedPipeBackendServer
             PipeCommand.ApplyDecision when request.ItemId is not null && request.Decision is not null
                 => await HandleApplyDecisionAsync(request, stream, cancellationToken),
             PipeCommand.DeleteItem when request.ItemId is not null
-                => await _catalog.DeleteItemAsync(request.ItemId, cancellationToken),
+                => await _catalog.DeleteItemAsync(
+                    request.ItemId,
+                    cancellationToken,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken),
+                    request.Item),
             PipeCommand.UndoDelete when request.ItemId is not null
-                => await _catalog.UndoDeleteAsync(request.ItemId, cancellationToken),
+                => await _catalog.UndoDeleteAsync(
+                    request.ItemId,
+                    cancellationToken,
+                    await ResolveFrontendUserContextAsync(stream, cancellationToken)),
             PipeCommand.PurgeDeletedItem when request.ItemId is not null
                 => await _catalog.PurgeDeletedItemAsync(request.ItemId, cancellationToken),
             PipeCommand.GetSpecialMenuSnapshot when request.SpecialKind is not null
@@ -446,6 +453,16 @@ public sealed class NamedPipeBackendServer
                     request.CreateSceneMenuItem,
                     request.ClientOperationId,
                     cancellationToken),
+            PipeCommand.FindRelatedFileTypeMenuItems when request.FileTypeBatchQuery is not null
+                => new PipeResponse
+                {
+                    Success = true,
+                    Message = "Related file-type menu items loaded.",
+                    Items = await _catalog.FindRelatedFileTypeMenuItemsAsync(
+                        request.FileTypeBatchQuery,
+                        cancellationToken,
+                        await ResolveFrontendUserContextAsync(stream, cancellationToken))
+                },
             PipeCommand.RestartExplorer
                 => await HandleRestartExplorerRequestAsync(stream, cancellationToken),
             PipeCommand.RepairRuntimeDataAcl

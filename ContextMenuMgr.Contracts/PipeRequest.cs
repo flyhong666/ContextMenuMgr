@@ -146,6 +146,8 @@ public sealed record PipeRequest
 
     public CreateSceneMenuItemRequest? CreateSceneMenuItem { get; init; }
 
+    public FileTypeBatchQuery? FileTypeBatchQuery { get; init; }
+
     public DefaultDropEffect? DefaultDropEffect { get; init; }
 
     /// <summary>

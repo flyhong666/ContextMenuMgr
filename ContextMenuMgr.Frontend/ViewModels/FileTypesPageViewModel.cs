@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ContextMenuMgr.Contracts;
 using ContextMenuMgr.Frontend.Services;
 
@@ -10,6 +11,12 @@ namespace ContextMenuMgr.Frontend.ViewModels;
 public partial class FileTypesPageViewModel : ObservableObject, IDisposable
 {
     private readonly LocalizationService _localization;
+    private readonly IBackendClient _backendClient;
+    private readonly ContextMenuWorkspaceService _workspace;
+    private readonly IconPreviewService _iconPreviewService;
+    private readonly ContextMenuItemActionsService _actionsService;
+    private readonly FrontendSettingsService _settingsService;
+    private readonly ContextMenuApplicationIdentityService _identityService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileTypesPageViewModel"/> class.
@@ -20,9 +27,16 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
         LocalizationService localization,
         IconPreviewService iconPreviewService,
         ContextMenuItemActionsService actionsService,
-        FrontendSettingsService settingsService)
+        FrontendSettingsService settingsService,
+        ContextMenuApplicationIdentityService identityService)
     {
         _localization = localization;
+        _backendClient = backendClient;
+        _workspace = workspace;
+        _iconPreviewService = iconPreviewService;
+        _actionsService = actionsService;
+        _settingsService = settingsService;
+        _identityService = identityService;
 
         ShortcutTab = new SceneContextMenuTabViewModel(
             "Link24",
@@ -35,7 +49,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             iconPreviewService,
             actionsService,
             settingsService,
-            fixedScopeValue: "lnkfile");
+            fixedScopeValue: "lnkfile",
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
 
         UwpShortcutTab = new SceneContextMenuTabViewModel(
             "AppsList24",
@@ -48,7 +64,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             iconPreviewService,
             actionsService,
             settingsService,
-            fixedScopeValue: "Launcher.ImmersiveApplication");
+            fixedScopeValue: "Launcher.ImmersiveApplication",
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
 
         ExecutableTab = new SceneContextMenuTabViewModel(
             "WindowDevTools24",
@@ -61,7 +79,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             iconPreviewService,
             actionsService,
             settingsService,
-            fixedScopeValue: "exefile");
+            fixedScopeValue: "exefile",
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
 
         UnknownTypeTab = new SceneContextMenuTabViewModel(
             "DocumentQuestionMark24",
@@ -74,7 +94,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             iconPreviewService,
             actionsService,
             settingsService,
-            fixedScopeValue: "Unknown");
+            fixedScopeValue: "Unknown",
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
 
         CustomExtensionTab = new SceneContextMenuTabViewModel(
             "DocumentText24",
@@ -86,7 +108,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             localization,
             iconPreviewService,
             actionsService,
-            settingsService);
+            settingsService,
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
         CustomExtensionTab.ConfigureTextSelector(
             localization.Translate("SceneExtensionSelectorLabel"),
             ".txt");
@@ -102,7 +126,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             localization,
             iconPreviewService,
             actionsService,
-            settingsService);
+            settingsService,
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
         PerceivedTypeTab.ConfigureOptionSelector(
             localization.Translate("ScenePerceivedTypeSelectorLabel"),
             CreatePerceivedTypeOptions(localization),
@@ -118,7 +144,9 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
             localization,
             iconPreviewService,
             actionsService,
-            settingsService);
+            settingsService,
+            identityService: identityService,
+            openBatchManagementAsync: OpenBatchManagementAsync);
         DirectoryTypeTab.ConfigureOptionSelector(
             localization.Translate("SceneDirectoryTypeSelectorLabel"),
             CreateDirectoryTypeOptions(localization),
@@ -166,6 +194,43 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private int _selectedTabIndex = -1;
+
+    [ObservableProperty]
+    private bool _isBatchManagementActive;
+
+    [ObservableProperty]
+    private FileTypeBatchManagementViewModel? _batchManagement;
+
+    [RelayCommand]
+    private async Task OpenBatchManagementAsync(ContextMenuItemViewModel? sourceItem)
+    {
+        if (sourceItem is null || !_identityService.CanBatchManageFileTypeItem(sourceItem))
+        {
+            return;
+        }
+
+        BatchManagement?.Dispose();
+        var query = _identityService.CreateFileTypeBatchQuery(sourceItem);
+        BatchManagement = new FileTypeBatchManagementViewModel(
+            sourceItem,
+            query,
+            _backendClient,
+            _workspace,
+            _localization,
+            _iconPreviewService,
+            _actionsService,
+            _settingsService,
+            BackFromBatchManagementAsync);
+        IsBatchManagementActive = true;
+        await BatchManagement.RefreshAsync();
+    }
+
+    [RelayCommand]
+    private Task BackFromBatchManagementAsync()
+    {
+        IsBatchManagementActive = false;
+        return Task.CompletedTask;
+    }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
     {
@@ -274,6 +339,7 @@ public partial class FileTypesPageViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _localization.LanguageChanged -= OnLanguageChanged;
+        BatchManagement?.Dispose();
         ShortcutTab.Dispose();
         UwpShortcutTab.Dispose();
         ExecutableTab.Dispose();

@@ -139,6 +139,8 @@ Icon | Title | GlobalSearchBox | HeaderActions | WindowButtons
 
 `ModernNavigationView` 位于 `Controls/Modern/Navigation`，递归适配 `NavigationViewItem.MenuItems` / `MenuItemsSource`，保留嵌套展开、`Visibility`、`InfoBadge`、图标和原始 Binding。页面只由 `Controls/Modern/Frame/ModernFrame` 承载；页面创建顺序是 `IServiceProvider`、`INavigationViewPageProvider`、`Activator.CreateInstance`。不要把导航菜单改成 ViewModel 集合，也不要绕过 `INavigationService`。
 
+File Types 的批量管理是 `FileTypesPageView` 内部的隐藏 `UserControl` 子视图，不是 NavigationView 页面，也不是 TabControl 中可直接选择的额外 TabItem。`FileTypesPageViewModel.IsBatchManagementActive` 控制正常 scene tabs 与 `FileTypeBatchManagementView` 的显隐；返回时只关闭隐藏子视图，保留原来的 tab 选择。Scene item 卡片里的“批量管理”入口只在 File Types host opt-in 且 item 具备文件类型注册表路径、ShellVerb 命令程序+key 或 ShellExtension CLSID 时显示。批量页标题展示源菜单项图标，列表行必须把扩展名、ProgID 或 `SystemFileAssociations` 来源提出来显示，完整注册表路径只作为次要诊断信息。删除后的相关项仍留在批量页中显示撤销入口；批量页提供单项撤销和全部撤销。文件类型 `open` / `edit` 这类核心 verb 不允许在批量页删除，只允许通过开关禁用。
+
 `ModernFrame` 使用旧内容和新内容双 Presenter 播放导航过渡，支持 Entrance、Fade、SlideLeft、SlideRight、SlideBottom 和 Suppress；后退导航使用反向动画。转场沿用 neo 的分阶段时序：旧内容退出并清理后，新内容再进入，避免两个页面叠加位移；主窗口通过较短的 `TransitionDuration` 保持响应速度。`ModernNavigationView.Transition` / `TransitionDuration` 必须映射到本地 Frame，pane 开合使用独立的 EaseOut 宽度动画。动画被快速导航打断时必须清理旧 Storyboard、旧 PageHost 和过期的导航完成回调。
 
 重复点击当前导航项或再次 `Navigate` 到当前页面时，应在创建 Page 之前短路，不产生动画或 journal 记录。带可导航子项的父级条目默认是分组：点击父级只展开/折叠，页面导航由子项负责。

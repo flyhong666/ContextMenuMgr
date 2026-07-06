@@ -198,3 +198,22 @@ public sealed record CreateSceneMenuItemRequest
 
     public bool ShowAsDisabledIfHidden { get; init; }
 }
+
+public sealed record FileTypeBatchQuery
+{
+    public string SourceItemId { get; init; } = string.Empty;
+
+    public string SourceDisplayName { get; init; } = string.Empty;
+
+    public ContextMenuEntryKind EntryKind { get; init; }
+
+    public string KeyName { get; init; } = string.Empty;
+
+    public string? CommandExecutablePath { get; init; }
+
+    public string? HandlerClsid { get; init; }
+
+    public string? SourceRegistryPath { get; init; }
+
+    public string? SourceBackendRegistryPath { get; init; }
+}

@@ -273,16 +273,35 @@
                                         Content="{Binding PrimaryActionLabel}"
                                         Icon="{ui:SymbolIcon Symbol=ArrowUndo24}"
                                         Visibility="{Binding IsDeleted, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
                                     <ui:DropDownButton
                                         MinWidth="88"
                                         Margin="0,8,0,0"
                                         Appearance="Secondary"
                                         Content="{Binding MoreActionsText}"
                                         Icon="{ui:SymbolIcon Symbol=MoreHorizontal24}"
+                                        Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         Visibility="{Binding HasActionFlyout, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <ui:DropDownButton.Flyout>
                                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                <MenuItem
+                                                    Command="{Binding PlacementTarget.Tag.OpenBatchManagementCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                    CommandParameter="{Binding}"
+                                                    Header="{Binding PlacementTarget.Tag.BatchManagementText, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                                    <MenuItem.Style>
+                                                        <Style TargetType="{x:Type MenuItem}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding CanOpenFileTypeBatchManagement}" Value="True" />
+                                                                        <Condition Binding="{Binding PlacementTarget.Tag.HasBatchManagementAction, RelativeSource={RelativeSource AncestorType=ContextMenu}}" Value="True" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </MenuItem.Style>
+                                                </MenuItem>
                                                 <MenuItem Header="{Binding OtherAttributesTitle}" Visibility="{Binding HasOtherAttributesSection, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                     <MenuItem Header="{Binding OnlyWithShiftLabel}" IsCheckable="True" IsChecked="{Binding OnlyWithShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditShellAttributes}" />
                                                     <MenuItem Header="{Binding OnlyInExplorerLabel}" IsCheckable="True" IsChecked="{Binding OnlyInExplorer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEditShellAttributes}" />

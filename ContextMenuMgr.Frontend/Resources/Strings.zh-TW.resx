@@ -1497,4 +1497,18 @@
   <data name="ApplicationGroupCountFormat" xml:space="preserve"><value>{0} 個項目</value></data>
   <data name="ApplicationGroupDisableAll" xml:space="preserve"><value>全部停用</value></data>
   <data name="ApplicationGroupDisabling" xml:space="preserve"><value>正在停用…</value></data>
+  <data name="Back" xml:space="preserve"><value>返回</value></data>
+  <data name="LoadingStatus" xml:space="preserve"><value>正在載入…</value></data>
+  <data name="FileTypeBatchManageAction" xml:space="preserve"><value>批次管理</value></data>
+  <data name="FileTypeBatchTitle" xml:space="preserve"><value>{0} 的相關項目</value></data>
+  <data name="FileTypeBatchCommandIdentity" xml:space="preserve"><value>命令程式：{0}</value></data>
+  <data name="FileTypeBatchClsidIdentity" xml:space="preserve"><value>處理器 CLSID：{0}</value></data>
+  <data name="FileTypeBatchCountFormat" xml:space="preserve"><value>{0} 個相關項目</value></data>
+  <data name="FileTypeBatchSourceRegistryPath" xml:space="preserve"><value>來源登錄路徑</value></data>
+  <data name="FileTypeBatchEnableAll" xml:space="preserve"><value>全部啟用</value></data>
+  <data name="FileTypeBatchDeleteAll" xml:space="preserve"><value>全部刪除</value></data>
+  <data name="FileTypeBatchUndoAll" xml:space="preserve"><value>全部復原</value></data>
+  <data name="FileTypeBatchProtectedDelete" xml:space="preserve"><value>受保護的檔案類型 open/edit 項目不能在這裡刪除，請改用關閉開關。</value></data>
+  <data name="FileTypeBatchNoItems" xml:space="preserve"><value>找不到相關檔案類型選單項目。</value></data>
+  <data name="FileTypeBatchDeleteAllConfirmation" xml:space="preserve"><value>要刪除 {0} 個相關項目嗎？刪除前會建立登錄備份。{1} 個受保護的 open/edit 項目會被略過。</value></data>
 </root>
