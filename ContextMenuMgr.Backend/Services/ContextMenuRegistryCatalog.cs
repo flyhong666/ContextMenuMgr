@@ -560,12 +560,15 @@ public sealed class ContextMenuRegistryCatalog
         CancellationToken cancellationToken,
         BackendUserContext? userContext = null)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
-        var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
         if (IsWpsOfficeSyntheticId(itemId))
         {
-            return await AcknowledgeWpsOfficeSyntheticStateAsync(itemId, item, cancellationToken);
+            var wpsSnapshot = await GetWpsOfficePendingApprovalsAsync(cancellationToken, userContext);
+            var wpsItem = wpsSnapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return await AcknowledgeWpsOfficeSyntheticStateAsync(itemId, wpsItem, cancellationToken);
         }
+
+        var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
+        var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
 
         return decision switch
         {
@@ -1692,6 +1695,14 @@ public sealed class ContextMenuRegistryCatalog
             existing.SuppressNextDetection = false;
             existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await _stateStore.SaveAsync(states, cancellationToken);
+            await _logger.LogAsync($"Acknowledged WPS Office co-existence finding: {existing.DisplayName} ({existing.Id}).", cancellationToken);
+        }
+        else
+        {
+            await _logger.LogAsync(
+                RuntimeLogLevel.Warning,
+                $"WPS Office co-existence finding state was missing during acknowledgement: {itemId}.",
+                cancellationToken);
         }
 
         return new PipeResponse
