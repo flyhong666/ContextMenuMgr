@@ -329,6 +329,7 @@ Portable 删除备份按 host identity 分目录，当前主机目录由 `Runtim
 | Registry Write Protection | 通过 workspace 调用后端 pipe；前端本地设置只做 UI 同步。 |
 | 禁用 Win11 新版右键菜单 / 恢复经典右键菜单 | 通过 workspace 调用后端 pipe；后端使用前端用户 SID 写 `HKEY_USERS\<sid>\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}`，前端设置文件只镜像真实注册表状态；写入成功后只置位 `ExplorerRestartStateService.MarkRequired()`，由主窗口顶部全局重启按钮执行 Explorer 重启。 |
 | 服务安装/卸载/停止 | `BackendServiceManager` 走 UAC bootstrapper。Portable 包安装/修复前会检查当前应用目录运行时文件的 Mark-of-the-Web；命中时返回 `PORTABLE_RUNTIME_FILES_BLOCKED`，由设置页提示用户确认后解除当前 portable runtime 文件的 `Zone.Identifier`。 |
+| 强力修复服务 | 设置页调用 `BackendServiceManager.ForceRemoveServiceAsync`，通过 `ContextMenuManagerPlus.Service.exe --service-bootstrap force-remove-service` 容错移除当前服务名和旧服务名；成功后才继续安装 / 修复。若返回 `SERVICE_PENDING_DELETE`，前端提示关闭 Services MMC、任务管理器服务页或重启后再重试。 |
 
 ## 15. 构建与发布
 

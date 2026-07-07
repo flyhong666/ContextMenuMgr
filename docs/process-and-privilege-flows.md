@@ -97,6 +97,7 @@ Portable 包在 `install-or-repair` 触发 UAC 前会先由前端检查当前应
 | --- | --- | --- |
 | `install-or-repair` | 创建/修复服务、处理旧服务名、按用户自启动策略设置服务启动类型，并等待 pipe 可用 | 需要传 `--user-sid` 才能正确读取用户自启动策略 |
 | `uninstall` | 停止并删除服务 | 不依赖用户 SID |
+| `force-remove-service` | 容错移除当前和旧服务名的 SCM 注册，用于残留 / stale service 修复；不删除用户数据、应用设置或右键菜单注册表项 | 不依赖用户 SID |
 | `stop` | 停止服务 | 不依赖用户 SID |
 | `set-startup-mode` | 设置服务 `auto` / `demand`，并写用户级 `StartWithWindows` 策略 | 需要 `--user-sid` |
 | `repair-runtime-data-acl` | 只修复 `RuntimePaths.RootDirectory` 运行时目录 ACL，不安装/卸载/修改服务 | 不依赖用户 SID |
@@ -104,6 +105,8 @@ Portable 包在 `install-or-repair` 触发 UAC 前会先由前端检查当前应
 结果通过 `--result-file` 指向的 JSON 文件返回，形状对应 `BootstrapResult(bool Success, string Code, string Detail)`。`BackendServiceManager` 会等待进程退出，读取 result file，然后删除临时文件。bootstrapper 还写 `RuntimePaths.LogsDirectory\bootstrap.log`。
 
 `--user-sid` 的意义是让 elevated 进程明确知道前端用户是谁。elevated 进程自己的 `HKCU` 不能当作前端用户 `HKCU` 使用。当前代码在 `BackendServiceBootstrapper` 中验证 SID，并在服务安装/启动模式场景读取或写入 `HKEY_USERS\<sid>\Software\ContextMenuMgr\Frontend`。
+
+服务移除使用同一套容错路径：停止服务只是 best-effort，即使 `ServiceController.Status`、`Stop()` 或 `WaitForStatus(Stopped)` 失败，bootstrapper 仍会继续向 SCM 请求删除服务注册，并轮询 SCM 而不是只看注册表。删除返回 `SERVICE_PENDING_DELETE` 时表示 Windows 已标记删除但仍有进程持有服务句柄；用户需要关闭 Services MMC、任务管理器服务页或其它持有句柄的进程，必要时重启后再重试。
 
 不要用这条链路做普通菜单开关、Win11 禁用、SpecialMenu 修改、AutoStart 运行时读写或 Restart Explorer。它的主要职责是服务生命周期维护，不是 runtime backend；`repair-runtime-data-acl` 是为了 portable / broken install 自修复保留的窄 fallback，不应扩展成普通运行时操作入口。
 

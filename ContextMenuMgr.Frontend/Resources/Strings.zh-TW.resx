@@ -692,6 +692,18 @@
   <data name="InstallOrRepairService" xml:space="preserve">
     <value>安裝或修復服務</value>
   </data>
+  <data name="ForceRepairService" xml:space="preserve">
+    <value>強力修復服務</value>
+  </data>
+  <data name="ForceRepairServiceTitle" xml:space="preserve">
+    <value>強力修復服務</value>
+  </data>
+  <data name="ForceRepairServicePrompt" xml:space="preserve">
+    <value>是否現在移除殘留服務註冊並重新安裝後端服務？此操作不會刪除使用者資料、應用程式設定或右鍵選單登錄項目。</value>
+  </data>
+  <data name="ServicePendingDeleteMessage" xml:space="preserve">
+    <value>服務已標記為刪除，但 Windows 仍持有服務控制代碼。請關閉「服務」管理主控台、工作管理員的「服務」頁，或其他持有服務控制代碼的處理程序後重試；如果仍處於等待刪除狀態，請重新啟動系統。</value>
+  </data>
   <data name="PortableRuntimeBlockedWarningTitle" xml:space="preserve">
     <value>可攜版檔案被 Windows 封鎖</value>
   </data>

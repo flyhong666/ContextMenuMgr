@@ -692,6 +692,18 @@
   <data name="InstallOrRepairService" xml:space="preserve">
     <value>安装或修复服务</value>
   </data>
+  <data name="ForceRepairService" xml:space="preserve">
+    <value>强力修复服务</value>
+  </data>
+  <data name="ForceRepairServiceTitle" xml:space="preserve">
+    <value>强力修复服务</value>
+  </data>
+  <data name="ForceRepairServicePrompt" xml:space="preserve">
+    <value>是否现在移除残留服务注册并重新安装后台服务？此操作不会删除用户数据、应用设置或右键菜单注册表项。</value>
+  </data>
+  <data name="ServicePendingDeleteMessage" xml:space="preserve">
+    <value>服务已标记为删除，但 Windows 仍持有服务句柄。请关闭“服务”管理控制台、任务管理器的“服务”页，或其它持有服务句柄的进程后重试；如果仍处于等待删除状态，请重启系统。</value>
+  </data>
   <data name="PortableRuntimeBlockedWarningTitle" xml:space="preserve">
     <value>便携版文件被 Windows 阻止</value>
   </data>

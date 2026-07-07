@@ -240,6 +240,14 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
 
     public string InstallOrRepairServiceText => _localization.Translate("InstallOrRepairService");
 
+    public string ForceRepairServiceText => _localization.Translate("ForceRepairService");
+
+    public string ForceRepairServiceTitle => _localization.Translate("ForceRepairServiceTitle");
+
+    public string ForceRepairServicePrompt => _localization.Translate("ForceRepairServicePrompt");
+
+    public string ServicePendingDeleteMessage => _localization.Translate("ServicePendingDeleteMessage");
+
     public string PortableRuntimeBlockedWarningTitle => _localization.Translate("PortableRuntimeBlockedWarningTitle");
 
     public string PortableRuntimeBlockedWarningText => _localization.Translate("PortableRuntimeBlockedWarningText");
@@ -440,6 +448,62 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
             await FrontendMessageBox.ShowErrorAsync(
                 result.Detail,
                 _localization.Translate("InstallOrRepairService"));
+        }
+
+        RefreshServiceState();
+    }
+
+    [RelayCommand]
+    private async Task ForceRepairServiceAsync()
+    {
+        var confirmed = await FrontendMessageBox.ShowConfirmAsync(
+            ForceRepairServicePrompt,
+            ForceRepairServiceTitle,
+            ForceRepairServiceText,
+            CancelText);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var removeResult = await _workspace.ForceRemoveServiceAsync();
+        RefreshServiceState();
+        if (removeResult.Cancelled)
+        {
+            return;
+        }
+
+        if (string.Equals(removeResult.Code, "SERVICE_PENDING_DELETE", StringComparison.OrdinalIgnoreCase))
+        {
+            await FrontendMessageBox.ShowInfoAsync(
+                ServicePendingDeleteMessage,
+                ForceRepairServiceTitle);
+            return;
+        }
+
+        if (!removeResult.Success)
+        {
+            await FrontendMessageBox.ShowErrorAsync(
+                removeResult.Detail,
+                ForceRepairServiceTitle);
+            return;
+        }
+
+        var installResult = await _workspace.InstallOrRepairServiceAsync();
+        if (string.Equals(installResult.Code, "SERVICE_PENDING_DELETE", StringComparison.OrdinalIgnoreCase))
+        {
+            await FrontendMessageBox.ShowInfoAsync(
+                ServicePendingDeleteMessage,
+                ForceRepairServiceTitle);
+            RefreshServiceState();
+            return;
+        }
+
+        if (!installResult.Success && !installResult.Cancelled)
+        {
+            await FrontendMessageBox.ShowErrorAsync(
+                installResult.Detail,
+                ForceRepairServiceTitle);
         }
 
         RefreshServiceState();
@@ -747,6 +811,10 @@ public partial class SettingsPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RegistryProtectionWarningCloseText));
         OnPropertyChanged(nameof(ServiceSettingsTitle));
         OnPropertyChanged(nameof(InstallOrRepairServiceText));
+        OnPropertyChanged(nameof(ForceRepairServiceText));
+        OnPropertyChanged(nameof(ForceRepairServiceTitle));
+        OnPropertyChanged(nameof(ForceRepairServicePrompt));
+        OnPropertyChanged(nameof(ServicePendingDeleteMessage));
         OnPropertyChanged(nameof(PortableRuntimeBlockedWarningTitle));
         OnPropertyChanged(nameof(PortableRuntimeBlockedWarningText));
         OnPropertyChanged(nameof(UnblockPortableFilesAndRetryText));

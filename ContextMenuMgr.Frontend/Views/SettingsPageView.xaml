@@ -218,6 +218,12 @@
                         Command="{Binding InstallOrRepairServiceCommand}"
                         Content="{Binding InstallOrRepairServiceText}"
                         Icon="{ui:SymbolIcon Symbol=ArrowDownload24}" />
+                    <ui:Button
+                        Margin="0,0,12,12"
+                        Padding="16,8"
+                        Command="{Binding ForceRepairServiceCommand}"
+                        Content="{Binding ForceRepairServiceText}"
+                        Icon="{ui:SymbolIcon Symbol=Wrench24}" />
                     <Grid Margin="0,0,12,12">
                         <ui:Flyout
                             Margin="0,0,0,25"

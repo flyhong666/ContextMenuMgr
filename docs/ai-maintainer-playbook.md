@@ -190,6 +190,7 @@
 - 遇到 Win11 状态问题时必须检查 userContext。
 - 遇到 SpecialMenu 问题时必须检查 `SpecialMenuService`，不要先改 `ContextMenuRegistryCatalog`。
 - 遇到服务安装问题时必须检查 `BackendServiceManager` / `BackendServiceBootstrapper`，不要先改 `NamedPipeBackendServer`。
+- 服务卸载、强力修复和 install-or-repair 的 stale service 恢复必须共用 bootstrapper 的容错移除路径；停止失败只能作为警告记录，不能阻止后续 SCM 删除请求。
 - 遇到 UI 启动 / TrayHost 问题时必须检查 `FrontendAutostartLauncher` / WTS 链路。
 - 如果不确定，应该输出“当前证据不足”，不要编造原因。
 

@@ -692,6 +692,18 @@ Continue anyway? (Not recommended)</value>
   <data name="InstallOrRepairService" xml:space="preserve">
     <value>Install or repair service</value>
   </data>
+  <data name="ForceRepairService" xml:space="preserve">
+    <value>Force repair service</value>
+  </data>
+  <data name="ForceRepairServiceTitle" xml:space="preserve">
+    <value>Force repair service</value>
+  </data>
+  <data name="ForceRepairServicePrompt" xml:space="preserve">
+    <value>Remove stale service registrations and reinstall the backend service now? User data, app settings, and context-menu registry entries will not be removed.</value>
+  </data>
+  <data name="ServicePendingDeleteMessage" xml:space="preserve">
+    <value>The service is marked for deletion but Windows is still holding a service handle. Close Services MMC, Task Manager's Services tab, or any process holding the service handle, then retry. Reboot if it remains pending.</value>
+  </data>
   <data name="PortableRuntimeBlockedWarningTitle" xml:space="preserve">
     <value>Portable files are blocked by Windows</value>
   </data>

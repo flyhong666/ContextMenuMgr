@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
@@ -16,6 +18,13 @@ namespace ContextMenuMgr.Backend.Hosting;
 internal static class BackendServiceBootstrapper
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const int ErrorServiceDoesNotExist = 1060;
+    private const int ErrorServiceMarkedForDelete = 1072;
+    private const int ErrorServiceExists = 1073;
+    private const int ErrorAccessDenied = 5;
+    private const int ScManagerConnect = 0x0001;
+    private const int ServiceQueryStatus = 0x0004;
+    private const int ServiceDelete = 0x00010000;
     private const string FrontendPolicyKeyPath = @"Software\ContextMenuMgr\Frontend";
     private const string FrontendPolicyValueName = "StartWithWindows";
     private static readonly string DataDirectory = RuntimePaths.DataDirectory;
@@ -81,6 +90,7 @@ internal static class BackendServiceBootstrapper
             {
                 "install-or-repair" => InstallOrRepairService(userSidArgument.Sid, AddDetail),
                 "uninstall" => UninstallService(AddDetail),
+                "force-remove-service" => ForceRemoveService(AddDetail),
                 "stop" => StopService(AddDetail),
                 "set-startup-mode" => SetServiceStartupMode(TryParseEnabledArgument(args), userSidArgument.Sid, AddDetail),
                 "repair-runtime-data-acl" => RepairRuntimeDataAcl(AddDetail),
@@ -107,23 +117,40 @@ internal static class BackendServiceBootstrapper
         var binaryPath = $"\"{serviceExePath}\" --service";
         var isAutostartEnabled = IsAutostartEnabledForUser(userSid, log);
         var startupMode = isAutostartEnabled ? "auto" : "demand";
-        log($"InstallOrRepairService: ServiceExePath={serviceExePath}, BinaryPath={binaryPath}, StartupMode={startupMode}, UserSid={userSid ?? "<null>"}, IsAutostartEnabledForUser={isAutostartEnabled}, ServiceExists={ServiceExists(ServiceMetadata.ServiceName)}, LegacyServiceExists={ServiceExists(ServiceMetadata.LegacyServiceName)}.");
+        log($"InstallOrRepairService: ServiceExePath={serviceExePath}, BinaryPath={binaryPath}, StartupMode={startupMode}, UserSid={userSid ?? "<null>"}, IsAutostartEnabledForUser={isAutostartEnabled}, ServiceExistsScm={ServiceExistsInScm(ServiceMetadata.ServiceName)}, LegacyServiceExistsScm={ServiceExistsInScm(ServiceMetadata.LegacyServiceName)}.");
 
         var health = TestServiceRegistrationHealthy(ServiceMetadata.ServiceName);
-        log($"InstallOrRepairServiceHealthCheck: ServiceName={ServiceMetadata.ServiceName}, Healthy={health}.");
-        if (ServiceExists(ServiceMetadata.ServiceName) && !health)
+        log($"InstallOrRepairServiceHealthCheck: ServiceName={ServiceMetadata.ServiceName}, Healthy={health.Healthy}, Reason={health.Reason}.");
+        if (ServiceExistsInScm(ServiceMetadata.ServiceName) && !health.Healthy)
         {
-            RemoveServiceRegistration(ServiceMetadata.ServiceName, keepFrontendAlive: true, log);
+            log($"InstallOrRepairService: Existing service unhealthy, Reason={health.Reason}. Removing before create.");
+            var removal = RemoveServiceRegistrationTolerant(
+                ServiceMetadata.ServiceName,
+                keepFrontendAlive: true,
+                log,
+                health.Reason);
+            if (!removal.Success)
+            {
+                return (false, removal.Code, removal.Detail);
+            }
         }
 
-        if (ServiceExists(ServiceMetadata.LegacyServiceName))
+        if (ServiceExistsInScm(ServiceMetadata.LegacyServiceName))
         {
-            RemoveServiceRegistration(ServiceMetadata.LegacyServiceName, keepFrontendAlive: true, log);
+            var legacyRemoval = RemoveServiceRegistrationTolerant(
+                ServiceMetadata.LegacyServiceName,
+                keepFrontendAlive: true,
+                log,
+                "LEGACY_SERVICE_CLEANUP");
+            if (!legacyRemoval.Success)
+            {
+                return (false, legacyRemoval.Code, legacyRemoval.Detail);
+            }
         }
 
-        if (!ServiceExists(ServiceMetadata.ServiceName))
+        if (!ServiceExistsInScm(ServiceMetadata.ServiceName))
         {
-            RunSc(log,
+            var createResult = TryRunSc(log,
                 "create",
                 ServiceMetadata.ServiceName,
                 "binPath=",
@@ -132,17 +159,56 @@ internal static class BackendServiceBootstrapper
                 startupMode,
                 "DisplayName=",
                 ServiceMetadata.DisplayName);
+            if (!createResult.Success)
+            {
+                if (createResult.ExitCode == ErrorServiceExists)
+                {
+                    var recovery = RecoverCreateServiceAlreadyExists(log);
+                    if (!recovery.Success)
+                    {
+                        return (false, recovery.Code, recovery.Detail);
+                    }
+
+                    if (!ServiceExistsInScm(ServiceMetadata.ServiceName))
+                    {
+                        createResult = TryRunSc(log,
+                            "create",
+                            ServiceMetadata.ServiceName,
+                            "binPath=",
+                            binaryPath,
+                            "start=",
+                            startupMode,
+                            "DisplayName=",
+                            ServiceMetadata.DisplayName);
+                    }
+                    else
+                    {
+                        RunSc(log,
+                            "config",
+                            ServiceMetadata.ServiceName,
+                            "binPath=",
+                            binaryPath,
+                            "start=",
+                            startupMode);
+                        createResult = new ScResult(true, 0, string.Empty, string.Empty, "Existing healthy service will be configured.");
+                    }
+                }
+                else if (createResult.ExitCode == ErrorServiceMarkedForDelete)
+                {
+                    return (
+                        false,
+                        "SERVICE_PENDING_DELETE",
+                        "Service is marked for deletion. Close Services MMC, Task Manager service tab, or any process holding the service handle, then retry; reboot if it remains pending.");
+                }
+
+                if (!createResult.Success)
+                {
+                    return (false, "SERVICE_CREATE_FAILED", createResult.Detail);
+                }
+            }
         }
         else
         {
-            using var existingService = new ServiceController(ServiceMetadata.ServiceName);
-            if (existingService.Status != ServiceControllerStatus.Stopped)
-            {
-                EnsureKeepFrontendMarker();
-                existingService.Stop();
-                existingService.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(10));
-            }
-
             RunSc(log,
                 "config",
                 ServiceMetadata.ServiceName,
@@ -152,9 +218,10 @@ internal static class BackendServiceBootstrapper
                 startupMode);
         }
 
-        if (!TestServiceRegistrationHealthy(ServiceMetadata.ServiceName))
+        health = TestServiceRegistrationHealthy(ServiceMetadata.ServiceName);
+        if (!health.Healthy)
         {
-            return (false, "SERVICE_REGISTRATION_INCOMPLETE", "Service registration health check failed.");
+            return (false, "SERVICE_REGISTRATION_INCOMPLETE", $"Service registration health check failed. Reason={health.Reason}.");
         }
 
         RunSc(log, "description", ServiceMetadata.ServiceName, "Context Menu Manager Plus elevated backend service");
@@ -240,20 +307,88 @@ internal static class BackendServiceBootstrapper
 
     private static (bool Success, string Code, string Detail) UninstallService(Action<string> log)
     {
-        if (!ServiceExists(ServiceMetadata.ServiceName))
+        var primary = RemoveServiceRegistrationTolerant(
+            ServiceMetadata.ServiceName,
+            keepFrontendAlive: true,
+            log,
+            "UNINSTALL_PRIMARY");
+        var legacy = RemoveServiceRegistrationTolerant(
+            ServiceMetadata.LegacyServiceName,
+            keepFrontendAlive: true,
+            log,
+            "UNINSTALL_LEGACY");
+        TryDeleteKeepFrontendMarker();
+
+        if (primary.IsPendingDelete || legacy.IsPendingDelete)
         {
-            TryDeleteKeepFrontendMarker();
-            return (true, "NOT_INSTALLED", "Service was not installed.");
+            var detail = JoinDetails(
+                new[] { primary.Detail, legacy.Detail },
+                "Close Services MMC, Task Manager service tab, or any process holding the service handle, then retry; reboot if it remains pending.");
+            log($"UninstallServiceFinal: Code=SERVICE_PENDING_DELETE, Detail={detail}.");
+            return (false, "SERVICE_PENDING_DELETE", detail);
         }
 
-        RemoveServiceRegistration(ServiceMetadata.ServiceName, keepFrontendAlive: true, log);
+        if (!primary.Success)
+        {
+            log($"UninstallServiceFinal: Code={primary.Code}, Detail={primary.Detail}.");
+            return (false, primary.Code, primary.Detail);
+        }
+
+        if (!legacy.Success)
+        {
+            log($"UninstallServiceFinal: Code={legacy.Code}, Detail={legacy.Detail}.");
+            return (false, legacy.Code, legacy.Detail);
+        }
+
+        var code = primary.Code == "NOT_INSTALLED" && legacy.Code == "NOT_INSTALLED"
+            ? "NOT_INSTALLED"
+            : "UNINSTALLED";
+        log($"UninstallServiceFinal: Code={code}, Primary={primary.Code}, Legacy={legacy.Code}.");
+        return (true, code, code == "NOT_INSTALLED" ? "Service was not installed." : "Service removed.");
+    }
+
+    private static (bool Success, string Code, string Detail) ForceRemoveService(Action<string> log)
+    {
+        var primary = RemoveServiceRegistrationTolerant(
+            ServiceMetadata.ServiceName,
+            keepFrontendAlive: true,
+            log,
+            "FORCE_REMOVE_PRIMARY");
+        var legacy = RemoveServiceRegistrationTolerant(
+            ServiceMetadata.LegacyServiceName,
+            keepFrontendAlive: true,
+            log,
+            "FORCE_REMOVE_LEGACY");
         TryDeleteKeepFrontendMarker();
-        return (true, "UNINSTALLED", "Service removed.");
+
+        if (primary.IsPendingDelete || legacy.IsPendingDelete)
+        {
+            var detail = JoinDetails(
+                new[] { primary.Detail, legacy.Detail },
+                "Close Services MMC, Task Manager service tab, or any process holding the service handle, then retry; reboot if it remains pending.");
+            log($"ForceRemoveServiceFinal: Code=SERVICE_PENDING_DELETE, Detail={detail}.");
+            return (false, "SERVICE_PENDING_DELETE", detail);
+        }
+
+        if (!primary.Success)
+        {
+            log($"ForceRemoveServiceFinal: Code={primary.Code}, Detail={primary.Detail}.");
+            return (false, primary.Code, primary.Detail);
+        }
+
+        if (!legacy.Success)
+        {
+            log($"ForceRemoveServiceFinal: Code={legacy.Code}, Detail={legacy.Detail}.");
+            return (false, legacy.Code, legacy.Detail);
+        }
+
+        log($"ForceRemoveServiceFinal: Code=FORCE_REMOVED, Primary={primary.Code}, Legacy={legacy.Code}.");
+        return (true, "FORCE_REMOVED", "Service registrations removed.");
     }
 
     private static (bool Success, string Code, string Detail) StopService(Action<string> log)
     {
-        if (!ServiceExists(ServiceMetadata.ServiceName))
+        if (!ServiceExistsInScm(ServiceMetadata.ServiceName))
         {
             return (true, "NOT_INSTALLED", "Service was not installed.");
         }
@@ -275,7 +410,7 @@ internal static class BackendServiceBootstrapper
 
     private static (bool Success, string Code, string Detail) SetServiceStartupMode(bool enabled, string? userSid, Action<string> log)
     {
-        if (!ServiceExists(ServiceMetadata.ServiceName))
+        if (!ServiceExistsInScm(ServiceMetadata.ServiceName))
         {
             return (true, "NOT_INSTALLED", "Service was not installed.");
         }
@@ -300,33 +435,93 @@ internal static class BackendServiceBootstrapper
         return (result.Success, result.Code, result.Detail);
     }
 
-    private static void RemoveServiceRegistration(string serviceName, bool keepFrontendAlive, Action<string> log)
+    private static ServiceRemovalResult RemoveServiceRegistrationTolerant(
+        string serviceName,
+        bool keepFrontendAlive,
+        Action<string> log,
+        string reason)
     {
-        if (ServiceExists(serviceName))
+        if (!IsManagedServiceName(serviceName))
         {
-            using var service = new ServiceController(serviceName);
-            if (service.Status != ServiceControllerStatus.Stopped)
-            {
-                if (keepFrontendAlive)
-                {
-                    EnsureKeepFrontendMarker();
-                }
+            return new ServiceRemovalResult(false, "UNSUPPORTED_SERVICE_NAME", $"Refusing to remove unsupported service name '{serviceName}'.", false);
+        }
 
+        log($"RemoveServiceRegistrationTolerantStart: ServiceName={serviceName}, Reason={reason}, KeepFrontendAlive={keepFrontendAlive}.");
+        var existsInScm = ServiceExistsInScm(serviceName);
+        var existsInRegistry = ServiceExistsInRegistry(serviceName);
+        log($"ServiceExistsScm: ServiceName={serviceName}, Exists={existsInScm}.");
+        log($"ServiceExistsRegistry: ServiceName={serviceName}, Exists={existsInRegistry}.");
+
+        var statusText = GetServiceStatusText(serviceName);
+        log($"ServiceStatusBeforeStop: ServiceName={serviceName}, Status={statusText}.");
+        if (existsInScm && !string.Equals(statusText, nameof(ServiceControllerStatus.Stopped), StringComparison.OrdinalIgnoreCase))
+        {
+            if (keepFrontendAlive)
+            {
+                TryEnsureKeepFrontendMarker(log);
+            }
+
+            try
+            {
+                using var service = new ServiceController(serviceName);
                 service.Stop();
+                log($"StopAttemptResult: ServiceName={serviceName}, Result=StopCalled.");
+            }
+            catch (Exception ex)
+            {
+                log($"StopAttemptResult: ServiceName={serviceName}, Result=Failure, StopFailureIgnoredForDelete=true, Exception={ex}.");
+            }
+
+            try
+            {
+                using var service = new ServiceController(serviceName);
                 service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(10));
+                log($"StopAttemptResult: ServiceName={serviceName}, Result=WaitStopped, FinalStatus={TryGetServiceControllerStatusText(service)}.");
+            }
+            catch (Exception ex)
+            {
+                log($"StopAttemptResult: ServiceName={serviceName}, Result=WaitFailure, StopFailureIgnoredForDelete=true, Exception={ex}.");
             }
         }
 
-        RunSc(log, "delete", serviceName);
-
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (DateTime.UtcNow < deadline && ServiceExists(serviceName))
+        var deleteResult = TryDeleteServiceRegistration(serviceName);
+        log($"DeleteAttemptResult: ServiceName={serviceName}, Success={deleteResult.Success}, PendingDelete={deleteResult.PendingDelete}, NotInstalled={deleteResult.NotInstalled}, Fatal={deleteResult.Fatal}, ErrorCode={deleteResult.ErrorCode}, Detail={deleteResult.Detail}.");
+        if (deleteResult.Fatal)
         {
-            Thread.Sleep(300);
+            return new ServiceRemovalResult(false, deleteResult.Code, deleteResult.Detail, deleteResult.PendingDelete);
         }
+
+        var wait = WaitForScmRemoval(serviceName, TimeSpan.FromSeconds(10), log);
+        log($"WaitForScmRemoval result: ServiceName={serviceName}, Code={wait.Code}, Detail={wait.Detail}.");
+        log($"RemoveServiceRegistrationTolerantFinal: ServiceName={serviceName}, Code={wait.Code}, Success={wait.Success}, PendingDelete={wait.IsPendingDelete}.");
+        return wait;
     }
 
-    private static bool ServiceExists(string serviceName)
+    private static ServiceRemovalResult RecoverCreateServiceAlreadyExists(Action<string> log)
+    {
+        log("CreateServiceAlreadyExistsRecovery: Result=Start.");
+        var health = TestServiceRegistrationHealthy(ServiceMetadata.ServiceName);
+        log($"CreateServiceAlreadyExistsRecovery: ServiceExistsScm={ServiceExistsInScm(ServiceMetadata.ServiceName)}, Healthy={health.Healthy}, Reason={health.Reason}.");
+        if (health.Healthy)
+        {
+            return new ServiceRemovalResult(true, "SERVICE_EXISTS_HEALTHY", "Service already exists and appears healthy; continuing with config.", false);
+        }
+
+        return RemoveServiceRegistrationTolerant(
+            ServiceMetadata.ServiceName,
+            keepFrontendAlive: true,
+            log,
+            $"CREATE_1073_RECOVERY_{health.Reason}");
+    }
+
+    private static bool ServiceExistsInScm(string serviceName)
+    {
+        var query = TryOpenService(serviceName, ServiceQueryStatus);
+        query.Handle?.Dispose();
+        return query.Success;
+    }
+
+    private static bool ServiceExistsInRegistry(string serviceName)
     {
         try
         {
@@ -339,18 +534,39 @@ internal static class BackendServiceBootstrapper
         }
     }
 
-    private static bool TestServiceRegistrationHealthy(string serviceName)
+    private static ServiceHealthResult TestServiceRegistrationHealthy(string serviceName)
     {
         using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
         if (key is null)
         {
-            return false;
+            return new ServiceHealthResult(false, "SERVICE_REGISTRY_KEY_MISSING");
         }
 
         var imagePath = key.GetValue("ImagePath") as string;
         var start = key.GetValue("Start");
         var type = key.GetValue("Type");
-        return !string.IsNullOrWhiteSpace(imagePath) && start is not null && type is not null;
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return new ServiceHealthResult(false, "SERVICE_IMAGE_PATH_MISSING");
+        }
+
+        if (start is null)
+        {
+            return new ServiceHealthResult(false, "SERVICE_START_VALUE_MISSING");
+        }
+
+        if (type is null)
+        {
+            return new ServiceHealthResult(false, "SERVICE_TYPE_VALUE_MISSING");
+        }
+
+        var executablePath = TryParseExecutablePath(imagePath);
+        if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
+        {
+            return new ServiceHealthResult(false, $"SERVICE_IMAGE_EXECUTABLE_MISSING Path={executablePath ?? "<unparsed>"} ImagePath={imagePath}");
+        }
+
+        return new ServiceHealthResult(true, "OK");
     }
 
     private static bool IsAutostartEnabledForUser(string? userSid, Action<string> log)
@@ -444,6 +660,19 @@ internal static class BackendServiceBootstrapper
         File.WriteAllText(KeepFrontendOnStopMarkerPath, "1");
     }
 
+    private static void TryEnsureKeepFrontendMarker(Action<string> log)
+    {
+        try
+        {
+            EnsureKeepFrontendMarker();
+            log($"KeepFrontendMarker: Path={KeepFrontendOnStopMarkerPath}, Result=Created.");
+        }
+        catch (Exception ex)
+        {
+            log($"KeepFrontendMarker: Path={KeepFrontendOnStopMarkerPath}, Result=Failure, Exception={ex}.");
+        }
+    }
+
     private static void TryDeleteKeepFrontendMarker()
     {
         try
@@ -459,6 +688,17 @@ internal static class BackendServiceBootstrapper
     }
 
     private static void RunSc(Action<string> log, params string[] arguments)
+    {
+        var result = TryRunSc(log, arguments);
+        if (result.Success)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(result.Detail);
+    }
+
+    private static ScResult TryRunSc(Action<string> log, params string[] arguments)
     {
         var stopwatch = Stopwatch.StartNew();
         var startInfo = new ProcessStartInfo
@@ -478,7 +718,7 @@ internal static class BackendServiceBootstrapper
         using var process = Process.Start(startInfo);
         if (process is null)
         {
-            throw new InvalidOperationException("Failed to start sc.exe.");
+            return new ScResult(false, -1, string.Empty, string.Empty, "Failed to start sc.exe.");
         }
 
         process.WaitForExit();
@@ -488,7 +728,7 @@ internal static class BackendServiceBootstrapper
         log($"RunSc: Arguments={string.Join(" ", arguments)}, ExitCode={process.ExitCode}, ElapsedMs={stopwatch.ElapsedMilliseconds}, Stdout={(process.ExitCode == 0 ? "<suppressed-success>" : stdout)}, Stderr={(process.ExitCode == 0 ? "<suppressed-success>" : stderr)}.");
         if (process.ExitCode == 0)
         {
-            return;
+            return new ScResult(true, process.ExitCode, stdout, stderr, "OK");
         }
 
         var detail = stderr;
@@ -497,10 +737,134 @@ internal static class BackendServiceBootstrapper
             detail = stdout;
         }
 
-        throw new InvalidOperationException(string.IsNullOrWhiteSpace(detail)
+        var trimmedDetail = string.IsNullOrWhiteSpace(detail)
             ? $"sc.exe exited with code {process.ExitCode}."
-            : detail.Trim());
+            : detail.Trim();
+        return new ScResult(false, process.ExitCode, stdout, stderr, trimmedDetail);
     }
+
+    private static DeleteServiceResult TryDeleteServiceRegistration(string serviceName)
+    {
+        var query = TryOpenService(serviceName, ServiceDelete);
+        using var serviceHandle = query.Handle;
+        if (!query.Success)
+        {
+            return query.ErrorCode switch
+            {
+                ErrorServiceDoesNotExist => new DeleteServiceResult(true, "NOT_INSTALLED", true, false, false, query.ErrorCode, "Service was not installed."),
+                ErrorServiceMarkedForDelete => new DeleteServiceResult(true, "SERVICE_PENDING_DELETE", false, true, false, query.ErrorCode, "Service is already marked for deletion."),
+                ErrorAccessDenied => new DeleteServiceResult(false, "SERVICE_DELETE_ACCESS_DENIED", false, false, true, query.ErrorCode, query.Detail),
+                _ => new DeleteServiceResult(false, "SERVICE_DELETE_FAILED", false, false, true, query.ErrorCode, query.Detail)
+            };
+        }
+
+        if (DeleteService(serviceHandle!.DangerousGetHandle()))
+        {
+            return new DeleteServiceResult(true, "SERVICE_DELETE_REQUESTED", false, false, false, 0, "DeleteService succeeded.");
+        }
+
+        var error = Marshal.GetLastWin32Error();
+        return error switch
+        {
+            ErrorServiceDoesNotExist => new DeleteServiceResult(true, "NOT_INSTALLED", true, false, false, error, "Service was not installed."),
+            ErrorServiceMarkedForDelete => new DeleteServiceResult(true, "SERVICE_PENDING_DELETE", false, true, false, error, "Service is already marked for deletion."),
+            ErrorAccessDenied => new DeleteServiceResult(false, "SERVICE_DELETE_ACCESS_DENIED", false, false, true, error, new Win32Exception(error).Message),
+            _ => new DeleteServiceResult(false, "SERVICE_DELETE_FAILED", false, false, true, error, new Win32Exception(error).Message)
+        };
+    }
+
+    private static ServiceRemovalResult WaitForScmRemoval(string serviceName, TimeSpan timeout, Action<string> log)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var query = TryOpenService(serviceName, ServiceQueryStatus);
+            query.Handle?.Dispose();
+            if (!query.Success)
+            {
+                if (query.ErrorCode == ErrorServiceDoesNotExist)
+                {
+                    return new ServiceRemovalResult(true, "REMOVED", "SCM no longer reports the service.", false);
+                }
+
+                if (query.ErrorCode == ErrorServiceMarkedForDelete)
+                {
+                    return new ServiceRemovalResult(false, "SERVICE_PENDING_DELETE", "Service is marked for deletion.", true);
+                }
+            }
+
+            Thread.Sleep(300);
+        }
+
+        var deleteCheck = TryDeleteServiceRegistration(serviceName);
+        log($"WaitForScmRemovalDeleteCheck: ServiceName={serviceName}, Code={deleteCheck.Code}, ErrorCode={deleteCheck.ErrorCode}, Detail={deleteCheck.Detail}.");
+        if (deleteCheck.PendingDelete)
+        {
+            return new ServiceRemovalResult(false, "SERVICE_PENDING_DELETE", "Service deletion is pending. Close Services MMC, Task Manager service tab, or any process holding the service handle, then retry; reboot if it remains pending.", true);
+        }
+
+        return new ServiceRemovalResult(false, "SERVICE_STILL_PRESENT", "Service still exists in SCM after delete request.", false);
+    }
+
+    private static OpenServiceResult TryOpenService(string serviceName, int desiredAccess)
+    {
+        var scm = OpenSCManager(null, null, ScManagerConnect);
+        if (scm == IntPtr.Zero)
+        {
+            var error = Marshal.GetLastWin32Error();
+            return new OpenServiceResult(false, null, error, $"OpenSCManager failed: {new Win32Exception(error).Message}");
+        }
+
+        using var scmHandle = new SafeScHandle(scm);
+        var service = OpenService(scmHandle.DangerousGetHandle(), serviceName, desiredAccess);
+        if (service == IntPtr.Zero)
+        {
+            var error = Marshal.GetLastWin32Error();
+            return new OpenServiceResult(false, null, error, $"OpenService({serviceName}) failed: {new Win32Exception(error).Message}");
+        }
+
+        return new OpenServiceResult(true, new SafeScHandle(service), 0, "OK");
+    }
+
+    private static bool IsManagedServiceName(string serviceName)
+        => string.Equals(serviceName, ServiceMetadata.ServiceName, StringComparison.Ordinal)
+           || string.Equals(serviceName, ServiceMetadata.LegacyServiceName, StringComparison.Ordinal);
+
+    private static string? TryParseExecutablePath(string imagePath)
+    {
+        var trimmed = imagePath.Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        if (trimmed[0] == '"')
+        {
+            var endQuote = trimmed.IndexOf('"', 1);
+            return endQuote > 1 ? trimmed[1..endQuote] : null;
+        }
+
+        var exeIndex = trimmed.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+        if (exeIndex >= 0)
+        {
+            return trimmed[..(exeIndex + 4)];
+        }
+
+        var firstSpace = trimmed.IndexOf(' ');
+        return firstSpace > 0 ? trimmed[..firstSpace] : trimmed;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr OpenSCManager(string? machineName, string? databaseName, int desiredAccess);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr OpenService(IntPtr serviceControlManager, string serviceName, int desiredAccess);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool DeleteService(IntPtr service);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool CloseServiceHandle(IntPtr handle);
 
     private static void WriteResult(string resultFilePath, bool success, string code, string detail)
     {
@@ -657,4 +1021,34 @@ internal static class BackendServiceBootstrapper
     private sealed record BootstrapResult(bool Success, string Code, string Detail);
 
     private sealed record UserSidArgument(bool IsValid, string? Sid, string? Detail);
+
+    private sealed record ServiceHealthResult(bool Healthy, string Reason);
+
+    private sealed record ServiceRemovalResult(bool Success, string Code, string Detail, bool IsPendingDelete);
+
+    private sealed record DeleteServiceResult(
+        bool Success,
+        string Code,
+        bool NotInstalled,
+        bool PendingDelete,
+        bool Fatal,
+        int ErrorCode,
+        string Detail);
+
+    private sealed record ScResult(bool Success, int ExitCode, string Stdout, string Stderr, string Detail);
+
+    private sealed record OpenServiceResult(bool Success, SafeScHandle? Handle, int ErrorCode, string Detail);
+
+    private sealed class SafeScHandle : SafeHandle
+    {
+        public SafeScHandle(IntPtr handle)
+            : base(IntPtr.Zero, ownsHandle: true)
+        {
+            SetHandle(handle);
+        }
+
+        public override bool IsInvalid => handle == IntPtr.Zero;
+
+        protected override bool ReleaseHandle() => CloseServiceHandle(handle);
+    }
 }

@@ -223,6 +223,76 @@ public sealed class BackendServiceManager : IBackendServiceManager
         }
     }
 
+    public async Task<BackendServiceBootstrapResult> ForceRemoveServiceAsync(CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        FrontendDebugLog.Info("BackendServiceManager", "ForceRemoveServiceAsync started.");
+        var backendExePath = ResolveBackendExecutablePath();
+        if (backendExePath is null)
+        {
+            return new BackendServiceBootstrapResult(false, false, "BACKEND_EXE_MISSING", string.Empty);
+        }
+
+        var resultFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"ContextMenuMgr-forceremove-{Guid.NewGuid():N}.json");
+
+        try
+        {
+            var bootstrapArguments = $"--service-bootstrap force-remove-service --result-file \"{resultFilePath}\"";
+            FrontendDebugLog.Info("BackendServiceManager", $"Force remove bootstrap arguments: {bootstrapArguments}, ResultFile={resultFilePath}");
+            using var process = Process.Start(CreateElevatedBackendStartInfo(
+                backendExePath,
+                bootstrapArguments));
+            if (process is null)
+            {
+                return new BackendServiceBootstrapResult(false, false, "FAILED_TO_START_ELEVATED_PROCESS", string.Empty);
+            }
+
+            FrontendDebugLog.Info("BackendServiceManager", $"Force remove bootstrap process started. PID={process.Id}");
+            await process.WaitForExitAsync(cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Force remove bootstrap process exited. ExitCode={process.ExitCode}, Elapsed={stopwatch.ElapsedMilliseconds} ms");
+            var scriptResult = await TryReadScriptResultAsync(resultFilePath, cancellationToken);
+            FrontendDebugLog.Info("BackendServiceManager", $"Force remove parsed result: Success={scriptResult?.Success}, Code={scriptResult?.Code}, Detail={scriptResult?.Detail}");
+
+            if (process.ExitCode == 0 && scriptResult?.Success == true)
+            {
+                return new BackendServiceBootstrapResult(true, false, scriptResult.Code, scriptResult.Detail);
+            }
+
+            return new BackendServiceBootstrapResult(
+                false,
+                false,
+                scriptResult?.Code ?? $"EXIT_CODE_{process.ExitCode}",
+                scriptResult?.Detail ?? string.Empty);
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"UAC cancelled during force remove. Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, true, "ELEVATION_CANCELLED", string.Empty);
+        }
+        catch (Exception ex)
+        {
+            FrontendDebugLog.Error("BackendServiceManager", ex, $"ForceRemoveServiceAsync threw. Exception={ex}, Elapsed={stopwatch.ElapsedMilliseconds} ms.");
+            return new BackendServiceBootstrapResult(false, false, "BOOTSTRAP_EXCEPTION", ex.ToString());
+        }
+        finally
+        {
+            try
+            {
+                var exists = File.Exists(resultFilePath);
+                FrontendDebugLog.Info("BackendServiceManager", $"Force remove result file exists before deletion: {exists}, Path={resultFilePath}");
+                if (exists)
+                {
+                    File.Delete(resultFilePath);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
     /// <summary>
     /// Stops service Async.
     /// </summary>

@@ -513,6 +513,11 @@ public partial class ContextMenuWorkspaceService : ObservableObject, IAsyncDispo
         return _backendServiceManager.UninstallServiceAsync(CancellationToken.None);
     }
 
+    public Task<BackendServiceBootstrapResult> ForceRemoveServiceAsync()
+    {
+        return _backendServiceManager.ForceRemoveServiceAsync(CancellationToken.None);
+    }
+
     /// <summary>
     /// Sets service Auto Start Enabled Async.
     /// </summary>
