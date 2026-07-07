@@ -1,5 +1,7 @@
 # 开发文档
 
+本目录包含 ContextMenuMgr 的架构、开发、构建、发布和排错文档。
+
 ## 入门
 
 - [ContextMenuMgr 开发者指南](./developer-guide.md)
