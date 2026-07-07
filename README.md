@@ -21,7 +21,7 @@
 
   ![WinGet Package Version](https://img.shields.io/winget/v/PLFJY.ContextMenuMgrPlus)
   ![Scoop Version](https://img.shields.io/scoop/v/contextmenumgrplus?bucket=https%3A%2F%2Fgithub.com%2FPLFJY%2Fscoop-bucket)
-  ![WinGet Package Version](https://img.shields.io/winget/v/PLFJY.ContextMenuMgrPlus.Beta?label=Winget%20Beta&color=orange)
+  ![WinGet Package Version](https://img.shields.io/winget/v/PLFJY.ContextMenuMgrPlus.Beta?label=winget%20Beta&color=orange)
   ![Scoop Version](https://img.shields.io/scoop/v/contextmenumgrplus-beta?bucket=https%3A%2F%2Fgithub.com%2FPLFJY%2Fscoop-bucket&label=scoop%20beta&color=orange)
 </div>
 
