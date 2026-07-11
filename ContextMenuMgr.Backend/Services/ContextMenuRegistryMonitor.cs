@@ -1,4 +1,4 @@
-﻿using ContextMenuMgr.Contracts;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -52,9 +52,22 @@ public sealed class ContextMenuRegistryMonitor
 
     private async Task MonitorLoopAsync(CancellationToken cancellationToken)
     {
-        var knownItems = (await _catalog.GetSnapshotAsync(cancellationToken))
+        // Startup baseline: reconcile explicit disabled-state drift before
+        // establishing the known-items baseline. This ensures third-party
+        // applications that re-created their shell keys before the service
+        // started are automatically re-disabled without user approval.
+        var initialSnapshot = await ReconcileAndRefreshSnapshotAsync(cancellationToken);
+        var knownItems = initialSnapshot
             .Where(static item => item.IsPresentInRegistry && !item.IsDeleted)
             .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+
+        // Consume any SuppressNextDetection flags for items present in the
+        // initial baseline so they do not leak into later runtime polls.
+        foreach (var item in knownItems.Values)
+        {
+            await _catalog.TryConsumeSuppressedDetectionAsync(item.Id, cancellationToken);
+        }
+
         await _logger.LogAsync($"RegistryMonitorBaseline: VisibleItemCount={knownItems.Count}.", cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
@@ -64,13 +77,13 @@ public sealed class ContextMenuRegistryMonitor
                 await _logger.LogAsync($"RegistryMonitorDebounceWait: DelayMs={_pollInterval.TotalMilliseconds}.", cancellationToken);
                 await Task.Delay(_pollInterval, cancellationToken);
 
-                var currentSnapshot = (await _catalog.GetSnapshotAsync(cancellationToken))
+                var currentSnapshot = (await ReconcileAndRefreshSnapshotAsync(cancellationToken))
                     .Where(static item => item.IsPresentInRegistry && !item.IsDeleted)
                     .ToList();
+
                 var newIds = currentSnapshot.Count(item => !knownItems.ContainsKey(item.Id));
                 var deletedIds = knownItems.Keys.Except(currentSnapshot.Select(item => item.Id), StringComparer.OrdinalIgnoreCase).Count();
-                var modifiedIds = currentSnapshot.Count(item => knownItems.TryGetValue(item.Id, out var previous) && RequiresApprovalForExternalReenable(previous, item));
-                await _logger.LogAsync($"RegistryMonitorSnapshotComparison: PreviousCount={knownItems.Count}, CurrentCount={currentSnapshot.Count}, NewItemIds={newIds}, ModifiedItemIds={modifiedIds}, DeletedItemIds={deletedIds}.", cancellationToken);
+                await _logger.LogAsync($"RegistryMonitorSnapshotComparison: PreviousCount={knownItems.Count}, CurrentCount={currentSnapshot.Count}, NewItemIds={newIds}, DeletedItemIds={deletedIds}.", cancellationToken);
 
                 if (_interactiveBaselineResetRequested)
                 {
@@ -78,7 +91,19 @@ public sealed class ContextMenuRegistryMonitor
                     // baseline instead of generating "new item" events. Many per-user
                     // HKCU/HKU handlers and packaged COM registrations only become
                     // visible once the interactive shell is fully online.
+                    //
+                    // Reconciliation was already performed inside
+                    // ReconcileAndRefreshSnapshotAsync, so explicit disabled-state
+                    // drift has been corrected before we accept this baseline.
                     knownItems = currentSnapshot.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
+
+                    // Consume SuppressNextDetection flags for items present in the
+                    // new baseline so they do not suppress genuine later recreations.
+                    foreach (var item in knownItems.Values)
+                    {
+                        await _catalog.TryConsumeSuppressedDetectionAsync(item.Id, cancellationToken);
+                    }
+
                     _catalog.MarkInteractiveSessionSnapshotSettled();
                     _interactiveBaselineResetRequested = false;
                     await _logger.LogAsync(
@@ -87,6 +112,7 @@ public sealed class ContextMenuRegistryMonitor
                     continue;
                 }
 
+                // Detect new and reappeared items.
                 foreach (var item in currentSnapshot.Where(item => !knownItems.ContainsKey(item.Id)))
                 {
                     if (await _catalog.TryConsumeSuppressedDetectionAsync(item.Id, cancellationToken))
@@ -96,30 +122,17 @@ public sealed class ContextMenuRegistryMonitor
                         continue;
                     }
 
-                    // Items stored in the persisted state can appear later than the initial
-                    // monitor baseline, especially for per-user HKCU/HKU classes that become
-                    // visible after the service has already started. Only truly brand-new
-                    // items should be auto-quarantined for review.
-                    if (item.DetectedChangeKind != ContextMenuChangeKind.Added)
+                    // Only trigger ItemDetected for genuinely new (Added) or
+                    // previously-deleted-then-recreated (Reappeared) items.
+                    // Modified items and items appearing under additional roots
+                    // after the baseline are silently absorbed.
+                    if (item.DetectedChangeKind is ContextMenuChangeKind.Added
+                        or ContextMenuChangeKind.Reappeared)
                     {
-                        knownItems[item.Id] = item;
-                        continue;
-                    }
-
-                    await _logger.LogAsync($"RegistryMonitorChangeDetected: Kind=New, ItemId={item.Id}, DisplayName={item.DisplayName}, Root={item.SourceRootPath}, Path={item.RegistryPath}.", cancellationToken);
-                    ItemDetected?.Invoke(this, item);
-                }
-
-                foreach (var item in currentSnapshot)
-                {
-                    if (!knownItems.TryGetValue(item.Id, out var previous))
-                    {
-                        continue;
-                    }
-
-                    if (RequiresApprovalForExternalReenable(previous, item))
-                    {
-                        await _logger.LogAsync($"RegistryMonitorChangeDetected: Kind=Modified, ItemId={item.Id}, DisplayName={item.DisplayName}, Root={item.SourceRootPath}, Path={item.RegistryPath}.", cancellationToken);
+                        await _logger.LogAsync(
+                            $"RegistryMonitorChangeDetected: Kind={item.DetectedChangeKind}, ItemId={item.Id}, " +
+                            $"DisplayName={item.DisplayName}, Root={item.SourceRootPath}, Path={item.RegistryPath}.",
+                            cancellationToken);
                         ItemDetected?.Invoke(this, item);
                         continue;
                     }
@@ -127,6 +140,15 @@ public sealed class ContextMenuRegistryMonitor
                     knownItems[item.Id] = item;
                 }
 
+                // Update knownItems from the post-reconciliation snapshot so
+                // ContextMenuMgr does not detect its own corrective write as a
+                // new external change on the next poll.
+                foreach (var item in currentSnapshot)
+                {
+                    knownItems[item.Id] = item;
+                }
+
+                // Remove items that are no longer present.
                 foreach (var removedId in knownItems.Keys.Except(currentSnapshot.Select(item => item.Id), StringComparer.OrdinalIgnoreCase).ToList())
                 {
                     await _logger.LogAsync($"RegistryMonitorChangeDetected: Kind=Deleted, ItemId={removedId}.", cancellationToken);
@@ -145,12 +167,27 @@ public sealed class ContextMenuRegistryMonitor
         }
     }
 
-    private static bool RequiresApprovalForExternalReenable(ContextMenuEntry previous, ContextMenuEntry current)
+    /// <summary>
+    /// Reads a snapshot, reconciles explicit disabled-state drift, and reloads
+    /// the snapshot once if reconciliation changed anything. This ensures the
+    /// monitor always classifies changes against the post-reconciliation state
+    /// rather than detecting its own corrective writes as external changes.
+    /// </summary>
+    private async Task<IReadOnlyList<ContextMenuEntry>> ReconcileAndRefreshSnapshotAsync(CancellationToken cancellationToken)
     {
-        return !previous.IsPendingApproval
-               && !previous.IsEnabled
-               && current.IsEnabled
-               && current.DetectedChangeKind == ContextMenuChangeKind.Modified
-               && current.HasConsistencyIssue;
+        var snapshot = await _catalog.GetSnapshotAsync(cancellationToken);
+
+        var result = await _catalog.ReconcilePersistedDisabledItemsAsync(snapshot, cancellationToken);
+
+        if (result.HasChanges)
+        {
+            await _logger.LogAsync(
+                $"DesiredStateReconciliationPass: Reconciled={result.ReconciledItemIds.Count}, " +
+                $"Failed={result.FailedItemIds.Count}, ReloadingSnapshot=True.",
+                cancellationToken);
+            snapshot = await _catalog.GetSnapshotAsync(cancellationToken);
+        }
+
+        return snapshot;
     }
 }

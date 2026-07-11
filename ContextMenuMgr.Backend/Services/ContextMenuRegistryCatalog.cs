@@ -428,6 +428,21 @@ public sealed class ContextMenuRegistryCatalog
                 continue;
             }
 
+            // Explicit disabled policies (DesiredEnabled=false, not deleted) must
+            // survive temporary registry key absence so a later third-party
+            // recreation can be reconciled. These states are never pruned regardless
+            // of how many consecutive snapshots the key is missing.
+            if (!state.IsDeleted && ContextMenuChangeClassifier.ShouldPreserveExplicitDisabledState(state))
+            {
+                if (persistSnapshotUpdates && state.ConsecutiveMissingSnapshots != 0)
+                {
+                    state.ConsecutiveMissingSnapshots = 0;
+                    dirty = true;
+                }
+
+                continue;
+            }
+
             // External removals are intentionally silent in the UI, but they still
             // need to be removed from the persisted baseline. Otherwise a later
             // reinstall looks like an old known item instead of a genuinely new one.
@@ -632,6 +647,22 @@ public sealed class ContextMenuRegistryCatalog
         var snapshot = await GetSnapshotAsync(cancellationToken, userContext);
         var item = snapshot.FirstOrDefault(entry => string.Equals(entry.Id, itemId, StringComparison.OrdinalIgnoreCase));
 
+        // Reappeared items (previously deleted, then recreated) have dedicated
+        // approval semantics that preserve and clean deletion provenance.
+        var states = await _stateStore.LoadAsync(cancellationToken);
+        if (states.TryGetValue(itemId, out var persistedState)
+            && persistedState.IsPendingApproval
+            && persistedState.PendingApprovalChangeKind == ContextMenuChangeKind.Reappeared)
+        {
+            return decision switch
+            {
+                ContextMenuDecision.Allow => await AllowReappearedItemAsync(item, persistedState, cancellationToken, userContext),
+                ContextMenuDecision.Deny => await DenyReappearedItemAsync(item, persistedState, cancellationToken, userContext),
+                ContextMenuDecision.Remove => await RemoveReappearedItemAsync(item, persistedState, cancellationToken, userContext),
+                _ => CreateFailure("Unknown approval decision.")
+            };
+        }
+
         return decision switch
         {
             ContextMenuDecision.Allow => item is null
@@ -643,6 +674,236 @@ public sealed class ContextMenuRegistryCatalog
             ContextMenuDecision.Remove => await RemovePendingApprovalItemAsync(item, itemId, cancellationToken),
             _ => CreateFailure("Unknown approval decision.")
         };
+    }
+
+    /// <summary>
+    /// Allow: enable and accept the recreated item. Clears the deleted state,
+    /// deletes the obsolete old backup, and persists DesiredEnabled=true.
+    /// </summary>
+    private async Task<PipeResponse> AllowReappearedItemAsync(
+        ContextMenuEntry? item,
+        PersistedContextMenuState state,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext)
+    {
+        if (item is null || !item.IsPresentInRegistry)
+        {
+            return CreateFailure($"Menu item '{state.DisplayName}' was not found in the registry.");
+        }
+
+        try
+        {
+            // Enable the actual recreated item.
+            if (item.IsWindows11ContextMenu)
+            {
+                if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable: true))
+                {
+                    return CreateFailure($"Unable to enable the Win11 context menu item '{item.DisplayName}'.", item);
+                }
+            }
+            else
+            {
+                switch (item.EntryKind)
+                {
+                    case ContextMenuEntryKind.ShellVerb:
+                        SetShellVerbEnabled(item.BackendRegistryPath, item.RegistryPath, enable: true);
+                        break;
+                    case ContextMenuEntryKind.ShellExtension:
+                        SetShellExtensionEnabled(item, enable: true);
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unsupported entry kind: {item.EntryKind}");
+                }
+            }
+
+            // Delete the obsolete old deletion backup BEFORE clearing BackupFilePath.
+            var oldBackupPath = state.BackupFilePath;
+            if (!string.IsNullOrWhiteSpace(oldBackupPath))
+            {
+                _backupService.DeleteBackupFile(oldBackupPath);
+            }
+
+            state.IsDeleted = false;
+            state.IsPendingApproval = false;
+            state.PendingApprovalChangeKind = null;
+            state.BackupFilePath = null;
+            state.DeletedAtUtc = null;
+            state.DesiredEnabled = true;
+            state.ObservedEnabled = true;
+            state.SuppressNextDetection = false;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+
+            var states = await _stateStore.LoadAsync(cancellationToken);
+            states[state.Id] = state;
+            PruneTransientStates(states);
+            await _stateStore.SaveAsync(states, cancellationToken);
+            ShellChangeNotifier.NotifyAssociationsChanged();
+
+            await _logger.LogAsync(
+                $"Allowed reappeared item {state.DisplayName}. Old backup deleted: {oldBackupPath ?? "<none>"}.",
+                cancellationToken);
+
+            var refreshed = (await GetSnapshotAsync(cancellationToken, userContext))
+                .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
+                ?? item with { IsEnabled = true, IsPendingApproval = false, IsDeleted = false };
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"Allowed and enabled {refreshed.DisplayName}.",
+                Item = refreshed
+            };
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to allow reappeared item {state.DisplayName}: {ex.Message}", cancellationToken);
+            return CreateFailure(ex.Message, item);
+        }
+    }
+
+    /// <summary>
+    /// Deny: keep the recreated item disabled and convert it into a normal
+    /// explicitly disabled item. Clears the deleted state, deletes the obsolete
+    /// old backup, and persists DesiredEnabled=false.
+    /// </summary>
+    private async Task<PipeResponse> DenyReappearedItemAsync(
+        ContextMenuEntry? item,
+        PersistedContextMenuState state,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext)
+    {
+        try
+        {
+            // The item was already disabled during quarantine. Ensure it stays disabled.
+            if (item is not null && item.IsPresentInRegistry && item.IsEnabled)
+            {
+                DisableEntryCore(item, userContext);
+            }
+
+            // Delete the obsolete old deletion backup.
+            var oldBackupPath = state.BackupFilePath;
+            if (!string.IsNullOrWhiteSpace(oldBackupPath))
+            {
+                _backupService.DeleteBackupFile(oldBackupPath);
+            }
+
+            state.IsDeleted = false;
+            state.IsPendingApproval = false;
+            state.PendingApprovalChangeKind = null;
+            state.BackupFilePath = null;
+            state.DeletedAtUtc = null;
+            state.DesiredEnabled = false;
+            state.ObservedEnabled = false;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+
+            var states = await _stateStore.LoadAsync(cancellationToken);
+            states[state.Id] = state;
+            PruneTransientStates(states);
+            await _stateStore.SaveAsync(states, cancellationToken);
+
+            if (item is not null)
+            {
+                ShellChangeNotifier.NotifyAssociationsChanged();
+            }
+
+            await _logger.LogAsync(
+                $"Denied reappeared item {state.DisplayName}. Converted to explicit disabled. Old backup deleted: {oldBackupPath ?? "<none>"}.",
+                cancellationToken);
+
+            var refreshed = item is null
+                ? state.ToDeletedEntry()
+                : (await GetSnapshotAsync(cancellationToken, userContext))
+                    .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
+                    ?? item with { IsEnabled = false, IsPendingApproval = false, IsDeleted = false };
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"Denied and disabled {refreshed.DisplayName}.",
+                Item = refreshed
+            };
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to deny reappeared item {state.DisplayName}: {ex.Message}", cancellationToken);
+            return CreateFailure(ex.Message, item);
+        }
+    }
+
+    /// <summary>
+    /// Remove: delete the currently recreated registry item, create a fresh
+    /// backup of the current key, and replace the superseded old backup.
+    /// Leaves the final state as IsDeleted=true, IsPendingApproval=false.
+    /// </summary>
+    private async Task<PipeResponse> RemoveReappearedItemAsync(
+        ContextMenuEntry? item,
+        PersistedContextMenuState state,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext)
+    {
+        if (item is null || !item.IsPresentInRegistry)
+        {
+            return CreateFailure($"Menu item '{state.DisplayName}' was not found in the registry.");
+        }
+
+        try
+        {
+            var backendRegistryPath = item.BackendRegistryPath;
+            if (string.IsNullOrWhiteSpace(backendRegistryPath))
+            {
+                return CreateFailure($"Cannot delete '{item.DisplayName}': registry path is unknown.");
+            }
+
+            // Step 1: create a valid backup of the CURRENTLY recreated key.
+            // Do NOT touch the old backup until the new one succeeds.
+            var newBackupPath = await _backupService.ExportKeyAsync(backendRegistryPath, cancellationToken);
+
+            // Step 2: delete the recreated registry key.
+            DeleteRegistryKey(backendRegistryPath);
+
+            // Step 3: now that the new backup is safe, remove the superseded old backup.
+            var oldBackupPath = state.BackupFilePath;
+            if (!string.IsNullOrWhiteSpace(oldBackupPath)
+                && !string.Equals(oldBackupPath, newBackupPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _backupService.DeleteBackupFile(oldBackupPath);
+            }
+
+            // Step 4: update state. The item is deleted again with the new backup.
+            state.IsDeleted = true;
+            state.IsPendingApproval = false;
+            state.PendingApprovalChangeKind = null;
+            state.BackupFilePath = newBackupPath;
+            state.DeletedAtUtc = DateTimeOffset.UtcNow;
+            state.DesiredEnabled = null;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+
+            var states = await _stateStore.LoadAsync(cancellationToken);
+            states[state.Id] = state;
+            PruneTransientStates(states);
+            await _stateStore.SaveAsync(states, cancellationToken);
+            ShellChangeNotifier.NotifyAssociationsChanged();
+
+            await _logger.LogAsync(
+                $"Removed reappeared item {state.DisplayName}. New backup: {newBackupPath}. Old backup replaced: {oldBackupPath ?? "<none>"}.",
+                cancellationToken);
+
+            var refreshed = (await GetSnapshotAsync(cancellationToken, userContext))
+                .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
+                ?? state.ToDeletedEntry();
+
+            return new PipeResponse
+            {
+                Success = true,
+                Message = $"Deleted {state.DisplayName}.",
+                Item = refreshed
+            };
+        }
+        catch (Exception ex)
+        {
+            await _logger.LogAsync($"Failed to remove reappeared item {state.DisplayName}: {ex.Message}", cancellationToken);
+            return CreateFailure(ex.Message, item);
+        }
     }
 
     /// <summary>
@@ -1690,6 +1951,7 @@ public sealed class ContextMenuRegistryCatalog
         state.DesiredEnabled = false;
         state.ObservedEnabled = false;
         state.IsPendingApproval = true;
+        state.PendingApprovalChangeKind = ContextMenuChangeKind.Added;
         state.IsDeleted = false;
         state.DeletedAtUtc = null;
         state.BackupFilePath = null;
@@ -1698,6 +1960,193 @@ public sealed class ContextMenuRegistryCatalog
         ShellChangeNotifier.NotifyAssociationsChanged();
 
         await _logger.LogAsync($"Quarantined new menu item pending approval: {item.DisplayName} ({item.RegistryPath}).", cancellationToken);
+
+        return (await GetSnapshotAsync(cancellationToken, userContext))
+            .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
+            ?? item with
+            {
+                IsEnabled = false,
+                IsPendingApproval = true
+            };
+    }
+
+    /// <summary>
+    /// Disables a single registry entry using the per-entry-kind write path.
+    /// This is the shared disable primitive used by reconciliation, quarantine,
+    /// and reappeared-item quarantine.
+    /// </summary>
+    private void DisableEntryCore(ContextMenuEntry item, BackendUserContext? userContext)
+    {
+        if (item.IsWindows11ContextMenu)
+        {
+            if (!_windows11Catalog.SetEnabled(item.HandlerClsid ?? item.KeyName, item.DisplayName, userContext, enable: false))
+            {
+                throw new InvalidOperationException($"Unable to disable the Win11 context menu item '{item.DisplayName}'.");
+            }
+
+            return;
+        }
+
+        switch (item.EntryKind)
+        {
+            case ContextMenuEntryKind.ShellVerb:
+                SetShellVerbEnabled(item.BackendRegistryPath, item.RegistryPath, enable: false);
+                break;
+            case ContextMenuEntryKind.ShellExtension:
+                SetShellExtensionEnabled(item, enable: false);
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported entry kind: {item.EntryKind}");
+        }
+    }
+
+    /// <summary>
+    /// Updates the ObservedEnabled field for all persisted ShellExtension states
+    /// that share the given handler CLSID, without touching DesiredEnabled or
+    /// approval flags. Used after reconciliation disables a ShellExtension via
+    /// the blocked list (which affects all projections of the same CLSID).
+    /// </summary>
+    private static void UpdateLinkedShellExtensionObservedEnabled(
+        IDictionary<string, PersistedContextMenuState> states,
+        string? handlerClsid,
+        bool observedEnabled)
+    {
+        if (string.IsNullOrWhiteSpace(handlerClsid))
+        {
+            return;
+        }
+
+        foreach (var state in states.Values.Where(state =>
+                     state.EntryKind == ContextMenuEntryKind.ShellExtension
+                     && !state.IsDeleted
+                     && string.Equals(state.HandlerClsid, handlerClsid, StringComparison.OrdinalIgnoreCase)))
+        {
+            state.ObservedEnabled = observedEnabled;
+            state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+    }
+
+    /// <summary>
+    /// Reconciles explicit disabled-state drift: for every actual item whose
+    /// persisted state says DesiredEnabled=false but the registry reports it
+    /// as enabled, automatically re-disable it without user approval or
+    /// notification. Returns enough information for the monitor to decide
+    /// whether to reload the snapshot.
+    /// </summary>
+    public async Task<DisabledStateReconciliationResult> ReconcilePersistedDisabledItemsAsync(
+        IReadOnlyList<ContextMenuEntry> snapshot,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null)
+    {
+        var states = await _stateStore.LoadAsync(cancellationToken);
+        var reconciledItemIds = new List<string>();
+        var failedItemIds = new List<string>();
+        var processedClsids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in snapshot.Where(static e => e.IsPresentInRegistry && !e.IsDeleted))
+        {
+            if (!states.TryGetValue(entry.Id, out var state))
+            {
+                continue;
+            }
+
+            if (!ContextMenuChangeClassifier.ShouldReconcileDisabledState(entry, state))
+            {
+                continue;
+            }
+
+            // For ShellExtensions, the blocked-list write affects all projections
+            // of the same CLSID. Avoid writing the same CLSID twice.
+            if (entry.EntryKind == ContextMenuEntryKind.ShellExtension
+                && !entry.IsWindows11ContextMenu
+                && !string.IsNullOrWhiteSpace(entry.HandlerClsid)
+                && !processedClsids.Add(entry.HandlerClsid))
+            {
+                // Already disabled via a prior projection. Just update state.
+                state.ObservedEnabled = false;
+                state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+                reconciledItemIds.Add(entry.Id);
+                continue;
+            }
+
+            try
+            {
+                await _logger.LogAsync(
+                    $"DesiredStateDriftDetected: ItemId={entry.Id}, DesiredEnabled=False, ObservedEnabled=True.",
+                    cancellationToken);
+
+                DisableEntryCore(entry, userContext);
+
+                state.ObservedEnabled = false;
+                state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+
+                if (entry.EntryKind == ContextMenuEntryKind.ShellExtension && !entry.IsWindows11ContextMenu)
+                {
+                    UpdateLinkedShellExtensionObservedEnabled(states, entry.HandlerClsid, observedEnabled: false);
+                }
+
+                reconciledItemIds.Add(entry.Id);
+
+                await _logger.LogAsync(
+                    $"DesiredStateReconciled: ItemId={entry.Id}, Result=Disabled, Reason=ExternalReenableOrRecreation.",
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await _logger.LogAsync(
+                    RuntimeLogLevel.Warning,
+                    $"DesiredStateReconciliationFailed: ItemId={entry.Id}, Exception={ex.Message}.",
+                    cancellationToken);
+                failedItemIds.Add(entry.Id);
+            }
+        }
+
+        if (reconciledItemIds.Count > 0)
+        {
+            await _stateStore.SaveAsync(states, cancellationToken);
+            ShellChangeNotifier.NotifyAssociationsChanged();
+        }
+
+        return new DisabledStateReconciliationResult(
+            reconciledItemIds.Count > 0,
+            reconciledItemIds,
+            failedItemIds);
+    }
+
+    /// <summary>
+    /// Quarantines a previously-deleted item that reappeared in the registry.
+    /// Unlike <see cref="QuarantineNewItemAsync"/>, this method preserves the
+    /// deletion provenance (IsDeleted, DeletedAtUtc, BackupFilePath) so the
+    /// user's original deletion decision and restore backup are not lost.
+    /// </summary>
+    public async Task<ContextMenuEntry> QuarantineReappearedItemAsync(
+        ContextMenuEntry item,
+        CancellationToken cancellationToken,
+        BackendUserContext? userContext = null)
+    {
+        // Step 1: disable the recreated item immediately.
+        DisableEntryCore(item, userContext);
+
+        var states = await _stateStore.LoadAsync(cancellationToken);
+        var state = GetOrCreateState(states, item);
+
+        // Step 2: mark as pending approval while PRESERVING deletion provenance.
+        // The item remains IsDeleted=true from the user's perspective, but a
+        // recreated copy exists and needs an approval decision.
+        state.DesiredEnabled = false;
+        state.ObservedEnabled = false;
+        state.IsPendingApproval = true;
+        state.PendingApprovalChangeKind = ContextMenuChangeKind.Reappeared;
+        state.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        // IsDeleted, DeletedAtUtc, and BackupFilePath are intentionally preserved.
+
+        await _stateStore.SaveAsync(states, cancellationToken);
+        ShellChangeNotifier.NotifyAssociationsChanged();
+
+        await _logger.LogAsync(
+            $"Quarantined reappeared menu item pending approval: {item.DisplayName} ({item.RegistryPath}). " +
+            $"Deletion provenance preserved: IsDeleted=true, BackupFilePath={state.BackupFilePath}.",
+            cancellationToken);
 
         return (await GetSnapshotAsync(cancellationToken, userContext))
             .FirstOrDefault(entry => string.Equals(entry.Id, item.Id, StringComparison.OrdinalIgnoreCase))
@@ -1981,52 +2430,13 @@ public sealed class ContextMenuRegistryCatalog
     }
 
     private static string? GetConsistencyIssue(ContextMenuEntry entry, PersistedContextMenuState? state)
-    {
-        if (state is null)
-        {
-            return null;
-        }
-
-        if (state.IsDeleted)
-        {
-            return "This item was deleted through the app, but it has reappeared in the registry.";
-        }
-
-        if (state.DesiredEnabled is { } desiredEnabled && entry.IsEnabled != desiredEnabled)
-        {
-            return $"Saved state expects this item to be {(desiredEnabled ? "enabled" : "disabled")}, but the registry currently reports {(entry.IsEnabled ? "enabled" : "disabled")}.";
-        }
-
-        return null;
-    }
+        => ContextMenuChangeClassifier.GetConsistencyIssue(entry, state);
 
     private static ContextMenuChangeKind GetDetectedChangeKind(ContextMenuEntry entry, PersistedContextMenuState? state, bool hasBaseline)
-    {
-        if (state is null)
-        {
-            return hasBaseline ? ContextMenuChangeKind.Added : ContextMenuChangeKind.None;
-        }
-
-        if (state.IsDeleted)
-        {
-            return ContextMenuChangeKind.Reappeared;
-        }
-
-        return HasObservedChange(entry, state)
-            ? ContextMenuChangeKind.Modified
-            : ContextMenuChangeKind.None;
-    }
+        => ContextMenuChangeClassifier.GetDetectedChangeKind(entry, state, hasBaseline);
 
     private static string? GetDetectedChangeDetails(ContextMenuEntry entry, PersistedContextMenuState? state, ContextMenuChangeKind changeKind)
-    {
-        return changeKind switch
-        {
-            ContextMenuChangeKind.Added => "This item is new compared with the last saved context menu snapshot.",
-            ContextMenuChangeKind.Reappeared => "This item was previously deleted through the app, but it has reappeared in the registry.",
-            ContextMenuChangeKind.Modified when state is not null => BuildModifiedDetails(entry, state),
-            _ => null
-        };
-    }
+        => ContextMenuChangeClassifier.GetDetectedChangeDetails(entry, state, changeKind);
 
     private string? GetDeletedConsistencyIssue(PersistedContextMenuState state)
     {
@@ -2309,119 +2719,6 @@ public sealed class ContextMenuRegistryCatalog
                && !state.SuppressNextDetection
                && state.DesiredEnabled is null
                && string.IsNullOrWhiteSpace(state.BackupFilePath);
-    }
-
-    private static bool HasObservedChange(ContextMenuEntry entry, PersistedContextMenuState state)
-    {
-        return HasExternalEnabledStateChange(entry, state)
-               || state.Category != entry.Category
-               || !string.Equals(state.DisplayName, entry.DisplayName, StringComparison.Ordinal)
-               || !string.Equals(state.EditableText, entry.EditableText, StringComparison.Ordinal)
-               || !string.Equals(state.CommandText, entry.CommandText, StringComparison.Ordinal)
-               || !string.Equals(state.HandlerClsid, entry.HandlerClsid, StringComparison.OrdinalIgnoreCase)
-               || !string.Equals(state.IconPath, entry.IconPath, StringComparison.OrdinalIgnoreCase)
-               || state.IconIndex != entry.IconIndex
-               || !string.Equals(state.FilePath, entry.FilePath, StringComparison.OrdinalIgnoreCase)
-               || state.IsWindows11ContextMenu != entry.IsWindows11ContextMenu
-               || state.Windows11SourceKind != entry.Windows11SourceKind
-               || state.IsProtectedSystemItem != entry.IsProtectedSystemItem
-               || state.OnlyWithShift != entry.OnlyWithShift
-               || state.OnlyInExplorer != entry.OnlyInExplorer
-               || state.NoWorkingDirectory != entry.NoWorkingDirectory
-               || state.NeverDefault != entry.NeverDefault
-               || state.ShowAsDisabledIfHidden != entry.ShowAsDisabledIfHidden
-               || !string.Equals(state.Notes, entry.Notes, StringComparison.Ordinal)
-               || !string.Equals(state.SourceRootPath, entry.SourceRootPath, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string BuildModifiedDetails(ContextMenuEntry entry, PersistedContextMenuState state)
-    {
-        var changedParts = new List<string>();
-        if (HasExternalEnabledStateChange(entry, state))
-        {
-            changedParts.Add("enabled state");
-        }
-
-        if (!string.Equals(state.DisplayName, entry.DisplayName, StringComparison.Ordinal))
-        {
-            changedParts.Add("display name");
-        }
-
-        if (!string.Equals(state.EditableText, entry.EditableText, StringComparison.Ordinal))
-        {
-            changedParts.Add("menu text");
-        }
-
-        if (!string.Equals(state.CommandText, entry.CommandText, StringComparison.Ordinal))
-        {
-            changedParts.Add("command");
-        }
-
-        if (!string.Equals(state.HandlerClsid, entry.HandlerClsid, StringComparison.OrdinalIgnoreCase))
-        {
-            changedParts.Add("handler GUID");
-        }
-
-        if (!string.Equals(state.IconPath, entry.IconPath, StringComparison.OrdinalIgnoreCase)
-            || state.IconIndex != entry.IconIndex)
-        {
-            changedParts.Add("icon");
-        }
-
-        if (!string.Equals(state.FilePath, entry.FilePath, StringComparison.OrdinalIgnoreCase))
-        {
-            changedParts.Add("module path");
-        }
-
-        if (state.OnlyWithShift != entry.OnlyWithShift)
-        {
-            changedParts.Add("extended visibility");
-        }
-
-        if (state.OnlyInExplorer != entry.OnlyInExplorer)
-        {
-            changedParts.Add("explorer-only flag");
-        }
-
-        if (state.NoWorkingDirectory != entry.NoWorkingDirectory)
-        {
-            changedParts.Add("working directory flag");
-        }
-
-        if (state.NeverDefault != entry.NeverDefault)
-        {
-            changedParts.Add("default action flag");
-        }
-
-        if (state.ShowAsDisabledIfHidden != entry.ShowAsDisabledIfHidden)
-        {
-            changedParts.Add("show-disabled-when-hidden flag");
-        }
-
-        if (!string.Equals(state.Notes, entry.Notes, StringComparison.Ordinal))
-        {
-            changedParts.Add("details");
-        }
-
-        if (!string.Equals(state.SourceRootPath, entry.SourceRootPath, StringComparison.OrdinalIgnoreCase)
-            || state.Category != entry.Category)
-        {
-            changedParts.Add("category");
-        }
-
-        return changedParts.Count == 0
-            ? "This item changed outside the app."
-            : $"This item changed outside the app. Updated fields: {string.Join(", ", changedParts)}.";
-    }
-
-    private static bool HasExternalEnabledStateChange(ContextMenuEntry entry, PersistedContextMenuState state)
-    {
-        if (state.DesiredEnabled is { } desiredEnabled)
-        {
-            return entry.IsEnabled != desiredEnabled;
-        }
-
-        return false;
     }
 
     private static bool IsShellExtensionBlocked(string? handlerClsid)
@@ -5206,3 +5503,11 @@ internal static class ShellChangeNotifier
     [DllImport("shell32.dll")]
     private static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 }
+
+/// <summary>
+/// Represents the result of a disabled-state reconciliation pass.
+/// </summary>
+public sealed record DisabledStateReconciliationResult(
+    bool HasChanges,
+    IReadOnlyList<string> ReconciledItemIds,
+    IReadOnlyList<string> FailedItemIds);

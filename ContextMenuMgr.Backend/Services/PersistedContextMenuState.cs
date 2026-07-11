@@ -1,4 +1,4 @@
-﻿using ContextMenuMgr.Contracts;
+using ContextMenuMgr.Contracts;
 
 namespace ContextMenuMgr.Backend.Services;
 
@@ -144,8 +144,44 @@ public sealed class PersistedContextMenuState
 
     /// <summary>
     /// Gets or sets a value indicating whether pending Approval.
+    /// Setting this to false automatically clears <see cref="PendingApprovalChangeKind"/>.
     /// </summary>
-    public bool IsPendingApproval { get; set; }
+    public bool IsPendingApproval
+    {
+        get => _isPendingApproval;
+        set
+        {
+            _isPendingApproval = value;
+            if (!value)
+            {
+                _pendingApprovalChangeKind = null;
+            }
+        }
+    }
+    private bool _isPendingApproval;
+
+    /// <summary>
+    /// Gets or sets the change kind that originated the current pending approval.
+    /// Non-null only while <see cref="IsPendingApproval"/> is true. Allowed values
+    /// are <see cref="ContextMenuChangeKind.Added"/> and
+    /// <see cref="ContextMenuChangeKind.Reappeared"/>. Old state files without
+    /// this field deserialize safely to <c>null</c>.
+    /// </summary>
+    public ContextMenuChangeKind? PendingApprovalChangeKind
+    {
+        get => _pendingApprovalChangeKind;
+        set
+        {
+            // If someone sets a non-null change kind while IsPendingApproval is false,
+            // automatically flip IsPendingApproval to true to maintain consistency.
+            _pendingApprovalChangeKind = value;
+            if (value is not null && !_isPendingApproval)
+            {
+                _isPendingApproval = true;
+            }
+        }
+    }
+    private ContextMenuChangeKind? _pendingApprovalChangeKind;
 
     /// <summary>
     /// Gets or sets the backup File Path.
@@ -250,6 +286,7 @@ public sealed class PersistedContextMenuState
             DesiredEnabled = null,
             IsDeleted = entry.IsDeleted,
             IsPendingApproval = entry.IsPendingApproval,
+            PendingApprovalChangeKind = null,
             BackupFilePath = null,
             DeletedAtUtc = entry.DeletedAtUtc,
             ConsecutiveMissingSnapshots = 0,

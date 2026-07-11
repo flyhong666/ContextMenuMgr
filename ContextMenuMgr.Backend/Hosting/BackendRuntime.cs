@@ -1,4 +1,4 @@
-﻿using ContextMenuMgr.Backend.Services;
+using ContextMenuMgr.Backend.Services;
 using ContextMenuMgr.Contracts;
 using System.Collections.Concurrent;
 using System.IO;
@@ -544,11 +544,24 @@ public sealed class BackendRuntime : IDisposable
     {
         try
         {
-            // Step 1: immediately block the brand-new menu item so it does not
-            // remain active before the user reviews it.
-            var quarantinedItem = await _monitor.Catalog.QuarantineNewItemAsync(item, CancellationToken.None);
+            // Select the quarantine path based on the detected change kind.
+            // Reappeared items (previously deleted, then recreated) use a
+            // dedicated path that preserves deletion provenance.
+            ContextMenuEntry quarantinedItem;
+            string notificationMessage;
 
-            // Step 2: notify the tray/frontends once per logical item so the
+            if (item.DetectedChangeKind == ContextMenuChangeKind.Reappeared)
+            {
+                quarantinedItem = await _monitor.Catalog.QuarantineReappearedItemAsync(item, CancellationToken.None);
+                notificationMessage = $"A previously deleted context menu item has reappeared and was blocked pending approval: {quarantinedItem.DisplayName}";
+            }
+            else
+            {
+                quarantinedItem = await _monitor.Catalog.QuarantineNewItemAsync(item, CancellationToken.None);
+                notificationMessage = $"A new context menu item was blocked pending approval: {quarantinedItem.DisplayName}";
+            }
+
+            // Notify the tray/frontends once per logical item so the
             // same menu item appearing under multiple categories does not spam
             // duplicate approval notifications.
             if (ShouldBroadcastApprovalNotification(quarantinedItem))
@@ -558,14 +571,14 @@ public sealed class BackendRuntime : IDisposable
                     {
                         Kind = PipeNotificationKind.ItemDetected,
                         Item = quarantinedItem,
-                        Message = $"A new context menu item was blocked pending approval: {quarantinedItem.DisplayName}",
+                        Message = notificationMessage,
                         Timestamp = DateTimeOffset.UtcNow
                     });
             }
         }
         catch (Exception ex)
         {
-            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to quarantine new menu item {item.DisplayName}: {ex.Message}", CancellationToken.None);
+            await _logger.LogAsync(RuntimeLogLevel.Error, $"Failed to quarantine detected menu item {item.DisplayName}: {ex.Message}", CancellationToken.None);
         }
         finally
         {
