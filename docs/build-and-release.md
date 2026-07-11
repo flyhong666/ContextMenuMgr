@@ -163,6 +163,7 @@ self-contained installer 目标还会从同一个 installer publish 输出生成
 ```text
 resolve-metadata
 -> Resolve-Version.ps1
+-> Beta version gate（仅 Beta 配置，见下文）
 -> New-ReleaseNotes.ps1
 -> build matrix
 -> Scripts/Build-Target.ps1
@@ -171,6 +172,8 @@ resolve-metadata
 -> New-ChecksumTable.ps1
 -> 创建 draft release
 ```
+
+`Beta version gate` 步骤只在 `configuration == Beta` 且 `should_create_release == true` 时执行，调用 `Scripts/Test-BetaVersionGate.ps1` 查询 GitHub API 获取最新已发布的非预发布 Release，比较当前 Beta 基础版本与最新 Stable 版本。如果 Beta 基础版本 ≤ Stable 版本，workflow 直接报错，阻止后续构建和 draft release 创建。该门禁的原因和包管理器版本策略见 [包管理器发布说明](./package-managers.md)。
 
 构建矩阵覆盖 `win-x64`、`win-x86`、`win-arm64` 的 self-contained 和 framework-dependent installer，以及 framework-dependent portable。
 

@@ -127,7 +127,8 @@ function Invoke-GenerationCase {
         [Parameter(Mandatory)] [string] $PublishedAt,
         [Parameter(Mandatory)] [string] $ExpectedPackageVersion,
         [Parameter(Mandatory)] [string] $ExpectedWingetId,
-        [Parameter(Mandatory)] [string] $ExpectedScoopFile
+        [Parameter(Mandatory)] [string] $ExpectedScoopFile,
+        [string] $TargetChannel = ''
     )
 
     $caseRoot = Join-Path $Root $Name
@@ -152,7 +153,14 @@ function Invoke-GenerationCase {
 
     New-SampleAssets -Path $assetPath -Tag $Tag -AssetVersion $assetVersion
 
-    & (Join-Path $scriptDir 'Resolve-PackageRelease.ps1') -ReleaseEventJson $eventPath -OutputPath $metadataPath
+    $resolveArgs = @{
+        ReleaseEventJson = $eventPath
+        OutputPath = $metadataPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TargetChannel)) {
+        $resolveArgs['TargetChannel'] = $TargetChannel
+    }
+    & (Join-Path $scriptDir 'Resolve-PackageRelease.ps1') @resolveArgs
     & (Join-Path $scriptDir 'New-ScoopManifest.ps1') -ReleaseMetadataJson $metadataPath -AssetManifestJson $assetPath -OutputDirectory $scoopOut | Out-Null
     & (Join-Path $scriptDir 'New-WingetManifest.ps1') -ReleaseMetadataJson $metadataPath -AssetManifestJson $assetPath -OutputDirectory $wingetOut | Out-Null
 
@@ -180,8 +188,14 @@ function Invoke-GenerationCase {
     Assert-True -Condition ([string] $scoop.architecture.arm64.url -match 'arm64-self-contained-portable\.zip') -Message "$Name Scoop arm64 URL must point to arm64 self-contained portable zip."
     Assert-True -Condition (($scoop.notes -join "`n") -notmatch '\.NET 10 Desktop Runtime') -Message "$Name Scoop notes must not mention .NET runtime requirement."
 
+    if ($metadata.channel -eq 'beta' -and -not [bool]$metadata.prerelease) {
+        $notesText = ($scoop.notes -join "`n")
+        Assert-True -Condition ($notesText -match 'tracks the latest stable release') -Message "$Name Scoop notes must mention tracking stable release for stable-to-beta."
+        Assert-True -Condition ($notesText -notmatch 'may contain regressions') -Message "$Name Scoop notes must not mention regressions for stable-to-beta."
+    }
+
     $preInstall = ($scoop.pre_install -join "`n")
-    if ($Prerelease) {
+    if ($metadata.channel -eq 'beta') {
         Assert-True -Condition ($preInstall -match 'contextmenumgrplus\\current') -Message 'Scoop Beta manifest does not check the stable app.'
     }
     else {
@@ -263,6 +277,17 @@ try {
         -ExpectedPackageVersion '1.7.2-beta.20260704135822' `
         -ExpectedWingetId 'PLFJY.ContextMenuMgrPlus.Beta' `
         -ExpectedScoopFile 'contextmenumgrplus-beta.json'
+
+    Invoke-GenerationCase `
+        -Root $root `
+        -Name 'stable-to-beta' `
+        -Tag 'v1.7.3' `
+        -Prerelease $false `
+        -PublishedAt '2026-07-05T10:00:00Z' `
+        -ExpectedPackageVersion '1.7.3' `
+        -ExpectedWingetId 'PLFJY.ContextMenuMgrPlus.Beta' `
+        -ExpectedScoopFile 'contextmenumgrplus-beta.json' `
+        -TargetChannel 'beta'
 
     Write-Host "Package manager script tests passed. Fixture root: $root"
 }

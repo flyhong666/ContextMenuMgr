@@ -20,6 +20,8 @@ workflow 也支持 `workflow_dispatch`，用于对指定已发布 tag 做 dry-ru
 
 dry-run 仍然使用真实 Release assets。`dry_run=true` 只阻止外部副作用：不会 push 到 Scoop bucket，也不会创建 winget PR。它不会跳过真实 Release asset 下载、真实 SHA256 计算、Scoop manifest 生成和验证、winget manifest 生成和验证、winget 目标路径 preflight，或 Scoop bucket diff preflight。
 
+当 Stable Release 触发 workflow 时，除了正常的 Stable manifest 生成流程外，还会额外执行 Beta manifest 生成流程（见 §2.1）。dry-run 同样会生成 Beta manifest 并执行 preflight，只是不推送。
+
 发布流水线顺序是：
 
 ```text
@@ -29,11 +31,18 @@ real release metadata
 -> Scoop manifest validation
 -> winget manifest generation
 -> winget validate --ignore-warnings
--> artifact upload
+-> [if stable] Beta metadata resolve (-TargetChannel beta)
+-> [if stable] Beta Scoop manifest generation + validation
+-> [if stable] Beta winget manifest generation + validation
+-> artifact upload (includes Beta manifests when stable)
 -> Scoop bucket clone/copy/diff preflight
+-> [if stable] Beta Scoop bucket clone/copy/diff preflight
 -> optional Scoop bucket push
+-> [if stable] optional Beta Scoop bucket push
 -> optional upstream-master-based winget target-path preflight
+-> [if stable] optional Beta winget target-path preflight
 -> optional winget PR
+-> [if stable] optional Beta winget PR
 ```
 
 ## 2. Stable 与 Beta 渠道
@@ -65,6 +74,28 @@ winget 使用不同 PackageIdentifier：
 
 winget 标识符不同是为了渠道区分；安装器 AppId 仍然相同，因此安装器层面仍会把 Stable 和 Beta 视为同一个应用身份，保持互斥。
 
+### 2.1 Beta 追随最新版本策略
+
+Beta 包始终追随最新版本，包括正式版。这意味着：
+
+- **Beta Release 发布时**：生成并推送 Beta manifest，版本使用 Beta Release 的发布时间戳。
+- **Stable Release 发布时**：同时生成并推送 Stable 和 Beta 两个 manifest。Beta manifest 指向同一份正式版 assets，版本号直接使用正式版版本号（如 `1.7.3`）。
+
+这样 Beta 渠道用户始终能获得最新的构建产物，无论最新版本是 Beta 还是 Stable。
+
+当 Beta manifest 指向正式版 Release 时，Scoop notes 会提示 "This Beta channel package currently tracks the latest stable release."，而不是回归警告。
+
+### 2.2 Beta 版本阻断门禁
+
+Beta 发布前会在 `manual-release.yml` workflow 的 `resolve-metadata` job 中执行版本门禁检查（`Scripts/Test-BetaVersionGate.ps1`）：
+
+1. 查询 GitHub API `repos/{owner}/{repo}/releases/latest` 获取最新已发布的非预发布、非草稿 Release。
+2. 如果不存在已发布的 Stable Release，跳过检查。
+3. 比较 Beta Release 的基础版本号与最新 Stable 版本号。
+4. 如果 Beta 基础版本号 ≤ Stable 版本号，**workflow 直接报错，阻止构建**。
+
+原因是：Stable Release 发布后，Beta 包版本等于 Stable 版本号（如 `1.7.3`）。如果随后发布同基础版本的 Beta Release，Beta 包版本会变为 `1.7.3-beta.20260704135822`，在 SemVer 中低于 `1.7.3`，导致 Beta 包降级。门禁确保 Beta Release 的基础版本必须严格高于当前最新的 Stable 版本。
+
 ## 3. 版本规则
 
 Stable 包管理器版本使用 Release tag 去掉前导 `v` 后的版本：
@@ -73,12 +104,21 @@ Stable 包管理器版本使用 Release tag 去掉前导 `v` 后的版本：
 v1.7.2 -> 1.7.2
 ```
 
-Beta 包管理器版本使用 Release 发布时间生成稳定可排序版本：
+Beta 包管理器版本有两种情况：
+
+**Beta Release 发布时**，使用 Release 发布时间生成稳定可排序版本：
 
 ```text
-release tag: v1.7.2-Beta+abcdef0
+release tag: v1.7.4-Beta+abcdef0
 published_at: 2026-07-04T13:58:22Z
-package version: 1.7.2-beta.20260704135822
+package version: 1.7.4-beta.20260704135822
+```
+
+**Stable Release 发布时**，Beta 包直接使用正式版版本号：
+
+```text
+release tag: v1.7.3
+package version: 1.7.3
 ```
 
 asset URL 仍然指向真实 Release tag 和真实 asset filename。包管理器版本不需要等于 asset 文件名中的版本。

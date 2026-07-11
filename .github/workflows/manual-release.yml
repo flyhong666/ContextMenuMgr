@@ -49,6 +49,16 @@ jobs:
         shell: pwsh
         run: .\Scripts\Resolve-Version.ps1 -Configuration "${{ inputs.configuration }}"
 
+      - name: Beta version gate
+        if: inputs.configuration == 'Beta' && steps.version.outputs.should_create_release == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          .\Scripts\Test-BetaVersionGate.ps1 `
+            -BetaVersion '${{ steps.version.outputs.release_version }}' `
+            -OwnerRepo '${{ github.repository }}'
+
       - name: Create release notes
         shell: pwsh
         run: .\Scripts\New-ReleaseNotes.ps1 -PreviousTag "${{ steps.version.outputs.previous_tag }}" -OutputPath build/release-body.md

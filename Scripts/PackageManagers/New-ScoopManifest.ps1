@@ -57,7 +57,12 @@ $notes = @(
 )
 
 if ($metadata.channel -eq 'beta') {
-    $notes += 'Beta builds may contain regressions; use them only when you want to validate prerelease changes.'
+    if ([bool]$metadata.prerelease) {
+        $notes += 'Beta builds may contain regressions; use them only when you want to validate prerelease changes.'
+    }
+    else {
+        $notes += 'This Beta channel package currently tracks the latest stable release.'
+    }
 }
 
 $shortcutEntry = [object[]] @('ContextMenuManagerPlus.exe', [string] $metadata.scoopShortcutName)
