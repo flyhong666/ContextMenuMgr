@@ -44,6 +44,14 @@ public sealed class OfficeSuiteCoexistenceDetector
         _logger = logger;
     }
 
+    /// <summary>
+    /// Determines whether a newly observed WPS/Office synthetic finding needs review.
+    /// Existing findings are adopted as acknowledged baseline entries when the state
+    /// database is empty, just like existing registry menu entries.
+    /// </summary>
+    internal static bool ShouldMarkNewFindingPendingApproval(bool hasPersistedBaseline)
+        => hasPersistedBaseline;
+
     public static IReadOnlyList<ProtectedDocumentAssociation> Catalog { get; } =
     [
         Word(".doc", "Word.Document.8"),

@@ -359,7 +359,12 @@ public sealed class ContextMenuRegistryCatalog
             if (state is null && IsWpsOfficeSyntheticId(entry.Id))
             {
                 state = PersistedContextMenuState.FromEntry(entry);
-                state.IsPendingApproval = true;
+                // A reset/first-run state store must adopt existing WPS findings
+                // as the initial baseline. Otherwise every current WPS ShellNew,
+                // association, or icon finding is incorrectly reintroduced into
+                // Pending Approvals solely because its acknowledgement was reset.
+                state.IsPendingApproval = OfficeSuiteCoexistenceDetector
+                    .ShouldMarkNewFindingPendingApproval(hasBaseline);
                 state.UpdatedAtUtc = DateTimeOffset.UtcNow;
                 states[entry.Id] = state;
                 dirty = true;
