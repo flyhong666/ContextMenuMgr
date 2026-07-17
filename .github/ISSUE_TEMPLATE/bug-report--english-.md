@@ -25,7 +25,7 @@ If applicable, add screenshots to help explain your problem.
 
 **System Infos (please complete the following information):**
  - OS: [e.g. Windows 11 8.1]
- - Version [e.g. 1.6.8]
+ - Version of this software [e.g. 1.6.8]
 
 **Log Files (please provide all log files at `C:\ProgramData\ContextMenuMgr\Logs`):**
 Add every log files you found here.
