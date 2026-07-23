@@ -190,6 +190,12 @@
                                         Text="{Binding GuidLockWarningText}"
                                         TextWrapping="Wrap"
                                         Visibility="{Binding ShowGuidLockWarning, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ui:TextBlock
+                                        Margin="0,8,0,0"
+                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                        Text="{Binding UserNoteDisplay}"
+                                        TextWrapping="Wrap"
+                                        Visibility="{Binding HasUserNote, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
 
                                 <StackPanel
@@ -213,6 +219,15 @@
                                         Content="{Binding OpenFileLocationText}"
                                         Icon="{ui:SymbolIcon Symbol=FolderOpen24}"
                                         IsEnabled="{Binding CanOpenFileLocation}" />
+                                    <ui:Button
+                                        Grid.Column="1"
+                                        Margin="0,8,0,0"
+                                        HorizontalAlignment="Right"
+                                        Appearance="Secondary"
+                                        Command="{Binding EditUserNoteCommand}"
+                                        Content="{Binding EditUserNoteLabel}"
+                                        Icon="{ui:SymbolIcon Symbol=Edit24}"
+                                        IsEnabled="{Binding CanEditUserNote}" />
                                 </StackPanel>
                             </Grid>
                         </Border>

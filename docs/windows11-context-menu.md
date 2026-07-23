@@ -117,6 +117,8 @@ Win11 新菜单的 snapshot 和开关都依赖用户上下文：
 
 Win11 页面筛选是前端内存筛选。只有刷新 snapshot 或执行开关操作时才需要访问后端。
 
+Win11 菜单项支持与传统菜单一致的本地用户备注：`Windows11ContextMenuItemViewModel` 暴露 `UserNote` / `HasUserNote` / `UserNoteDisplay` / `EditUserNoteCommand`，备注通过 `FrontendSettingsService.GetContextMenuItemNote` / `UpdateContextMenuItemNote` 持久化，以 `Windows11ContextMenuItemDefinition.Id` 为键，不写入注册表、不访问后端。备注内容参与页面筛选与全局搜索匹配；全局搜索候选在 `FrontendSettingsService.SettingsChanged`（备注编辑触发）时重建。
+
 ## 7. 常见坑
 
 | 坑 | 正确处理 |

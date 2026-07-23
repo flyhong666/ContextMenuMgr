@@ -268,13 +268,13 @@ Restart Explorer 通过 pipe 命令 `RestartExplorer` 进入后端。`NamedPipeB
 
 当前全局搜索不覆盖 ShellNew / SendTo / WinX / OpenWith、FileTypes、OtherRules、Approvals、Settings 等页面。新增页面如果需要被全局搜索命中，必须显式扩展 `ContextMenuGlobalSearchService` 的候选池和跳转筛选逻辑。
 
-候选会在 workspace item 集合变化、item 显示名/状态/本地备注变化、Win11 items 变化、语言变化时重建。搜索字段包括 display name、key name、registry path、backend registry path、source root、command、CLSID、file path、本地备注、状态标签、分类标签，以及 Win11 的 package / publisher / context types。`ContextMenuSearchMatcher` 会忽略标点、分隔符和符号，因此 `7zip` 可以命中 `7-Zip`；分类页筛选和全局搜索共用该匹配器。
+候选会在 workspace item 集合变化、item 显示名/状态/本地备注变化、Win11 items 变化、语言变化、设置变化（含 Win11 本地备注编辑）时重建。搜索字段包括 display name、key name、registry path、backend registry path、source root、command、CLSID、file path、本地备注（传统菜单与 Win11 菜单）、状态标签、分类标签，以及 Win11 的 package / publisher / context types。`ContextMenuSearchMatcher` 会忽略标点、分隔符和符号，因此 `7zip` 可以命中 `7-Zip`；分类页筛选和全局搜索共用该匹配器。
 
 搜索结果会 best-effort 使用菜单项实际 icon；没有可用图标时使用分类或 Win11 fallback 图标。输入时 `ShellViewModel` 只调用本地 `Search`，不访问后端，所以可以快速响应。用户选择结果后，`GlobalSearchNavigationFilterService.RequestFilter` 保存目标页面、分类、是否 Win11、筛选文本和 itemId，再导航到目标页面。目标页面消费 pending filter，把页面筛选框设为选中菜单项名称。
 
 不要把每次输入改成后端查询。后端快照应由刷新或通知驱动。
 
-传统菜单项的用户备注保存在 `FrontendSettings.ContextMenuItemNotes`，以稳定 item id 为键，不写入注册表。`ApplicationGroupsPageViewModel` 只使用已加载的传统菜单 workspace 项，依次按已解析文件路径、命令中的 exe/dll、CLSID、注册表路径 fallback 分组；Win11 modern menu 不参与分组。“全部禁用”复用 `ContextMenuWorkspaceService.SetEnabledAsync`，仅处理当前启用且可切换的项。
+传统菜单项与 Win11 菜单项的用户备注都保存在 `FrontendSettings.ContextMenuItemNotes`，以稳定 item id 为键，不写入注册表；Win11 项以 `Windows11ContextMenuItemDefinition.Id`（如 `win11|{clsid}|{category}` 或 `win11-system|{commandKey}`）为键。`ApplicationGroupsPageViewModel` 只使用已加载的传统菜单 workspace 项，依次按已解析文件路径、命令中的 exe/dll、CLSID、注册表路径 fallback 分组；Win11 modern menu 不参与分组。“全部禁用”复用 `ContextMenuWorkspaceService.SetEnabledAsync`，仅处理当前启用且可切换的项。
 
 File Types 页提供隐藏的文件类型相关项批量管理子视图，不作为普通导航页面，也不增加可直接选择的 TabItem。入口在 File Types 的 scene 菜单项卡片上；前端用 `ContextMenuApplicationIdentityService` 生成菜单身份，后端通过 `PipeCommand.FindRelatedFileTypeMenuItems` 按需扫描 HKLM 与前端用户 `Software\Classes` 中的扩展名、ProgId 和 `SystemFileAssociations` 根。ShellVerb 只按规范化命令程序路径加 key name 匹配，ShellExtension 只按 Handler CLSID 匹配，不按显示名匹配。查询结果不写入普通 workspace，也不扩展服务启动检测 baseline；批量启用、禁用和删除复用现有 per-item 操作与备份/保护逻辑。
 

@@ -16,6 +16,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
     private readonly Windows11ContextMenuService _windows11Service;
     private readonly LocalizationService _localization;
     private readonly IconPreviewService _iconPreviewService;
+    private readonly FrontendSettingsService _settingsService;
     private readonly object _gate = new();
     private List<Candidate> _candidates = [];
     private bool _disposed;
@@ -24,12 +25,14 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
         ContextMenuWorkspaceService workspace,
         Windows11ContextMenuService windows11Service,
         LocalizationService localization,
-        IconPreviewService iconPreviewService)
+        IconPreviewService iconPreviewService,
+        FrontendSettingsService settingsService)
     {
         _workspace = workspace;
         _windows11Service = windows11Service;
         _localization = localization;
         _iconPreviewService = iconPreviewService;
+        _settingsService = settingsService;
 
         _workspace.Items.CollectionChanged += OnWorkspaceItemsChanged;
         foreach (var item in _workspace.Items)
@@ -39,6 +42,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
 
         _windows11Service.ItemsChanged += OnWindows11ItemsChanged;
         _localization.LanguageChanged += OnLanguageChanged;
+        _settingsService.SettingsChanged += OnSettingsChanged;
 
         RebuildCandidates();
     }
@@ -84,6 +88,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
 
         _windows11Service.ItemsChanged -= OnWindows11ItemsChanged;
         _localization.LanguageChanged -= OnLanguageChanged;
+        _settingsService.SettingsChanged -= OnSettingsChanged;
     }
 
     private static int Score(Candidate candidate, string query)
@@ -117,6 +122,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
             candidate.ContextTypesText,
             candidate.Result.FilePath,
             candidate.Result.StateLabel,
+            candidate.UserNote,
             query,
             out var score)
             ? score
@@ -124,6 +130,11 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        RebuildCandidates();
+    }
+
+    private void OnSettingsChanged(object? sender, EventArgs e)
     {
         RebuildCandidates();
     }
@@ -270,6 +281,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
         var scopeLabel = _localization.Translate("GlobalSearchWin11Scope");
         var filePath = primary.ComServer.Path ?? primary.Entry?.FilePath ?? primary.Package.InstallPath;
         var iconSource = TryGetWindows11Icon(primary);
+        var userNote = _settingsService.GetContextMenuItemNote(primary.Id);
         var result = new GlobalSearchResultViewModel
         {
             Id = primary.Id,
@@ -304,6 +316,7 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
                 primary.Entry?.SourceRootPath,
                 primary.Entry?.FilePath,
                 primary.Entry?.HandlerClsid,
+                userNote,
                 stateLabel,
                 scopeLabel
             ])
@@ -314,7 +327,8 @@ public sealed class ContextMenuGlobalSearchService : IDisposable
             Windows11Definitions = definitions,
             PackageFamilyName = primary.Package.FamilyName,
             PublisherName = primary.Package.PublisherDisplayName,
-            ContextTypesText = contextTypesText
+            ContextTypesText = contextTypesText,
+            UserNote = userNote
         };
     }
 

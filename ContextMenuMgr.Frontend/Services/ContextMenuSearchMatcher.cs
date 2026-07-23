@@ -98,6 +98,7 @@ public static class ContextMenuSearchMatcher
             item.ContextTypesText,
             item.ComServerPath,
             item.IsEnabled ? null : string.Empty,
+            item.UserNote,
             query,
             out score);
     }
@@ -110,6 +111,7 @@ public static class ContextMenuSearchMatcher
         string? contextTypesText,
         string? comServerPath,
         string? stateLabel,
+        string? userNote,
         string? query,
         out int score)
     {
@@ -136,6 +138,7 @@ public static class ContextMenuSearchMatcher
             publisherName,
             contextTypesText,
             comServerPath,
+            userNote,
             primary?.Package.FullName,
             primary?.Package.DisplayName,
             primary?.Package.InstallPath,

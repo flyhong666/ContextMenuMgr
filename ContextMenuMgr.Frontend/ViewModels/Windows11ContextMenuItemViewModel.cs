@@ -15,6 +15,7 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
 {
     private readonly Windows11ContextMenuService _service;
     private readonly LocalizationService _localization;
+    private readonly FrontendSettingsService? _settingsService;
     private readonly EventHandler _languageChangedHandler;
     private bool _suppressSync;
     private readonly Windows11ContextMenuItemDefinition _primaryDefinition;
@@ -25,15 +26,18 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     public Windows11ContextMenuItemViewModel(
         IReadOnlyList<Windows11ContextMenuItemDefinition> definitions,
         Windows11ContextMenuService service,
-        LocalizationService localization)
+        LocalizationService localization,
+        FrontendSettingsService? settingsService = null)
     {
         Definitions = definitions;
         _primaryDefinition = definitions[0];
         _service = service;
         _localization = localization;
+        _settingsService = settingsService;
 
         _logoTask = Windows11ContextMenuService.LoadLogo(_primaryDefinition.Package, CancellationToken.None);
         RefreshState(definitions.All(static definition => definition.IsEnabled));
+        UserNote = _settingsService?.GetContextMenuItemNote(Id) ?? string.Empty;
 
         _languageChangedHandler = (_, _) =>
         {
@@ -44,6 +48,8 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
             OnPropertyChanged(nameof(SourceLabel));
             OnPropertyChanged(nameof(ProtectedText));
             OnPropertyChanged(nameof(GuidLockWarningText));
+            OnPropertyChanged(nameof(UserNoteDisplay));
+            OnPropertyChanged(nameof(EditUserNoteLabel));
         };
         _localization.LanguageChanged += _languageChangedHandler;
     }
@@ -54,6 +60,8 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     /// Gets the grouped source definitions.
     /// </summary>
     public IReadOnlyList<Windows11ContextMenuItemDefinition> Definitions { get; }
+
+    public string Id => _primaryDefinition.Id;
 
     public string DisplayName => _primaryDefinition.DisplayName;
 
@@ -110,6 +118,21 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
     public string OpenFileLocationText => _localization.Translate("DetailsFileLocation");
 
     public string PendingApprovalText => _localization.Translate("PendingApprovalBadge");
+
+    public string EditUserNoteLabel => _localization.Translate("DetailsEditUserNote");
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUserNote))]
+    [NotifyPropertyChangedFor(nameof(UserNoteDisplay))]
+    public partial string UserNote { get; private set; }
+
+    public bool HasUserNote => !string.IsNullOrWhiteSpace(UserNote);
+
+    public string UserNoteDisplay => HasUserNote
+        ? _localization.Format("UserNoteDisplayFormat", UserNote)
+        : string.Empty;
+
+    public bool CanEditUserNote => _settingsService is not null;
 
     /// <summary>
     /// Gets or sets a value indicating whether enabled.
@@ -237,6 +260,30 @@ public partial class Windows11ContextMenuItemViewModel : ObservableObject, IDisp
         {
             await FrontendMessageBox.ShowErrorAsync(ex.Message, DisplayName);
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanEditUserNote))]
+    private async Task EditUserNoteAsync()
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+
+        var note = await TextInputDialog.ShowAsync(
+            _localization.Translate("DetailsEditUserNote"),
+            _localization.Translate("UserNoteLabel"),
+            UserNote,
+            width: 620,
+            height: 300,
+            multiline: true);
+        if (note is null)
+        {
+            return;
+        }
+
+        _settingsService.UpdateContextMenuItemNote(Id, note);
+        UserNote = note.Trim();
     }
 
     private string LocalizeContextType(string? type)

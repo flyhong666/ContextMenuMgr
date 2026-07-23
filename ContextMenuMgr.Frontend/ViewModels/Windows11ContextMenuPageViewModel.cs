@@ -20,6 +20,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
     private readonly ContextMenuWorkspaceService _workspace;
     private readonly ListPlaceholderDebugStateService _placeholderDebug;
     private readonly GlobalSearchNavigationFilterService _globalSearchFilterService;
+    private readonly FrontendSettingsService _settingsService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Windows11ContextMenuPageViewModel"/> class.
@@ -29,13 +30,15 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
         LocalizationService localization,
         ContextMenuWorkspaceService workspace,
         ListPlaceholderDebugStateService placeholderDebug,
-        GlobalSearchNavigationFilterService globalSearchFilterService)
+        GlobalSearchNavigationFilterService globalSearchFilterService,
+        FrontendSettingsService settingsService)
     {
         _service = service;
         _localization = localization;
         _workspace = workspace;
         _placeholderDebug = placeholderDebug;
         _globalSearchFilterService = globalSearchFilterService;
+        _settingsService = settingsService;
 
         ItemsView = new ListCollectionView(Items);
         ItemsView.Filter = FilterItem;
@@ -262,7 +265,7 @@ public partial class Windows11ContextMenuPageViewModel : ObservableObject, IDisp
                      .OrderBy(static group => group.First().Package.DisplayName, StringComparer.CurrentCultureIgnoreCase)
                      .ThenBy(static group => group.First().DisplayName, StringComparer.CurrentCultureIgnoreCase))
         {
-            var itemViewModel = new Windows11ContextMenuItemViewModel(group.ToArray(), _service, _localization);
+            var itemViewModel = new Windows11ContextMenuItemViewModel(group.ToArray(), _service, _localization, _settingsService);
             itemViewModel.RefreshPendingApproval(pendingApprovalKeys.Contains(group.Key));
             Items.Add(itemViewModel);
         }
