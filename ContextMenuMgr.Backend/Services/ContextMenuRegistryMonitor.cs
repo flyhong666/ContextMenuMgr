@@ -11,6 +11,7 @@ public sealed class ContextMenuRegistryMonitor
 {
     private readonly ContextMenuRegistryCatalog _catalog;
     private readonly FileLogger _logger;
+    private readonly BackendUserContextResolver _userContextResolver;
     private readonly TimeSpan _pollInterval;
     private Task? _monitorTask;
     private volatile bool _interactiveBaselineResetRequested;
@@ -21,10 +22,12 @@ public sealed class ContextMenuRegistryMonitor
     public ContextMenuRegistryMonitor(
         ContextMenuRegistryCatalog catalog,
         FileLogger logger,
+        BackendUserContextResolver userContextResolver,
         TimeSpan? pollInterval = null)
     {
         _catalog = catalog;
         _logger = logger;
+        _userContextResolver = userContextResolver;
         _pollInterval = pollInterval ?? TimeSpan.FromSeconds(5);
     }
 
@@ -175,7 +178,14 @@ public sealed class ContextMenuRegistryMonitor
     /// </summary>
     private async Task<IReadOnlyList<ContextMenuEntry>> ReconcileAndRefreshSnapshotAsync(CancellationToken cancellationToken)
     {
-        var snapshot = await _catalog.GetSnapshotAsync(cancellationToken);
+        // The monitor runs independently of frontend pipe connections. Without an
+        // explicit user context, Windows 11 packaged COM entries and per-user
+        // shell entries under HKEY_USERS\<sid> cannot be enumerated correctly
+        // when the interactive session is temporarily unavailable (screen lock,
+        // UAC elevation, fast-user switch). This causes mass false-negative
+        // disappearances that corrupt the persisted state baseline.
+        var userContext = _userContextResolver.TryResolveInteractiveUserFallback();
+        var snapshot = await _catalog.GetSnapshotAsync(cancellationToken, userContext);
 
         var result = await _catalog.ReconcilePersistedDisabledItemsAsync(snapshot, cancellationToken);
 
@@ -185,7 +195,7 @@ public sealed class ContextMenuRegistryMonitor
                 $"DesiredStateReconciliationPass: Reconciled={result.ReconciledItemIds.Count}, " +
                 $"Failed={result.FailedItemIds.Count}, ReloadingSnapshot=True.",
                 cancellationToken);
-            snapshot = await _catalog.GetSnapshotAsync(cancellationToken);
+            snapshot = await _catalog.GetSnapshotAsync(cancellationToken, userContext);
         }
 
         return snapshot;

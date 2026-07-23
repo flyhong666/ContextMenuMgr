@@ -231,7 +231,19 @@ reconciliation 返回 `DisabledStateReconciliationResult(HasChanges, ReconciledI
 
 不单独为每个 item 重新加载整个 snapshot。
 
-### 10.8 Reappeared 隔离路径
+监控循环独立于前端 pipe 连接运行。`ReconcileAndRefreshSnapshotAsync` 在每次轮询时通过 `BackendUserContextResolver.TryResolveInteractiveUserFallback()` 解析当前交互式用户上下文，并传递给 `GetSnapshotAsync`。这确保 Win11 packaged COM 项和 `HKEY_USERS\<sid>` 下的 per-user 项在用户会话暂时不可用（屏幕锁定、UAC 提升、快速用户切换）时仍能被正确枚举。如果解析失败（无活跃用户会话），回退到无 userContext 的全局枚举行为。
+
+### 10.8 大规模缺失保护
+
+`BuildSnapshotAsync` 在清理缺失状态之前会计算"可被 prune 的缺失项"占"活跃状态总数"的比例。当缺失比例超过 25% 时，跳过 `ConsecutiveMissingSnapshots` 累加并重置已有计数。
+
+这是防御性措施：当大量活跃 baseline state 同时从快照中消失时，通常是枚举不完整（用户会话未就绪、per-user hive 未加载、Win11 packaged COM 查询失败）而非真实批量外部删除。如果在这种情况下继续累加 `ConsecutiveMissingSnapshots` 并清理状态库，下一次重启时这些项重新出现会被误判为 `Added`，导致大量虚假"外部新增"通知。
+
+真实的外部批量删除（如一次性卸载多个第三方软件）不会触发此保护，因为：
+- 单个软件卸载通常只影响少量项，不会超过 25% 阈值；
+- 即使超过阈值，保护只是延迟清理，不影响 `DetectedChangeKind=Removed` 的暴露。
+
+### 10.9 Reappeared 隔离路径
 
 `QuarantineReappearedItemAsync` 不复用 `QuarantineNewItemAsync`。后者会清除 `IsDeleted`、`DeletedAtUtc`、`BackupFilePath`，这会破坏删除来源和现有恢复备份。
 
@@ -248,7 +260,7 @@ reconciliation 返回 `DisabledStateReconciliationResult(HasChanges, ReconciledI
 
 `PendingApprovalChangeKind` 是新增的可空枚举字段。旧 state 文件没有此字段时安全反序列化为 `null`。`IsPendingApproval` 设为 `false` 时自动清除此字段；设置非 null `PendingApprovalChangeKind` 时自动将 `IsPendingApproval` 翻转为 `true`。
 
-### 10.9 Reappeared 审核决策
+### 10.10 Reappeared 审核决策
 
 对于源自之前删除项的 pending approval（`PendingApprovalChangeKind=Reappeared`）：
 
@@ -262,7 +274,7 @@ reconciliation 返回 `DisabledStateReconciliationResult(HasChanges, ReconciledI
 
 普通 Added 项的审核行为保持不变。
 
-### 10.10 显式禁用状态在 key 缺失期间保留
+### 10.11 显式禁用状态在 key 缺失期间保留
 
 当 `state.IsDeleted=false` 且 `state.DesiredEnabled=false` 时，即使注册表 key 暂时缺失，也保留该 state。这是为执行 "delete key → wait → recreate key" 流程的第三方应用准备的。
 
@@ -270,7 +282,7 @@ reconciliation 返回 `DisabledStateReconciliationResult(HasChanges, ReconciledI
 
 不因注册表 key 缺失就重置 `DesiredEnabled=false`。
 
-### 10.11 竞争处理
+### 10.12 竞争处理
 
 - key 在 snapshot 枚举和禁用写入之间消失：reconciliation 写入失败，记录日志，后续轮询自然重试；
 - 第三方程序在 reconciliation 后立即重建 key：下一轮 polling 会再次 reconcile；

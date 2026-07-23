@@ -107,7 +107,8 @@ public sealed class BackendRuntime : IDisposable
         BackendEmergencyLogger.Log("CreateDefault: ExplorerRestartService created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating ContextMenuRegistryMonitor.");
-        var monitor = new ContextMenuRegistryMonitor(catalog, logger);
+        var userContextResolver = new BackendUserContextResolver(logger);
+        var monitor = new ContextMenuRegistryMonitor(catalog, logger, userContextResolver);
         BackendEmergencyLogger.Log("CreateDefault: ContextMenuRegistryMonitor created.");
 
         BackendEmergencyLogger.Log("CreateDefault: creating NamedPipeBackendServer.");

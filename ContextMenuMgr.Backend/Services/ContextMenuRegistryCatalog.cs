@@ -353,6 +353,32 @@ public sealed class ContextMenuRegistryCatalog
             .Where(static packageKey => !string.IsNullOrWhiteSpace(packageKey))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // Detect mass disappearance of known active states. When a large fraction
+        // of non-deleted baseline states are simultaneously missing from the
+        // snapshot, it usually indicates enumeration incompleteness (e.g. the
+        // interactive user session is temporarily unavailable, per-user registry
+        // hive not loaded, Win11 packaged COM query failed) rather than a genuine
+        // bulk external removal. In that case, skip ConsecutiveMissingSnapshots
+        // accumulation to prevent corrupting the persisted baseline, which would
+        // otherwise cause mass false "Added" notifications on the next restart.
+        var totalActiveStates = states.Values.Count(static state => !state.IsDeleted);
+        var prunableMissingCount = 0;
+        foreach (var state in states.Values)
+        {
+            if (state.IsDeleted || !includePersistedState(state) || actualEntries.ContainsKey(state.Id))
+            {
+                continue;
+            }
+
+            if (CanPruneMissingStateForCurrentSnapshot(state, observedSourceRoots, observedWindows11Packages))
+            {
+                prunableMissingCount++;
+            }
+        }
+
+        var suppressMassDisappearancePruning = totalActiveStates > 0
+            && prunableMissingCount > totalActiveStates * 0.25;
+
         foreach (var entry in actualEntries.Values.OrderBy(static item => item.Category).ThenBy(static item => item.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
             states.TryGetValue(entry.Id, out var state);
@@ -466,6 +492,21 @@ public sealed class ContextMenuRegistryCatalog
 
                 if (!persistSnapshotUpdates)
                 {
+                    continue;
+                }
+
+                if (suppressMassDisappearancePruning)
+                {
+                    // A large fraction of active states are missing simultaneously.
+                    // This is almost certainly enumeration incompleteness, not a
+                    // genuine bulk removal. Reset any prior missing-snapshot count
+                    // so the baseline survives until enumeration recovers.
+                    if (state.ConsecutiveMissingSnapshots != 0)
+                    {
+                        state.ConsecutiveMissingSnapshots = 0;
+                        dirty = true;
+                    }
+
                     continue;
                 }
 
