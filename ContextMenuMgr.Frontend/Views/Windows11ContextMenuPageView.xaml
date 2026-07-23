@@ -2,6 +2,7 @@
     x:Class="ContextMenuMgr.Frontend.Views.Windows11ContextMenuPageView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:ContextMenuMgr.Frontend.Behaviors"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:ContextMenuMgr.Frontend.ViewModels"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}">
@@ -39,6 +40,7 @@
                 BorderThickness="0"
                 ItemContainerStyle="{StaticResource ScrollableListBoxItemStyle}"
                 ItemsSource="{Binding ItemsView}"
+                behaviors:SuppressBringIntoViewBehavior.IsEnabled="True"
                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                 ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListBox.ItemTemplate>

@@ -188,6 +188,21 @@ SpecialMenuPageView    : Page         // 导航页 wrapper
 
 OtherRules 这类复杂页面要区分外层导航滚动、TabControl 页面滚动、左侧列表滚动和右侧详情滚动。不要因为滚动异常去改后端、注册表或菜单状态逻辑。
 
+### 7.1 列表刷新时阻止 BringIntoView 冒泡到外层滚动宿主
+
+绑定到 `ListCollectionView`（`ItemsView`）的 ListBox 在运行时调用 `ItemsView.Refresh()`（例如传统菜单页开关菜单项、Win11 页 `RebuildItems`）会触发 `CollectionChanged(Reset)`，导致 ListBox 重新生成所有 item 容器。容器重新生成期间，WPF 框架的焦点恢复 / 选中项恢复逻辑会引发 `FrameworkElement.RequestBringIntoView` 路由事件。此时 ListBox 内部 ScrollViewer 因容器尚未完成布局无法正确处理该事件，事件会继续**冒泡**到外层 `ModernScrollViewer`，外层滚动到让 ListBox 顶部可见——表现为页头标题与筛选框被滚出视野、列表顶部对齐窗口顶部。
+
+修复方式是在对应 ListBox 上启用 `Behaviors.SuppressBringIntoViewBehavior`：
+
+```xml
+<ListBox
+    behaviors:SuppressBringIntoViewBehavior.IsEnabled="True"
+    ItemsSource="{Binding ItemsView}"
+    ...>
+```
+
+该附加属性以 `handledEventsToo: true` 注册 `RequestBringIntoViewEvent`，在 ListBox 层标记 `Handled = true`，阻止事件冒泡到外层滚动宿主。由于 ListBox 内部 ScrollViewer 位于 ListBox 之下（事件先到达内层），列表自身的滚动行为不受影响。当前在传统菜单页（`CategoryPageView`）和 Win11 菜单页（`Windows11ContextMenuPageView`）的 ListBox 上启用。其它使用 `ScrollableListBoxItemStyle` 且会在运行时 `Refresh` 的列表如出现同样的“开关后滚动跳动”现象，可同样启用。
+
 ## 8. AutoSuggestBox 与全局搜索
 
 标题栏全局搜索使用 WPF-UI `AutoSuggestBox`，但本项目不使用 WPF-UI 的默认过滤逻辑。
